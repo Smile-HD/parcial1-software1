@@ -49,10 +49,10 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 
 ## Phase 2: Core IR & Delta Engine (PRs 2–3)
 
-- [ ] 2.1 RED: IR schema rejects multiplicity outside `1|0..1|1..*|0..*` (editor:R4).
-- [ ] 2.2 Create `packages/core/src/ir.ts` — Zod Diagram/Class/Attribute/Method/Association; canvas positions included (design open question resolved: coordinates ARE persisted).
-- [ ] 2.3 Create `packages/core/src/delta.ts` — delta union (class/member/association ops + batch) + LLM-facing JSON Schema via `z.toJSONSchema` (design D3).
-- [ ] 2.4 Create `packages/core/src/ports.ts` — `DiagramRepository`, `LlmPort`, `SttPort`, `VisionPort`, `ImporterPort`, `TemplateStore` per design contracts.
+- [x] 2.1 RED: IR schema rejects multiplicity outside `1|0..1|1..*|0..*` (editor:R4).
+- [x] 2.2 Create `packages/core/src/ir.ts` — Zod Diagram/Class/Attribute/Method/Association; canvas positions included (design open question resolved: coordinates ARE persisted).
+- [x] 2.3 Create `packages/core/src/delta.ts` — delta union (class/member/association ops + batch) + LLM-facing JSON Schema via `z.toJSONSchema` (design D3).
+- [x] 2.4 Create `packages/core/src/ports.ts` — `DiagramRepository`, `LlmPort`, `SttPort`, `VisionPort`, `ImporterPort`, `TemplateStore` per design contracts.
 - [ ] 3.1 RED: duplicate-class delta rejected, model unchanged (editor:R1).
 - [ ] 3.2 Create `packages/core/src/apply.ts` — pure `applyDelta` with invariant checks.
 - [ ] 3.3 RED→GREEN: delete-class cascade removes its associations; no dangling endpoints (editor:R2).
