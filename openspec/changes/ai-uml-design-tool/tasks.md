@@ -53,11 +53,11 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 - [x] 2.2 Create `packages/core/src/ir.ts` — Zod Diagram/Class/Attribute/Method/Association; canvas positions included (design open question resolved: coordinates ARE persisted).
 - [x] 2.3 Create `packages/core/src/delta.ts` — delta union (class/member/association ops + batch) + LLM-facing JSON Schema via `z.toJSONSchema` (design D3).
 - [x] 2.4 Create `packages/core/src/ports.ts` — `DiagramRepository`, `LlmPort`, `SttPort`, `VisionPort`, `ImporterPort`, `TemplateStore` per design contracts.
-- [ ] 3.1 RED: duplicate-class delta rejected, model unchanged (editor:R1).
-- [ ] 3.2 Create `packages/core/src/apply.ts` — pure `applyDelta` with invariant checks.
-- [ ] 3.3 RED→GREEN: delete-class cascade removes its associations; no dangling endpoints (editor:R2).
-- [ ] 3.4 Atomic batch: one invalid delta ⇒ nothing applied (xmi:R4, photo:R2 depend on this).
-- [ ] 3.5 Verify: all core invariant tests green (`pnpm --filter @app/core test`).
+- [x] 3.1 RED: duplicate-class delta rejected, model unchanged (editor:R1).
+- [x] 3.2 Create `packages/core/src/apply.ts` — pure `applyDelta` with invariant checks.
+- [x] 3.3 RED→GREEN: delete-class cascade removes its associations; no dangling endpoints (editor:R2).
+- [x] 3.4 Atomic batch: one invalid delta ⇒ nothing applied (xmi:R4, photo:R2 depend on this).
+- [x] 3.5 Verify: all core invariant tests green (`pnpm --filter @app/core test`).
 
 ## Phase 3: Transport & Persistence (PRs 4–5)
 

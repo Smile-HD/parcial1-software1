@@ -48,4 +48,11 @@ export {
   type LlmResult,
 } from './ports.js';
 
+export {
+  // Apply engine (Phase 2.5 / PR 3)
+  applyDelta,
+  type ApplyResult,
+  type ApplyError,
+} from './apply.js';
+
 export const PACKAGE_NAME = '@app/core' as const;

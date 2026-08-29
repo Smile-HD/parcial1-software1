@@ -85,6 +85,12 @@ importers:
 
   packages/core:
     devDependencies:
+      '@types/uuid':
+        specifier: ^11.0.0
+        version: 11.0.0
+      uuid:
+        specifier: ^14.0.2
+        version: 14.0.2
       vitest:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.1)(jsdom@26.1.0)
@@ -583,6 +589,10 @@ packages:
   '@types/react@19.2.18':
     resolution: {integrity: sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==}
 
+  '@types/uuid@11.0.0':
+    resolution: {integrity: sha512-HVyk8nj2m+jcFRNazzqyVKiZezyhDKrGUA3jlEcg/nZ6Ms+qHwocba1Y/AaVaznJTAM9xpdFSh+ptbNrhOGvZA==}
+    deprecated: This is a stub types definition. uuid provides its own type definitions, so you do not need this installed.
+
   '@vitejs/plugin-react@4.7.0':
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
     engines: {node: ^14.18.0 || >=16.0.0}
@@ -954,6 +964,10 @@ packages:
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
+
+  uuid@14.0.2:
+    resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
+    hasBin: true
 
   vite-node@3.2.4:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
@@ -1465,6 +1479,10 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
+  '@types/uuid@11.0.0':
+    dependencies:
+      uuid: 14.0.2
+
   '@vitejs/plugin-react@4.7.0(vite@6.4.3(@types/node@22.20.1))':
     dependencies:
       '@babel/core': 7.29.7
@@ -1847,6 +1865,8 @@ snapshots:
       browserslist: 4.28.8
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uuid@14.0.2: {}
 
   vite-node@3.2.4(@types/node@22.20.1):
     dependencies:
