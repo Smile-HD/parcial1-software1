@@ -43,9 +43,9 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 
 ## Phase 1: Foundation (PR 1)
 
-- [ ] 1.1 `git init` at repo root; `.gitignore` (node, dist, sqlite files); create tracker branch `feature/ai-uml-design-tool`; initial commit.
-- [ ] 1.2 Create `pnpm-workspace.yaml`, root `package.json`, strict `tsconfig.base.json` (Node 22 target); scaffold packages `@app/core`, `@app/api`, `@app/web`, `@app/collab-server`, `@app/adapters-ai`, `@app/adapters-import`, `@app/codegen`.
-- [ ] 1.3 Configure Vitest per package + one smoke test each; verify `pnpm -r test` green and clean install on a second machine.
+- [x] 1.1 `git init` at repo root; `.gitignore` (node, dist, sqlite files); create tracker branch `feature/ai-uml-design-tool`; initial commit.
+- [x] 1.2 Create `pnpm-workspace.yaml`, root `package.json`, strict `tsconfig.base.json` (Node 22 target); scaffold packages `@app/core`, `@app/api`, `@app/web`, `@app/collab-server`, `@app/adapters-ai`, `@app/adapters-import`, `@app/codegen`.
+- [x] 1.3 Configure Vitest per package + one smoke test each; verify `pnpm -r test` green and clean install on a second machine.
 
 ## Phase 2: Core IR & Delta Engine (PRs 2–3)
 
