@@ -61,10 +61,10 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 
 ## Phase 3: Transport & Persistence (PRs 4–5)
 
-- [ ] 4.1 Create `apps/api` Fastify bootstrap + `POST /diagrams`, `GET|PUT /diagrams/:id` on PostgreSQL 16 (`pg`, `jsonb` document column + Yjs update blob column); `compose.yaml` with a `postgres:16` service for local dev/test.
-- [ ] 4.2 Test: save→reload round-trip is lossless — classes, members, associations, multiplicities, positions (editor:R5).
-- [ ] 4.3 RED: corrupt JSON document ⇒ explicit load error, no partial diagram (editor:R5).
-- [ ] 4.4 Verify: `pnpm --filter @app/api test` green.
+- [x] 4.1 Create `apps/api` Fastify bootstrap + `POST /diagrams`, `GET|PUT /diagrams/:id` on PostgreSQL 16 (`pg`, `jsonb` document column + Yjs update blob column); `compose.yaml` with a `postgres:16` service for local dev/test.
+- [x] 4.2 Test: save→reload round-trip is lossless — classes, members, associations, multiplicities, positions (editor:R5).
+- [x] 4.3 RED: corrupt JSON document ⇒ explicit load error, no partial diagram (editor:R5).
+- [x] 4.4 Verify: `pnpm --filter @app/api test` green.
 - [ ] 5.1 Create `apps/collab-server` — `y-websocket` host, per-diagram rooms (design D4).
 - [ ] 5.2 Bind Y.Doc as the persisted IR: sync updates → PostgreSQL, room open → load. Transport must NOT become a second source of truth (realtime cross-cutting).
 - [ ] 5.3 Test: second in-memory client sees committed change; late joiner receives full current model (realtime:R1).

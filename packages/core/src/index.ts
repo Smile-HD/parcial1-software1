@@ -55,4 +55,14 @@ export {
   type ApplyError,
 } from './apply.js';
 
+export {
+  // Y.Doc codec (PR 4) — shared by API and collab-server
+  buildYDocFromDiagram,
+  projectYDocToDiagram,
+  encodeYDoc,
+  applyUpdateToYDoc,
+  loadYDocFromUpdate,
+  validateYDocProjection,
+} from './ydoc.js';
+
 export const PACKAGE_NAME = '@app/core' as const;

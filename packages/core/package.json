@@ -9,6 +9,9 @@
   "scripts": {
     "test": "vitest run"
   },
+  "dependencies": {
+    "yjs": "^13.6.32"
+  },
   "devDependencies": {
     "@types/uuid": "^11.0.0",
     "uuid": "^14.0.2",
