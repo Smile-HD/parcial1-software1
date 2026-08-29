@@ -11,16 +11,16 @@ Refs: `editor:R1` = `specs/diagram-editor/spec.md` Requirement 1. `RED` = failin
 | Chained PRs recommended | Yes |
 | Suggested split | PR 1 → PR 14 (one PR per work unit, ordered below) |
 | Delivery strategy | ask-on-risk (default — none passed; orchestrator must confirm) |
-| Chain strategy | pending — recommend feature-branch-chain (greenfield, sequential deps) |
+| Chain strategy | feature-branch-chain (decided — greenfield, sequential deps) |
 
-Decision needed before apply: Yes
+Decision needed before apply: No
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: feature-branch-chain
 400-line budget risk: High
 
 Feature-branch-chain base boundaries: PR 1 base = tracker branch `feature/ai-uml-design-tool`; every PR n>1 base = PR n−1 branch. If a child diff shows a previous slice's changes, retarget/rebase before review.
 
-Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image and AWS deployment MAY be requested later. Standing constraint: no choice may preclude containerization — keep native deps (`better-sqlite3`) multi-stage-buildable, SQLite data on a mounted volume, config via env vars, generated backend jar-packaged (`mvnw`). Offline assistant (Ollama) is localhost-only by spec; on AWS it would run on the instance itself. If Docker/AWS becomes a hard requirement, amend the proposal (delta spec) before applying.
+Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image and AWS deployment MAY be requested later. Standing constraint: no choice may preclude containerization — config via env vars (`DATABASE_URL` for PostgreSQL), database data on a mounted volume, generated backend jar-packaged (`mvnw`). Offline assistant (Ollama) is localhost-only by spec; on AWS it would run on the instance itself. If Docker/AWS becomes a hard requirement, amend the proposal (delta spec) before applying.
 
 ### Suggested Work Units
 
@@ -29,7 +29,7 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 | 1 | Monorepo + toolchain + git | 1 | `pnpm -r test` | N/A — no runtime surface yet | delete root configs |
 | 2 | Core IR + delta schemas | 2 | `pnpm --filter @app/core test` | N/A — pure lib | drop `packages/core/src` |
 | 3 | applyDelta engine | 3 | `pnpm --filter @app/core test` | N/A — pure lib | revert `apply.ts` |
-| 4 | SQLite + Fastify API | 4 | `pnpm --filter @app/api test` | round-trip via HTTP inject | drop `apps/api` |
+| 4 | PostgreSQL + Fastify API | 4 | `pnpm --filter @app/api test` | round-trip via HTTP inject (PG via Docker compose) | drop `apps/api` |
 | 5 | Yjs collab transport | 5 | `pnpm --filter @app/collab-server test` | 2 in-memory Y clients on LAN | drop `apps/collab-server` |
 | 6 | Editor canvas UI | 6 | `pnpm --filter @app/web test` | 2-browser manual script | drop `apps/web` |
 | 7 | Text interpreter + confirm gate | 7 | `pnpm --filter @app/api test` | fake LLM, zero network | drop `packages/adapters-ai` |
@@ -61,12 +61,12 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 
 ## Phase 3: Transport & Persistence (PRs 4–5)
 
-- [ ] 4.1 Create `apps/api` Fastify bootstrap + `POST /diagrams`, `GET|PUT /diagrams/:id` on SQLite (`better-sqlite3`, JSON doc + Yjs update blob columns).
+- [ ] 4.1 Create `apps/api` Fastify bootstrap + `POST /diagrams`, `GET|PUT /diagrams/:id` on PostgreSQL 16 (`pg`, `jsonb` document column + Yjs update blob column); `compose.yaml` with a `postgres:16` service for local dev/test.
 - [ ] 4.2 Test: save→reload round-trip is lossless — classes, members, associations, multiplicities, positions (editor:R5).
 - [ ] 4.3 RED: corrupt JSON document ⇒ explicit load error, no partial diagram (editor:R5).
 - [ ] 4.4 Verify: `pnpm --filter @app/api test` green.
 - [ ] 5.1 Create `apps/collab-server` — `y-websocket` host, per-diagram rooms (design D4).
-- [ ] 5.2 Bind Y.Doc as the persisted IR: sync updates → SQLite, room open → load. Transport must NOT become a second source of truth (realtime cross-cutting).
+- [ ] 5.2 Bind Y.Doc as the persisted IR: sync updates → PostgreSQL, room open → load. Transport must NOT become a second source of truth (realtime cross-cutting).
 - [ ] 5.3 Test: second in-memory client sees committed change; late joiner receives full current model (realtime:R1).
 - [ ] 5.4 Test: presence on join/leave via awareness (realtime:R2); concurrent same-attribute edit converges schema-valid; different-class edits both survive (realtime:R3); reconnect after 10s drop converges (realtime:R4).
 - [ ] 5.5 Verify: api + collab-server smoke run on LAN; presence list accurate.
