@@ -1,0 +1,45 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Project: parcial1 (university exam project)
+  Status: greenfield — no source code, no git repo, no package manifests
+  Product intent: collaborative UML class-diagram design tool with AI assistance and code generation
+  Tech stack: NOT YET CHOSEN — decision deferred to design phase (do not assume a stack)
+  Testing: no test runner detected; re-detect after stack selection
+  Session: interactive, artifact_store=both, delivery=ask-on-risk, review_budget=400 lines
+
+strict_tdd: false
+
+testing:
+  runner: none
+  unit: false
+  integration: false
+  e2e: false
+  coverage: false
+  note: No test runner present. Re-detect capabilities after stack selection in design phase.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Choose the tech stack explicitly; none is currently detected
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
