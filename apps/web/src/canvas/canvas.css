@@ -1,0 +1,127 @@
+/**
+ * Minimal UML class box styling for the custom React Flow node.
+ */
+.uml-class {
+  background: #fff;
+  border: 2px solid #1a1a2e;
+  border-radius: 4px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  min-width: 160px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.uml-class__title {
+  background: #1a1a2e;
+  color: #fff;
+  font-weight: 700;
+  padding: 6px 10px;
+  text-align: center;
+  border-bottom: 2px solid #1a1a2e;
+}
+
+.uml-class__delete {
+  margin-left: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 3px;
+  background: #fff;
+  color: #1a1a2e;
+  cursor: pointer;
+}
+
+.uml-class__title-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  color: #1a1a2e;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  text-align: center;
+  border: 2px solid #1a1a2e;
+}
+
+.uml-class__section {
+  border-top: 1px solid #ccc;
+  padding: 4px 0;
+}
+
+.uml-class__member {
+  padding: 2px 10px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.uml-class__remove {
+  flex: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.uml-class__add {
+  display: flex;
+  gap: 4px;
+  padding: 4px 10px;
+  flex-wrap: wrap;
+}
+
+.uml-class__add-input {
+  flex: 1 1 56px;
+  min-width: 44px;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.uml-class__add-button {
+  border: 1px solid #1a1a2e;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 8px;
+}
+
+.uml-class__validation {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+  color: #b00020;
+  font-size: 11px;
+}
+
+.diagram-canvas__toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+}
+
+.diagram-canvas__toolbar button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a1a2e;
+  cursor: pointer;
+}
