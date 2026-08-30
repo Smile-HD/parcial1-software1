@@ -4,9 +4,10 @@
  * PostgreSQL 16 via pg Pool, uuidv7 IDs, optimistic concurrency (version).
  */
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
+import * as Y from 'yjs';
 import { z } from 'zod';
 import {
   type Diagram,
@@ -17,10 +18,16 @@ import {
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
+import { pathToFileURL } from 'node:url';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
+
+/** Test/bootstrap hook: closes the module-scoped pool. */
+export async function closePool(): Promise<void> {
+  await pool.end();
+}
 
 // Request/Response schemas
 const CreateDiagramBodySchema = z.object({
@@ -42,6 +49,18 @@ const DiagramResponseSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
+const ErrorResponseSchema = z.object({ error: z.string() });
+const ConflictResponseSchema = z.object({ error: z.string(), currentVersion: z.number() });
+
+// Fastify's AjV compiler needs plain JSON Schema — Zod objects cannot be passed
+// directly. Convert once at module load; handlers still parse via the Zod schemas.
+// target 'draft-7': Fastify's default AjV instance does not register the 2020-12 dialect.
+const CreateDiagramBodyJsonSchema = z.toJSONSchema(CreateDiagramBodySchema, { target: 'draft-7' });
+const UpdateDiagramBodyJsonSchema = z.toJSONSchema(UpdateDiagramBodySchema, { target: 'draft-7' });
+const DiagramResponseJsonSchema = z.toJSONSchema(DiagramResponseSchema, { target: 'draft-7' });
+const ErrorResponseJsonSchema = z.toJSONSchema(ErrorResponseSchema, { target: 'draft-7' });
+const ConflictResponseJsonSchema = z.toJSONSchema(ConflictResponseSchema, { target: 'draft-7' });
 
 // Helper: map DB row to response
 function mapRowToResponse(row: {
@@ -118,8 +137,9 @@ async function loadDiagramFromRow(row: {
   }
 }
 
-async function startServer() {
-  const app = Fastify({ logger: true });
+/** Builds the Fastify app (routes registered, not listening). Exported for smoke tests. */
+export function buildApp(options?: { logger?: boolean }): FastifyInstance {
+  const app = Fastify({ logger: options?.logger ?? true });
 
   // Health check
   app.get('/health', async () => ({ status: 'ok' }));
@@ -127,7 +147,7 @@ async function startServer() {
   // POST /diagrams — create new diagram
   app.post<{ Body: z.infer<typeof CreateDiagramBodySchema> }>(
     '/diagrams',
-    { schema: { body: CreateDiagramBodySchema, response: { 201: DiagramResponseSchema } } },
+    { schema: { body: CreateDiagramBodyJsonSchema, response: { 201: DiagramResponseJsonSchema } } },
     async (request, reply) => {
       const { name, diagram: diagramData } = request.body;
 
@@ -166,7 +186,7 @@ async function startServer() {
   // GET /diagrams/:id — load diagram with self-healing
   app.get<{ Params: { id: string } }>(
     '/diagrams/:id',
-    { schema: { response: { 200: DiagramResponseSchema, 404: z.object({ error: z.string() }) } } },
+    { schema: { response: { 200: DiagramResponseJsonSchema, 404: ErrorResponseJsonSchema } } },
     async (request, reply) => {
       const { id } = request.params;
 
@@ -208,7 +228,7 @@ async function startServer() {
   // PUT /diagrams/:id — update with optimistic concurrency
   app.put<{ Params: { id: string }; Body: z.infer<typeof UpdateDiagramBodySchema> }>(
     '/diagrams/:id',
-    { schema: { body: UpdateDiagramBodySchema, response: { 200: DiagramResponseSchema, 404: z.object({ error: z.string() }), 409: z.object({ error: z.string(), currentVersion: z.number() }) } } },
+    { schema: { body: UpdateDiagramBodyJsonSchema, response: { 200: DiagramResponseJsonSchema, 404: ErrorResponseJsonSchema, 409: ConflictResponseJsonSchema } } },
     async (request, reply) => {
       const { id } = request.params;
       const { name, diagram: diagramData, version: expectedVersion } = request.body;
@@ -261,11 +281,17 @@ async function startServer() {
     }
   );
 
+  return app;
+}
+
+async function startServer() {
+  const app = buildApp();
+
   // Graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...');
     await app.close();
-    await pool.end();
+    await closePool();
     process.exit(0);
   };
   process.on('SIGTERM', shutdown);
@@ -276,10 +302,10 @@ async function startServer() {
   console.log(`API server listening on http://0.0.0.0:${port}`);
 }
 
-// Yjs namespace for type reference
-import * as Y from 'yjs';
-
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+const isDirectRun = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

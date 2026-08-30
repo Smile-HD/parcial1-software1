@@ -65,11 +65,11 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 - [x] 4.2 Test: save→reload round-trip is lossless — classes, members, associations, multiplicities, positions (editor:R5).
 - [x] 4.3 RED: corrupt JSON document ⇒ explicit load error, no partial diagram (editor:R5).
 - [x] 4.4 Verify: `pnpm --filter @app/api test` green.
-- [ ] 5.1 Create `apps/collab-server` — `y-websocket` host, per-diagram rooms (design D4).
-- [ ] 5.2 Bind Y.Doc as the persisted IR: sync updates → PostgreSQL, room open → load. Transport must NOT become a second source of truth (realtime cross-cutting).
-- [ ] 5.3 Test: second in-memory client sees committed change; late joiner receives full current model (realtime:R1).
-- [ ] 5.4 Test: presence on join/leave via awareness (realtime:R2); concurrent same-attribute edit converges schema-valid; different-class edits both survive (realtime:R3); reconnect after 10s drop converges (realtime:R4).
-- [ ] 5.5 Verify: api + collab-server smoke run on LAN; presence list accurate.
+- [x] 5.1 Create `apps/collab-server` — `y-websocket` host, per-diagram rooms (design D4).
+- [x] 5.2 Bind Y.Doc as the persisted IR: sync updates → PostgreSQL, room open → load. Transport must NOT become a second source of truth (realtime cross-cutting).
+- [x] 5.3 Test: second in-memory client sees committed change; late joiner receives full current model (realtime:R1).
+- [x] 5.4 Test: presence on join/leave via awareness (realtime:R2); concurrent same-attribute edit converges schema-valid; different-class edits both survive (realtime:R3); reconnect after 10s drop converges (realtime:R4).
+- [x] 5.5 Verify: api + collab-server smoke run on LAN; presence list accurate.
 
 ## Phase 4: Adapters (PRs 6–11)
 

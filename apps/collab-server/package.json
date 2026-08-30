@@ -7,9 +7,25 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev": "node --watch src/index.ts"
+  },
+  "dependencies": {
+    "@app/api": "workspace:*",
+    "@app/core": "workspace:*",
+    "lib0": "^0.2.117",
+    "pg": "^8.12.0",
+    "ws": "^8.18.0",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^2.1.0",
+    "yjs": "^13.6.32"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.13",
+    "@types/uuid": "^11.0.0",
+    "uuid": "^11.0.0",
     "vitest": "^3.0.0"
   }
 }
