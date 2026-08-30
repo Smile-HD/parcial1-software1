@@ -23,7 +23,7 @@ import {
 } from '@app/core';
 import { startCollabServer, type CollabServer } from './index.js';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
+const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml_test';
 const pool = new Pool({ connectionString: DATABASE_URL, max: 5 });
 
 let server: CollabServer;
@@ -146,6 +146,11 @@ async function ensureSchema(): Promise<void> {
 
 beforeAll(async () => {
   await ensureSchema();
+  // The API module (@app/api) reads process.env.DATABASE_URL at import time.
+  // Pin it to the SAME isolated test DB this suite uses BEFORE the dynamic
+  // import, so the API-under-test and the collab server share one database —
+  // otherwise the API silently talks to the dev DB and cross-writer tests 404.
+  process.env.DATABASE_URL = DATABASE_URL;
   // Smoke target: the real API over real HTTP, built by @app/api (not re-implemented here).
   const { buildApp } = await import('@app/api');
   const apiApp = buildApp({ logger: false });
