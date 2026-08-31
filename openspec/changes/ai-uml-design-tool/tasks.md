@@ -88,13 +88,13 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 - [x] 6b.2 Save 409-retry: the collab debounce bumps `version` server-side; the App save path must re-read the current version and retry per the design invariant (`UPDATE ... WHERE id = $1 AND version = $2`; 0 rows ⇒ 409, writer re-reads and retries).
 - [x] 6b.3 Presence bar: connected-user names via Yjs awareness (realtime:R2) rendered in the editor chrome.
 - [x] 6b.4 Verify: two-browser live pass — an edit made in one browser appears in the other without reload; presence lists both users; state converges after a server restart (realtime:R4).
-- [ ] 7.1 RED: "generate me a full design for a library system" ⇒ refusal response, no delta, no mutation (interpreter:R3) — automated with fake LLM.
-- [ ] 7.2 RED: schema-invalid LLM output ⇒ 422, model untouched, user informed (interpreter:R1).
-- [ ] 7.3 Create `packages/adapters-ai` — OpenAI structured-output `LlmPort` adapter + deterministic fake.
-- [ ] 7.4 `POST /diagrams/:id/interpret` + pending-delta store + `POST /deltas/:id/confirm|reject`; confirmed delta → `applyDelta` → broadcast (interpreter:R2).
-- [ ] 7.5 Out-of-vocabulary command rejected, supported categories surfaced (interpreter:R4).
-- [ ] 7.6 Web delta-preview modal: confirm applies visibly, reject discards (interpreter:R2); scoped edit accepted after refusal (interpreter:R3).
-- [ ] 7.7 Verify: refusal test automated; no delta reaches model unconfirmed (interpreter acceptance).
+- [x] 7.1 RED: "generate me a full design for a library system" ⇒ refusal response, no delta, no mutation (interpreter:R3) — automated with fake LLM.
+- [x] 7.2 RED: schema-invalid LLM output ⇒ 422, model untouched, user informed (interpreter:R1).
+- [x] 7.3 Create `packages/adapters-ai` — OpenAI structured-output `LlmPort` adapter + deterministic fake.
+- [x] 7.4 `POST /diagrams/:id/interpret` + pending-delta store + `POST /deltas/:id/confirm|reject`; confirmed delta → `applyDelta` → broadcast (interpreter:R2).
+- [x] 7.5 Out-of-vocabulary command rejected, supported categories surfaced (interpreter:R4).
+- [x] 7.6 Web delta-preview modal: confirm applies visibly, reject discards (interpreter:R2); scoped edit accepted after refusal (interpreter:R3).
+- [x] 7.7 Verify: refusal test automated; no delta reaches model unconfirmed (interpreter acceptance).
 - [ ] 8.1 [P] Create `SttPort` + Whisper adapter + fake (voice:R1).
 - [ ] 8.2 `POST /diagrams/:id/voice` routes transcript into the SAME interpret/confirm pipeline — no privileged path (voice:R2); "generate me a full design for a hospital" refused via voice (voice:R2).
 - [ ] 8.3 STT outage ⇒ explicit failure + text-input fallback message (voice:R1).
