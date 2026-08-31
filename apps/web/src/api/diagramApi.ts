@@ -28,6 +28,12 @@ export interface DiagramResource {
   id: string;
   name: string;
   diagram: Diagram;
+  /**
+   * Authoritative Yjs update blob (base64). Collab-connected clients hydrate
+   * from this instead of rebuilding a doc from `diagram` so their Yjs clocks
+   * match the server's and live merges never duplicate array members (6b).
+   */
+  yjsState: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -80,17 +86,22 @@ export async function loadDiagram(id: string): Promise<DiagramResource> {
   return parseOkResponse<DiagramResource>(response);
 }
 
-/** PUT /diagrams/:id — save a diagram (optimistic concurrency by version). */
+/**
+ * PUT /diagrams/:id — save a diagram (optimistic concurrency by version).
+ * `yjsState` carries the client's own Yjs blob so the stored state keeps the
+ * clocks every connected client shares (blob-preserving save, 6b).
+ */
 export async function saveDiagram(
   id: string,
   name: string,
   diagram: Diagram,
   version: number,
+  yjsState: string,
 ): Promise<DiagramResource> {
   const response = await fetch(`${API_BASE_URL}/diagrams/${id}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, diagram, version }),
+    body: JSON.stringify({ name, diagram, version, yjsState }),
   });
   if (!response.ok) {
     await parseErrorResponse(response);

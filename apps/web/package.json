@@ -12,9 +12,11 @@
     "@xyflow/react": "^12.11.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "y-websocket": "^2.1.0",
     "yjs": "^13.6.32"
   },
   "devDependencies": {
+    "@app/collab-server": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.0.0",
