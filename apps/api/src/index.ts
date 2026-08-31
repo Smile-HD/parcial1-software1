@@ -5,6 +5,7 @@
  */
 
 import Fastify, { type FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
 import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import * as Y from 'yjs';
@@ -140,6 +141,15 @@ async function loadDiagramFromRow(row: {
 /** Builds the Fastify app (routes registered, not listening). Exported for smoke tests. */
 export function buildApp(options?: { logger?: boolean }): FastifyInstance {
   const app = Fastify({ logger: options?.logger ?? true });
+
+  // CORS — the web editor (apps/web) is a separate origin in dev (Vite :5173)
+  // and calls this API cross-origin; without these headers every browser
+  // fetch is blocked. `origin: true` reflects the request origin (dev/LAN
+  // posture — mobile client in unit 14 needs LAN origins too). `methods`
+  // must include PUT explicitly: @fastify/cors defaults to GET,HEAD,POST,
+  // which silently blocks every save (editor:R5). Tighten to an explicit
+  // allow-list of origins when a production deployment is requested.
+  void app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT'] });
 
   // Health check
   app.get('/health', async () => ({ status: 'ok' }));

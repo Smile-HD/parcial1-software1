@@ -9,7 +9,7 @@ Refs: `editor:R1` = `specs/diagram-editor/spec.md` Requirement 1. `RED` = failin
 | Estimated changed lines | ~4,500–5,500 authored (incl. tests, templates) |
 | 400-line budget risk | High |
 | Chained PRs recommended | Yes |
-| Suggested split | PR 1 → PR 14 (one PR per work unit, ordered below) |
+| Suggested split | PR 1 → PR 14 (one PR per work unit, ordered below; unit 6b lands as its own PR between PR 6 and PR 7) |
 | Delivery strategy | ask-on-risk (default — none passed; orchestrator must confirm) |
 | Chain strategy | feature-branch-chain (decided — greenfield, sequential deps) |
 
@@ -32,6 +32,7 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 | 4 | PostgreSQL + Fastify API | 4 | `pnpm --filter @app/api test` | round-trip via HTTP inject (PG via Docker compose) | drop `apps/api` |
 | 5 | Yjs collab transport | 5 | `pnpm --filter @app/collab-server test` | 2 in-memory Y clients on LAN | drop `apps/collab-server` |
 | 6 | Editor canvas UI | 6 | `pnpm --filter @app/web test` | 2-browser manual script | drop `apps/web` |
+| 6b | Web collab client (WebsocketProvider + presence + save 409-retry) | 6b | `pnpm --filter @app/web test` | 2 browsers live on one diagram | drop provider binding (revert to API-only load/save) |
 | 7 | Text interpreter + confirm gate | 7 | `pnpm --filter @app/api test` | fake LLM, zero network | drop `packages/adapters-ai` |
 | 8 | Voice front-end | 8 | `pnpm --filter @app/api test` | fake STT | drop voice route/UI |
 | 9 | Codegen core + golden check | 9 | `pnpm --filter @app/codegen test` | `node tools/golden-check.mjs` (mvnw build+run) | drop `packages/codegen`, `templates/`, `tools/` |
@@ -73,12 +74,19 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 
 ## Phase 4: Adapters (PRs 6–11)
 
-- [ ] 6.1 Create `apps/web` (React 19 + Vite); React Flow canvas rendering exclusively from Y.Doc (editor:R1).
-- [ ] 6.2 Class create/rename/reposition/delete — every mutation emitted as delta through `applyDelta` (editor:R2).
-- [ ] 6.3 Member editors: attributes (name+type), methods (name+return+params); blank name rejected with validation message (editor:R3).
-- [ ] 6.4 Association editor: directed/undirected + multiplicity select limited to enum; `3..7` rejected, previous value retained (editor:R4).
-- [ ] 6.5 Load/save wiring via API; reloaded diagram matches saved state (editor:R5).
-- [ ] 6.6 Verify: all 4 diagram-editor acceptance criteria in a 2-browser manual pass.
+- [x] 6.1 Create `apps/web` (React 19 + Vite); React Flow canvas rendering exclusively from Y.Doc (editor:R1).
+- [x] 6.2 Class create/rename/reposition/delete — every mutation emitted as delta through `applyDelta` (editor:R2).
+- [x] 6.3 Member editors: attributes (name+type), methods (name+return+params); blank name rejected with validation message (editor:R3).
+- [x] 6.4 Association editor: directed/undirected + multiplicity select limited to enum; `3..7` rejected, previous value retained (editor:R4).
+- [x] 6.5 Load/save wiring via API; reloaded diagram matches saved state (editor:R5).
+- [x] 6.6 Verify: all 4 diagram-editor acceptance criteria in a 2-browser manual pass.
+
+### Unit 6b: Web collab client (added during 6.6 — realtime-collaboration spec requires it, design expects it, but no task existed for the client wiring)
+
+- [ ] 6b.1 Bind the app Y.Doc to the collab server: `WebsocketProvider` with room = diagram id (design D4), connected after the API load so the provider syncs the same PG-backed state; transport must NOT become a second source of truth (realtime cross-cutting).
+- [ ] 6b.2 Save 409-retry: the collab debounce bumps `version` server-side; the App save path must re-read the current version and retry per the design invariant (`UPDATE ... WHERE id = $1 AND version = $2`; 0 rows ⇒ 409, writer re-reads and retries).
+- [ ] 6b.3 Presence bar: connected-user names via Yjs awareness (realtime:R2) rendered in the editor chrome.
+- [ ] 6b.4 Verify: two-browser live pass — an edit made in one browser appears in the other without reload; presence lists both users; state converges after a server restart (realtime:R4).
 - [ ] 7.1 RED: "generate me a full design for a library system" ⇒ refusal response, no delta, no mutation (interpreter:R3) — automated with fake LLM.
 - [ ] 7.2 RED: schema-invalid LLM output ⇒ 422, model untouched, user informed (interpreter:R1).
 - [ ] 7.3 Create `packages/adapters-ai` — OpenAI structured-output `LlmPort` adapter + deterministic fake.

@@ -13,8 +13,10 @@ import {
 } from '@app/core';
 import * as Y from 'yjs';
 
-// Test database setup
-const TEST_DATABASE_URL = 'postgres://postgres:postgres@localhost:5433/ai_uml';
+// Test database setup — SEPARATE from the dev database (ai_uml): this suite
+// wipes the diagrams table on every run, so pointing it at the dev DB would
+// destroy developer/browser data mid-session (bug found during the 6.6 pass).
+const TEST_DATABASE_URL = 'postgres://postgres:postgres@localhost:5433/ai_uml_test';
 const pool = new Pool({ connectionString: TEST_DATABASE_URL, max: 5 });
 
 let app: Awaited<ReturnType<typeof Fastify>>;
