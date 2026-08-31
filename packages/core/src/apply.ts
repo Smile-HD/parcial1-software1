@@ -12,7 +12,6 @@ export type ApplyError =
   | { kind: 'AssociationNotFoundError'; associationId: string }
   | { kind: 'InvalidMultiplicityError'; multiplicity: string }
   | { kind: 'InvalidOperationError'; reason: string }
-  | { kind: 'SelfAssociationError'; classId: string }
   | { kind: 'MemberNotFoundError'; memberId: string; classId: string }
   | { kind: 'DuplicateMemberError'; memberName: string; classId: string }
   | { kind: 'BatchError'; error: ApplyError; failedDeltaIndex: number };
@@ -315,9 +314,8 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
       if (!delta.sourceClassId || !delta.targetClassId || !delta.sourceMultiplicity || !delta.targetMultiplicity || delta.directed === undefined) {
         return err({ kind: 'InvalidOperationError', reason: 'Association create requires sourceClassId, targetClassId, sourceMultiplicity, targetMultiplicity, and directed' });
       }
-      if (delta.sourceClassId === delta.targetClassId) {
-        return err({ kind: 'SelfAssociationError', classId: delta.sourceClassId });
-      }
+      // Recursive (self) associations (source === target) are VALID UML —
+      // e.g. Product is-component-of Product. Both ends must still exist.
       if (!findClass(diagram, delta.sourceClassId)) {
         return err({ kind: 'ClassNotFoundError', classId: delta.sourceClassId });
       }

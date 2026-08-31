@@ -32,7 +32,9 @@ import {
   type InterpretResponse,
 } from './api/diagramApi';
 import { base64ToBytes, bytesToBase64 } from './api/base64';
+import { transcribeAudio } from './api/voiceApi';
 import { applyDeltaToYDoc } from './canvas/applyDeltaToYDoc';
+import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
 import { PresenceBar } from './canvas/PresenceBar';
@@ -50,6 +52,8 @@ export interface AppProps {
    * Default: VITE_COLLAB_URL, or ws://localhost:1234; disabled under vitest.
    */
   collabUrl?: string | null;
+  /** Injectable voice recorder (tests). Default: browser MediaRecorder. */
+  voiceRecorder?: VoiceRecorder;
 }
 
 /** Extracts the diagram id from the URL hash (`#/d/<uuid>`) or null. */
@@ -145,7 +149,7 @@ function resolveCollabUrl(collabUrl: AppProps['collabUrl']): string | null {
   return COLLAB_URL;
 }
 
-export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
+export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {}) {
   const docRef = useRef<Y.Doc | null>(null);
   if (docRef.current === null) {
     docRef.current = injectedDoc ?? new Y.Doc();
@@ -161,6 +165,15 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [commandDraft, setCommandDraft] = useState('');
   const [interpreter, setInterpreter] = useState<InterpreterState>({ phase: 'idle' });
+  const [recording, setRecording] = useState(false);
+
+  // Voice recorder (PR 8). Created lazily; null when the browser offers no
+  // MediaRecorder (tests / unsupported browsers) — the button hides then.
+  const recorderRef = useRef<VoiceRecorder | null>(null);
+  if (recorderRef.current === null && voiceRecorder === undefined) {
+    recorderRef.current = createBrowserVoiceRecorder();
+  }
+  const activeRecorder: VoiceRecorder | null = voiceRecorder ?? recorderRef.current;
 
   // StrictMode (dev) runs effects twice per mount — the didInit guard keeps
   // create/load idempotent so a session never POSTs two diagrams.
@@ -267,8 +280,10 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
   // Interpreter (task 7.6) — natural language in, previewed delta out.
   // Refusals/errors render explicitly; only Confirm mutates the model and it
   // goes through the SAME applyDeltaToYDoc path as canvas edits (interpreter:R2).
+  // Plain Errors carry intentional messages too (e.g. the voice client's
+  // server-provided fallback direction), so they surface as-is.
   const apiFailureMessage = (error: unknown, fallback: string): string =>
-    error instanceof DiagramApiError ? error.message : fallback;
+    error instanceof Error ? error.message : fallback;
 
   const handleSubmitCommand = (): void => {
     if (version === null || status !== 'ready' || roomId === null || interpreter.phase === 'thinking') {
@@ -334,6 +349,54 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
       });
   };
 
+  // Voice input (PR 8, tasks 8.3/8.4). The transcript lands in the SAME
+  // command input (visible + editable — voice:R3): the user can correct a
+  // misheard name and hit Send, which re-enters the identical text pipeline
+  // (voice:R2 — no privileged path).
+  const handleToggleRecord = (): void => {
+    if (activeRecorder === null || status !== 'ready' || interpreter.phase === 'thinking') {
+      return;
+    }
+    if (!recording) {
+      setRecording(true);
+      void activeRecorder
+        .startRecording()
+        .catch((error: unknown) => {
+          setRecording(false);
+          setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Microphone unavailable') });
+        });
+      return;
+    }
+    setRecording(false);
+    void activeRecorder.stopRecording().then(
+      ({ audio, mimeType }) => {
+        if (version === null || roomId === null) {
+          return;
+        }
+        setInterpreter({ phase: 'thinking' });
+        void transcribeAudio(roomId, audio, mimeType)
+          .then((response) => {
+            setCommandDraft(response.transcript);
+            if (response.status === 'pending') {
+              setInterpreter({ phase: 'pending', deltaId: response.deltaId, delta: response.delta });
+              return;
+            }
+            if (response.status === 'refused') {
+              setInterpreter({ phase: 'refused', reason: response.reason });
+              return;
+            }
+            setInterpreter({ phase: 'error', message: response.message });
+          })
+          .catch((error: unknown) => {
+            setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Failed to reach the speech-to-text service') });
+          });
+      },
+      (error: unknown) => {
+        setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Recording failed') });
+      },
+    );
+  };
+
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', margin: 0 }}>
       <h1>AI UML Design Tool</h1>
@@ -365,6 +428,16 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
             <button type="button" onClick={handleSubmitCommand} disabled={interpreter.phase === 'thinking'}>
               Send
             </button>
+            {activeRecorder !== null && (
+              <button
+                type="button"
+                onClick={handleToggleRecord}
+                disabled={interpreter.phase === 'thinking'}
+                aria-label={recording ? 'Stop voice command' : 'Record voice command'}
+              >
+                {recording ? 'Stop' : 'Record'}
+              </button>
+            )}
             {interpreter.phase === 'thinking' && <span aria-live="polite">Thinking…</span>}
             {interpreter.phase === 'refused' && (
               <span role="alert" className="interpreter-refusal">

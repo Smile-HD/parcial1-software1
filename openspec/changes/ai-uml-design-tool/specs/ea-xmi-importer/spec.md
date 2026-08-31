@@ -35,6 +35,23 @@ The system MUST ignore Enterprise Architect proprietary tagged values and vendor
 - THEN the supported structural elements import successfully
 - AND no proprietary metadata leaks into the canonical model
 
+### Requirement: UML 2.5 Element Mapping (added 2026-08-31)
+
+Beyond classes, members and binary associations, the importer MUST map the elements added by the compliance series when present in the EA export: member visibility (from UML notation on member names), aggregation kinds (`aggregation="shared"|"composite"` on memberEnd), generalization elements, interface/abstract classifiers, realization and dependency abstractions, n-ary associations (EA ternary+ diamonds), and non-legacy multiplicities (`*`, integers, ranges). Unmappable-but-valid UML 2.5.1 constructs MUST be reported as warnings, never silently dropped.
+
+#### Scenario: Generalization and composition import
+
+- GIVEN an EA XMI 2.1 export with a generalization `Product→Item` and a composite association
+- WHEN the file is imported
+- THEN the model contains the generalization edge and the composition with its filled-diamond end
+- AND both survive the review-then-apply gate
+
+#### Scenario: Arbitrary multiplicity imports
+
+- GIVEN an EA export carrying multiplicity `3..7` on an association end
+- WHEN the file is imported
+- THEN the model stores `3..7` exactly (UML 2.5.1 ranges are valid)
+
 ### Requirement: Auto-Layout Of Imported Elements
 
 Because XMI may carry no usable geometry, the system MUST assign non-overlapping canvas positions to imported classes so the result is immediately readable.
