@@ -14,13 +14,14 @@ import {
   type Diagram,
   DiagramSchema,
   type LlmPort,
+  type SttPort,
   buildYDocFromDiagram,
   projectYDocToDiagram,
   encodeYDoc,
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
-import { FakeLlm, OpenAiLlm } from '@app/adapters-ai';
+import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { pathToFileURL } from 'node:url';
 
@@ -39,6 +40,7 @@ export async function closePool(): Promise<void> {
 export interface AppOptions {
   logger?: boolean;
   llm?: LlmPort;
+  stt?: SttPort;
 }
 
 const pendingDeltas = new PendingDeltaStore();
@@ -194,6 +196,9 @@ async function loadDiagramFromRow(row: {
 export function buildApp(options?: AppOptions): FastifyInstance {
   const app = Fastify({ logger: options?.logger ?? true });
   const llm: LlmPort = options?.llm ?? OpenAiLlm.fromEnv() ?? new FakeLlm();
+  // Voice (PR 8): injected stt (tests) wins over env config (Whisper when an
+  // API key is present), with the deterministic FakeStt as offline default.
+  const stt: SttPort = options?.stt ?? WhisperStt.fromEnv() ?? new FakeStt();
 
   // CORS — the web editor (apps/web) is a separate origin in dev (Vite :5173)
   // and calls this API cross-origin; without these headers every browser
@@ -433,6 +438,70 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
     return { status: 'rejected' };
   });
+
+  // POST /diagrams/:id/voice — speech → transcript → SAME interpret pipeline.
+  // voice:R1 — transcription via an existing STT API; an outage is an explicit
+  // 502 that directs the user to the text command input fallback.
+  // voice:R2 — the transcript re-enters interpretCommand: shared pending
+  // store, same confirm gate, no privileged path.
+  app.post<{ Params: { id: string }; Body: { audio?: string; mimeType?: string } }>(
+    '/diagrams/:id/voice',
+    async (request, reply) => {
+      const { id } = request.params;
+      const audioBase64 = request.body?.audio;
+      if (typeof audioBase64 !== 'string' || audioBase64.trim().length === 0) {
+        return reply.status(400).send({ error: 'audio (base64) is required' });
+      }
+
+      const result = await pool.query(
+        'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
+        [id],
+      );
+      if (result.rows.length === 0) {
+        return reply.status(404).send({ error: 'Diagram not found' });
+      }
+      const row = result.rows[0];
+
+      let currentIr: Diagram;
+      try {
+        currentIr = (
+          await loadDiagramFromRow({
+            id: row.id,
+            name: row.name,
+            doc: row.doc,
+            yjs_state: row.yjs_state,
+            version: row.version,
+          })
+        ).diagram;
+      } catch (error) {
+        return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
+      }
+
+      let transcript: string;
+      try {
+        const audio = new Uint8Array(Buffer.from(audioBase64, 'base64'));
+        transcript = await stt.transcribe(audio, request.body?.mimeType ?? 'audio/webm');
+      } catch (error) {
+        const cause = error instanceof Error ? error.message : 'unknown error';
+        return reply.status(502).send({
+          error: `Speech-to-text unavailable: ${cause}. Use the text command input instead.`,
+        });
+      }
+
+      try {
+        const outcome = await interpretCommand(transcript, llm, currentIr, pendingDeltas);
+        if (outcome.status === 'error') {
+          return reply.status(422).send({ transcript, status: 'error', message: outcome.message });
+        }
+        return reply.send({ transcript, ...outcome });
+      } catch (error) {
+        if (error instanceof LlmUnavailableError) {
+          return reply.status(502).send({ error: `LLM unavailable: ${error.message}` });
+        }
+        throw error;
+      }
+    }
+  );
 
   return app;
 }

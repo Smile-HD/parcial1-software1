@@ -95,10 +95,10 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 - [x] 7.5 Out-of-vocabulary command rejected, supported categories surfaced (interpreter:R4).
 - [x] 7.6 Web delta-preview modal: confirm applies visibly, reject discards (interpreter:R2); scoped edit accepted after refusal (interpreter:R3).
 - [x] 7.7 Verify: refusal test automated; no delta reaches model unconfirmed (interpreter acceptance).
-- [ ] 8.1 [P] Create `SttPort` + Whisper adapter + fake (voice:R1).
-- [ ] 8.2 `POST /diagrams/:id/voice` routes transcript into the SAME interpret/confirm pipeline — no privileged path (voice:R2); "generate me a full design for a hospital" refused via voice (voice:R2).
-- [ ] 8.3 STT outage ⇒ explicit failure + text-input fallback message (voice:R1).
-- [ ] 8.4 Editable transcript before submit; corrected text drives interpretation (voice:R3).
+- [x] 8.1 [P] Create `SttPort` + Whisper adapter + fake (voice:R1).
+- [x] 8.2 `POST /diagrams/:id/voice` routes transcript into the SAME interpret/confirm pipeline — no privileged path (voice:R2); "generate me a full design for a hospital" refused via voice (voice:R2).
+- [x] 8.3 STT outage ⇒ explicit failure + text-input fallback message (voice:R1).
+- [x] 8.4 Editable transcript before submit; corrected text drives interpretation (voice:R3).
 - [ ] 9.1 RED: name sanitizer — `../../pom.xml` rejected; `class` rejected; every write asserted inside job output root (codegen threat row 1).
 - [ ] 9.2 Create `packages/codegen/src/generate.ts` — IR→file map, type + multiplicity→JPA mapping tables, warning collector (document both tables).
 - [ ] 9.3 Test: unmapped attribute type ⇒ warning + String fallback (codegen:R2); missing-endpoint association skipped with warning, generation completes (codegen:R3).

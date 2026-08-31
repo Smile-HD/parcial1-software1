@@ -21,6 +21,8 @@ import {
 
 export const PACKAGE_NAME = '@app/adapters-ai' as const;
 
+export * from './stt.js';
+
 // ── shared helpers ─────────────────────────────────────────────────────────
 
 function classIdByName(diagram: Diagram, name: string): string | null {
