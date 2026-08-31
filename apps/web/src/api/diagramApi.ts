@@ -5,7 +5,7 @@
  * this client; the Y.Doc is hydrated from the API response (JSON IR) and
  * saves are projected from the Y.Doc back to JSON IR.
  */
-import type { Diagram } from '@app/core';
+import type { Delta, Diagram } from '@app/core';
 
 const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -107,4 +107,60 @@ export async function saveDiagram(
     await parseErrorResponse(response);
   }
   return parseOkResponse<DiagramResource>(response);
+}
+
+// ── Interpreter (PR 7, task 7.6) ────────────────────────────────────────────
+
+/** Outcome of POST /diagrams/:id/interpret, mirrored from apps/api. */
+export type InterpretResponse =
+  | { status: 'refused'; reason: string; supportedCategories: readonly string[] }
+  | { status: 'pending'; deltaId: string; delta: Delta }
+  | { status: 'error'; message: string };
+
+/**
+ * POST /diagrams/:id/interpret — natural language → refusal | pending delta.
+ * A 422 (LLM output failed the delta-schema gate, interpreter:R1) is surfaced
+ * as an explicit `error` outcome instead of a thrown error so the UI shows
+ * the same message shape for every interpreter rejection.
+ */
+export async function interpretCommand(diagramId: string, text: string): Promise<InterpretResponse> {
+  const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/interpret`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    if (response.status === 422) {
+      let message = `API error ${response.status}`;
+      try {
+        const body = (await response.json()) as { error?: string };
+        if (typeof body.error === 'string' && body.error.length > 0) {
+          message = body.error;
+        }
+      } catch {
+        // Non-JSON body — keep the generic status message.
+      }
+      return { status: 'error', message };
+    }
+    await parseErrorResponse(response);
+  }
+  return parseOkResponse<InterpretResponse>(response);
+}
+
+/** POST /deltas/:id/confirm — releases the pending delta to this client. */
+export async function confirmDelta(deltaId: string): Promise<{ status: 'confirmed'; delta: Delta; diagramId: string }> {
+  const response = await fetch(`${API_BASE_URL}/deltas/${deltaId}/confirm`, { method: 'POST' });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return parseOkResponse<{ status: 'confirmed'; delta: Delta; diagramId: string }>(response);
+}
+
+/** POST /deltas/:id/reject — discards the pending delta, model unchanged. */
+export async function rejectDelta(deltaId: string): Promise<{ status: 'rejected' }> {
+  const response = await fetch(`${API_BASE_URL}/deltas/${deltaId}/reject`, { method: 'POST' });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return parseOkResponse<{ status: 'rejected' }>(response);
 }

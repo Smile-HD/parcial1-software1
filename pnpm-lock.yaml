@@ -24,6 +24,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@app/adapters-ai':
+        specifier: workspace:*
+        version: link:../../packages/adapters-ai
       '@app/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -158,6 +161,10 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(jsdom@26.1.0)(tsx@4.23.12)
 
   packages/adapters-ai:
+    dependencies:
+      '@app/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       vitest:
         specifier: ^3.0.0

@@ -22,13 +22,19 @@ import { applyUpdateToYDoc, encodeYDoc, projectYDocToDiagram, type Diagram } fro
 
 import {
   DiagramApiError,
+  confirmDelta,
   createDiagram,
+  interpretCommand,
   loadDiagram,
+  rejectDelta,
   saveDiagram,
   type DiagramResource,
+  type InterpretResponse,
 } from './api/diagramApi';
 import { base64ToBytes, bytesToBase64 } from './api/base64';
+import { applyDeltaToYDoc } from './canvas/applyDeltaToYDoc';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
+import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
 import { PresenceBar } from './canvas/PresenceBar';
 
 const DIAGRAM_NAME = 'Untitled';
@@ -117,6 +123,12 @@ export async function saveDiagramFromDoc(
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
+type InterpreterState =
+  | { phase: 'idle' }
+  | { phase: 'thinking' }
+  | { phase: 'refused'; reason: string }
+  | { phase: 'error'; message: string }
+  | { phase: 'pending'; deltaId: string; delta: import('@app/core').Delta };
 
 interface AwarenessUser {
   user?: { name?: string };
@@ -147,6 +159,8 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
   const [peers, setPeers] = useState<readonly string[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [commandDraft, setCommandDraft] = useState('');
+  const [interpreter, setInterpreter] = useState<InterpreterState>({ phase: 'idle' });
 
   // StrictMode (dev) runs effects twice per mount — the didInit guard keeps
   // create/load idempotent so a session never POSTs two diagrams.
@@ -250,6 +264,76 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
     });
   };
 
+  // Interpreter (task 7.6) — natural language in, previewed delta out.
+  // Refusals/errors render explicitly; only Confirm mutates the model and it
+  // goes through the SAME applyDeltaToYDoc path as canvas edits (interpreter:R2).
+  const apiFailureMessage = (error: unknown, fallback: string): string =>
+    error instanceof DiagramApiError ? error.message : fallback;
+
+  const handleSubmitCommand = (): void => {
+    if (version === null || status !== 'ready' || roomId === null || interpreter.phase === 'thinking') {
+      return;
+    }
+    const text = commandDraft.trim();
+    if (text.length === 0) {
+      return;
+    }
+    setInterpreter({ phase: 'thinking' });
+    void interpretCommand(roomId, text)
+      .then((outcome: InterpretResponse) => {
+        if (outcome.status === 'pending') {
+          setCommandDraft('');
+          setInterpreter({ phase: 'pending', deltaId: outcome.deltaId, delta: outcome.delta });
+          return;
+        }
+        if (outcome.status === 'refused') {
+          setInterpreter({ phase: 'refused', reason: outcome.reason });
+          return;
+        }
+        setInterpreter({ phase: 'error', message: outcome.message });
+      })
+      .catch((error: unknown) => {
+        setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Failed to reach the interpreter') });
+      });
+  };
+
+  const handleConfirmDelta = (): void => {
+    if (interpreter.phase !== 'pending') {
+      return;
+    }
+    const { deltaId } = interpreter;
+    setInterpreter({ phase: 'thinking' });
+    void confirmDelta(deltaId)
+      .then((result) => {
+        const applied = applyDeltaToYDoc(doc, result.delta);
+        if (!applied.ok) {
+          setInterpreter({ phase: 'error', message: `The confirmed change could not be applied (${applied.error.kind})` });
+          return;
+        }
+        setInterpreter({ phase: 'idle' });
+      })
+      .catch((error: unknown) => {
+        setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Failed to confirm the change') });
+      });
+  };
+
+  const handleRejectDelta = (): void => {
+    if (interpreter.phase !== 'pending') {
+      return;
+    }
+    const { deltaId } = interpreter;
+    setInterpreter({ phase: 'thinking' });
+    void rejectDelta(deltaId)
+      .then(() => {
+        setInterpreter({ phase: 'idle' });
+      })
+      .catch((error: unknown) => {
+        // Already consumed server-side is as good as discarded for the client.
+        setInterpreter({ phase: 'idle' });
+        setSaveMessage(apiFailureMessage(error, 'Failed to discard the change'));
+      });
+  };
+
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', margin: 0 }}>
       <h1>AI UML Design Tool</h1>
@@ -270,6 +354,36 @@ export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
             </span>
             <PresenceBar names={peers} />
           </div>
+          <div className="interpreter-bar" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              aria-label="Natural language command"
+              value={commandDraft}
+              onChange={(event) => setCommandDraft(event.target.value)}
+              placeholder='e.g. "add a class Product"'
+              disabled={interpreter.phase === 'thinking'}
+            />
+            <button type="button" onClick={handleSubmitCommand} disabled={interpreter.phase === 'thinking'}>
+              Send
+            </button>
+            {interpreter.phase === 'thinking' && <span aria-live="polite">Thinking…</span>}
+            {interpreter.phase === 'refused' && (
+              <span role="alert" className="interpreter-refusal">
+                Refused: {interpreter.reason}
+              </span>
+            )}
+            {interpreter.phase === 'error' && (
+              <span role="alert" className="interpreter-error">
+                {interpreter.message}
+              </span>
+            )}
+          </div>
+          {interpreter.phase === 'pending' && (
+            <DeltaPreviewModal
+              delta={interpreter.delta}
+              onConfirm={handleConfirmDelta}
+              onReject={handleRejectDelta}
+            />
+          )}
           <div style={{ flex: 1, minHeight: 0 }}>
             <DiagramCanvas doc={doc} />
           </div>
