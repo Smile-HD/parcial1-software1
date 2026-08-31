@@ -1,31 +1,49 @@
 /**
- * App — owns the canonical Y.Doc and the load/save lifecycle (editor:R5).
+ * App — owns the canonical Y.Doc and the load/save/collab lifecycle.
  *
- * The diagram id lives in the URL hash (`#/d/<uuid>`) so that a reload in a
- * new session round-trips through the API and must reproduce the saved model.
- * Load failure renders an explicit error and never a partially loaded canvas.
+ * editor:R5 — the diagram id lives in the URL hash (`#/d/<uuid>`); load and
+ * save round-trip through the API and a reloaded session is structurally
+ * equivalent to the saved one. Load failure renders an explicit error and
+ * never a partially loaded canvas.
+ *
+ * realtime (work unit 6b) — once loaded, the same Y.Doc is bound to the
+ * collab server (`WebsocketProvider`, room = diagrams/<diagramId>, design D4).
+ * The transport is not a second source of truth: the server room is
+ * bootstrapped from the same persisted blob the client hydrated from, so
+ * clocks match and live merges converge. Saves carry the client's own blob
+ * (blob-preserving save) and retry on version conflicts raised by the collab
+ * debounce writes.
  */
 import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+
+import { applyUpdateToYDoc, encodeYDoc, projectYDocToDiagram, type Diagram } from '@app/core';
 
 import {
-  applyUpdateToYDoc,
-  buildYDocFromDiagram,
-  encodeYDoc,
-  projectYDocToDiagram,
-  type Diagram,
-} from '@app/core';
-
-import { DiagramApiError, createDiagram, loadDiagram, saveDiagram } from './api/diagramApi';
+  DiagramApiError,
+  createDiagram,
+  loadDiagram,
+  saveDiagram,
+  type DiagramResource,
+} from './api/diagramApi';
+import { base64ToBytes, bytesToBase64 } from './api/base64';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
+import { PresenceBar } from './canvas/PresenceBar';
 
 const DIAGRAM_NAME = 'Untitled';
+const COLLAB_URL: string = import.meta.env.VITE_COLLAB_URL ?? 'ws://localhost:1234';
+/** Save retries when the collab debounce bumped the version mid-save (6b.2). */
+const SAVE_MAX_ATTEMPTS = 3;
 
 export interface AppProps {
-  /**
-   * Injectable canonical Y.Doc (tests). When omitted a fresh doc is created.
-   */
+  /** Injectable canonical Y.Doc (tests). When omitted a fresh doc is created. */
   doc?: Y.Doc;
+  /**
+   * Collab server base URL. `null` disables the provider (tests / offline).
+   * Default: VITE_COLLAB_URL, or ws://localhost:1234; disabled under vitest.
+   */
+  collabUrl?: string | null;
 }
 
 /** Extracts the diagram id from the URL hash (`#/d/<uuid>`) or null. */
@@ -40,12 +58,13 @@ export function createEmptyDiagram(id: string): Diagram {
 }
 
 /**
- * Hydrates an existing Y.Doc in place from a saved JSON IR diagram.
- * editor:R5 — the hydrated doc must be structurally equivalent to the
- * saved diagram (round-trip is lossless, positions included).
+ * Hydrates an existing Y.Doc in place from the authoritative stored blob.
+ * editor:R5 — the hydrated doc is structurally equivalent to the saved
+ * diagram, AND its Yjs clocks match the server's so live collab merges
+ * converge without duplicating array members (6b.1).
  */
-export function hydrateDiagramIntoDoc(doc: Y.Doc, diagram: Diagram): Y.Doc {
-  return applyUpdateToYDoc(doc, encodeYDoc(buildYDocFromDiagram(diagram)));
+export function hydrateDiagramIntoDoc(doc: Y.Doc, yjsStateBase64: string): Y.Doc {
+  return applyUpdateToYDoc(doc, base64ToBytes(yjsStateBase64));
 }
 
 /** Result of a save attempt from the App save handler. */
@@ -54,31 +73,67 @@ export type SaveOutcome =
   | { ok: false; status: number; message: string; currentVersion?: number | undefined };
 
 /**
- * Projects the Y.Doc and saves it through the API. Kept as an exported
- * function so the round-trip is testable independently of the DOM.
+ * Projects the Y.Doc and saves it through the API, carrying the client's own
+ * Yjs blob. On a 409 (the collab debounce bumped the version mid-save) the
+ * handler re-reads `currentVersion` from the response and retries, per the
+ * design invariant. Kept as an exported function so it is testable without
+ * the DOM.
  */
-export async function saveDiagramFromDoc(doc: Y.Doc, expectedVersion: number): Promise<SaveOutcome> {
-  const diagram = projectYDocToDiagram(doc);
-  try {
-    const resource = await saveDiagram(diagram.id, diagram.name, diagram, expectedVersion);
-    return { ok: true, version: resource.version };
-  } catch (error) {
-    if (error instanceof DiagramApiError) {
-      return {
-        ok: false,
-        status: error.status,
-        message: error.message,
-        currentVersion: error.currentVersion,
-      };
+export async function saveDiagramFromDoc(
+  doc: Y.Doc,
+  expectedVersion: number,
+  maxAttempts: number = SAVE_MAX_ATTEMPTS,
+): Promise<SaveOutcome> {
+  let version = expectedVersion;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    // Re-project every attempt: the doc may have changed between retries.
+    const diagram = projectYDocToDiagram(doc);
+    const yjsState = bytesToBase64(encodeYDoc(doc));
+    try {
+      const resource = await saveDiagram(diagram.id, diagram.name, diagram, version, yjsState);
+      return { ok: true, version: resource.version };
+    } catch (error) {
+      if (error instanceof DiagramApiError && error.status === 409 && error.currentVersion !== undefined) {
+        version = error.currentVersion;
+        continue;
+      }
+      if (error instanceof DiagramApiError) {
+        return {
+          ok: false,
+          status: error.status,
+          message: error.message,
+          currentVersion: error.currentVersion,
+        };
+      }
+      return { ok: false, status: 0, message: 'Failed to connect to the API' };
     }
-    return { ok: false, status: 0, message: 'Failed to connect to the API' };
   }
+  return {
+    ok: false,
+    status: 409,
+    message: 'Could not save: the diagram kept changing on the server',
+  };
 }
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
 
-export function App({ doc: injectedDoc }: AppProps = {}) {
+interface AwarenessUser {
+  user?: { name?: string };
+}
+
+function resolveCollabUrl(collabUrl: AppProps['collabUrl']): string | null {
+  if (collabUrl !== undefined) {
+    return collabUrl;
+  }
+  // Vitest environments stay hermetic: no provider unless a test opts in.
+  if (import.meta.env.MODE === 'test') {
+    return null;
+  }
+  return COLLAB_URL;
+}
+
+export function App({ doc: injectedDoc, collabUrl }: AppProps = {}) {
   const docRef = useRef<Y.Doc | null>(null);
   if (docRef.current === null) {
     docRef.current = injectedDoc ?? new Y.Doc();
@@ -88,12 +143,16 @@ export function App({ doc: injectedDoc }: AppProps = {}) {
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [version, setVersion] = useState<number | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [peers, setPeers] = useState<readonly string[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // StrictMode (dev) runs effects twice per mount — the didInit guard keeps
   // create/load idempotent so a session never POSTs two diagrams.
   const didInit = useRef(false);
+  const userName = useRef(`User-${Math.random().toString(16).slice(2, 6)}`);
+  const providerRef = useRef<WebsocketProvider | null>(null);
 
   useEffect(() => {
     if (didInit.current) {
@@ -101,9 +160,10 @@ export function App({ doc: injectedDoc }: AppProps = {}) {
     }
     didInit.current = true;
 
-    const hydrate = (diagram: Diagram, loadedVersion: number): void => {
-      hydrateDiagramIntoDoc(doc, diagram);
-      setVersion(loadedVersion);
+    const hydrate = (resource: DiagramResource): void => {
+      hydrateDiagramIntoDoc(doc, resource.yjsState);
+      setVersion(resource.version);
+      setRoomId(resource.id);
       setStatus('ready');
     };
 
@@ -115,21 +175,58 @@ export function App({ doc: injectedDoc }: AppProps = {}) {
     const existingId = diagramIdFromHash(window.location.hash);
     if (existingId !== null) {
       loadDiagram(existingId)
-        .then((resource) => hydrate(resource.diagram, resource.version))
+        .then(hydrate)
         .catch(fail);
       return;
     }
 
     // First visit: create a persisted diagram and record its id in the URL
-    // so a later reload round-trips through the API (editor:R5).
+    // so a later reload round-trips through the API (editor:R5). No client
+    // blob is sent — the API builds the authoritative one and we hydrate
+    // from its response so clocks match the server from the first sync.
     const newId = crypto.randomUUID();
     createDiagram(DIAGRAM_NAME, createEmptyDiagram(newId))
       .then((resource) => {
         window.location.hash = `#/d/${resource.diagram.id}`;
-        hydrate(resource.diagram, resource.version);
+        hydrate(resource);
       })
       .catch(fail);
   }, [doc]);
+
+  // 6b.1 — bind the loaded Y.Doc to the collab server (room = diagrams/<id>).
+  const resolvedCollabUrl = resolveCollabUrl(collabUrl);
+  useEffect(() => {
+    if (status !== 'ready' || roomId === null || resolvedCollabUrl === null) {
+      return;
+    }
+    if (providerRef.current !== null) {
+      return; // one provider per session
+    }
+    const provider = new WebsocketProvider(resolvedCollabUrl, `diagrams/${roomId}`, doc, {
+      connect: true,
+    });
+    providerRef.current = provider;
+    // setLocalStateField(fieldName, value) — the field name and value are
+    // separate arguments; passing an object as the field name silently
+    // produces an empty awareness state (found via the 6b.3 integration test).
+    provider.awareness.setLocalStateField('user', { name: userName.current });
+
+    const syncPresence = (): void => {
+      const states = provider.awareness.getStates();
+      const names = [...states.values()]
+        .map((state) => (state as AwarenessUser).user?.name)
+        .filter((name): name is string => typeof name === 'string');
+      setPeers(names);
+    };
+    provider.awareness.on('change', syncPresence);
+    syncPresence();
+
+    return () => {
+      provider.awareness.off('change', syncPresence);
+      provider.destroy();
+      providerRef.current = null;
+    };
+  }, [status, roomId, doc, resolvedCollabUrl]);
 
   const handleSave = (): void => {
     if (version === null || status !== 'ready') {
@@ -171,6 +268,7 @@ export function App({ doc: injectedDoc }: AppProps = {}) {
             <span aria-live="polite">
               {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveMessage ?? ''}
             </span>
+            <PresenceBar names={peers} />
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
             <DiagramCanvas doc={doc} />

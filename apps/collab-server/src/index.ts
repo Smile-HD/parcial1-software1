@@ -264,11 +264,9 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
 
 const isDirectRun = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirectRun) {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.error('DATABASE_URL environment variable is required');
-    process.exit(1);
-  }
+  // Same dev default as the API (postgres:16 in Docker via compose, port 5433).
+  // DATABASE_URL overrides for LAN/AWS deployments.
+  const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
   const port = Number(process.env.COLLAB_PORT) || 1234;
   const host = process.env.COLLAB_HOST || '0.0.0.0';
   startCollabServer({ port, host, databaseUrl })

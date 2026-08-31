@@ -33,6 +33,7 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 | 5 | Yjs collab transport | 5 | `pnpm --filter @app/collab-server test` | 2 in-memory Y clients on LAN | drop `apps/collab-server` |
 | 6 | Editor canvas UI | 6 | `pnpm --filter @app/web test` | 2-browser manual script | drop `apps/web` |
 | 6b | Web collab client (WebsocketProvider + presence + save 409-retry) | 6b | `pnpm --filter @app/web test` | 2 browsers live on one diagram | drop provider binding (revert to API-only load/save) |
+| 6c | OPTIONAL (last): surgical delta bridge — applyDeltaToYDoc writes only the touched entity instead of clear+rebuild, enabling clean CRDT merges for concurrent offline multi-editor edits (limitation found during 6b.4) | optional (last) | `pnpm --filter @app/web test` | 2 browsers editing offline simultaneously, then reconnect | revert to full-rewrite bridge |
 | 7 | Text interpreter + confirm gate | 7 | `pnpm --filter @app/api test` | fake LLM, zero network | drop `packages/adapters-ai` |
 | 8 | Voice front-end | 8 | `pnpm --filter @app/api test` | fake STT | drop voice route/UI |
 | 9 | Codegen core + golden check | 9 | `pnpm --filter @app/codegen test` | `node tools/golden-check.mjs` (mvnw build+run) | drop `packages/codegen`, `templates/`, `tools/` |
@@ -83,10 +84,10 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 
 ### Unit 6b: Web collab client (added during 6.6 — realtime-collaboration spec requires it, design expects it, but no task existed for the client wiring)
 
-- [ ] 6b.1 Bind the app Y.Doc to the collab server: `WebsocketProvider` with room = diagram id (design D4), connected after the API load so the provider syncs the same PG-backed state; transport must NOT become a second source of truth (realtime cross-cutting).
-- [ ] 6b.2 Save 409-retry: the collab debounce bumps `version` server-side; the App save path must re-read the current version and retry per the design invariant (`UPDATE ... WHERE id = $1 AND version = $2`; 0 rows ⇒ 409, writer re-reads and retries).
-- [ ] 6b.3 Presence bar: connected-user names via Yjs awareness (realtime:R2) rendered in the editor chrome.
-- [ ] 6b.4 Verify: two-browser live pass — an edit made in one browser appears in the other without reload; presence lists both users; state converges after a server restart (realtime:R4).
+- [x] 6b.1 Bind the app Y.Doc to the collab server: `WebsocketProvider` with room = diagram id (design D4), connected after the API load so the provider syncs the same PG-backed state; transport must NOT become a second source of truth (realtime cross-cutting).
+- [x] 6b.2 Save 409-retry: the collab debounce bumps `version` server-side; the App save path must re-read the current version and retry per the design invariant (`UPDATE ... WHERE id = $1 AND version = $2`; 0 rows ⇒ 409, writer re-reads and retries).
+- [x] 6b.3 Presence bar: connected-user names via Yjs awareness (realtime:R2) rendered in the editor chrome.
+- [x] 6b.4 Verify: two-browser live pass — an edit made in one browser appears in the other without reload; presence lists both users; state converges after a server restart (realtime:R4).
 - [ ] 7.1 RED: "generate me a full design for a library system" ⇒ refusal response, no delta, no mutation (interpreter:R3) — automated with fake LLM.
 - [ ] 7.2 RED: schema-invalid LLM output ⇒ 422, model untouched, user informed (interpreter:R1).
 - [ ] 7.3 Create `packages/adapters-ai` — OpenAI structured-output `LlmPort` adapter + deterministic fake.
@@ -136,3 +137,7 @@ Deployment possibility (explicitly OUT of scope for PRs 1–14): Docker image an
 - [ ] 14.4 Assistant screen: scripted action results + canned fallback verbatim (mobile:R3).
 - [ ] 14.5 Scope check: only endpoint config + demo-entity CRUD + assistant view (mobile:R5).
 - [ ] 14.6 Demo hardening: README + rehearsed demo script; verify every proposal fallback rung (AI→video, collab→scripted, photo→golden, XMI→sample, assistant→canned, codegen→pre-generated, client→web/REST).
+
+## Phase 6 (OPTIONAL hardening — only if time remains after unit 14)
+
+- [ ] 6c.1 Refactor `applyDeltaToYDoc` to apply deltas surgically (write only the touched class/member/association in place instead of `clear()` + rebuild). Root cause it fixes: the full-rewrite bridge gives concurrent offline multi-editor edits new Yjs element identities, so reconnect merges duplicate/lose array members. Live multi-user editing and single-editor offline reconnection are NOT affected (verified in 6b). Sanctioned by the proposal's "naive conflict handling" allowance; demo fallback exists (scripted second user).
