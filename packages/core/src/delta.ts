@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MultiplicityEnum, type Multiplicity } from './ir.js';
+import { MultiplicitySchema } from './ir.js';
 
 /**
  * Base delta fields shared by all delta types.
@@ -41,6 +41,11 @@ export const MemberDeltaSchema = DeltaBase.extend({
   // For add/edit method
   returnType: z.string().min(1).optional(),
   parameters: z.array(z.object({ name: z.string().min(1), type: z.string().min(1) })).optional(),
+  // UML adornments (unit 9 — optional so legacy deltas stay valid)
+  visibility: z.enum(['+', '-', '#', '~']).optional(),
+  isStatic: z.boolean().optional(),
+  isDerived: z.boolean().optional(),
+  multiplicity: z.string().optional(),
 }).strict();
 export type MemberDelta = z.infer<typeof MemberDeltaSchema>;
 
@@ -54,12 +59,12 @@ export const AssociationDeltaSchema = DeltaBase.extend({
   // For create
   sourceClassId: z.string().uuid().optional(),
   targetClassId: z.string().uuid().optional(),
-  sourceMultiplicity: MultiplicityEnum.optional(),
-  targetMultiplicity: MultiplicityEnum.optional(),
+  sourceMultiplicity: MultiplicitySchema.optional(),
+  targetMultiplicity: MultiplicitySchema.optional(),
   directed: z.boolean().optional(),
   // For updateMultiplicity
-  newSourceMultiplicity: MultiplicityEnum.optional(),
-  newTargetMultiplicity: MultiplicityEnum.optional(),
+  newSourceMultiplicity: MultiplicitySchema.optional(),
+  newTargetMultiplicity: MultiplicitySchema.optional(),
 }).strict();
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 

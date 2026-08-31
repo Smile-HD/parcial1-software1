@@ -4,7 +4,10 @@
  */
 export {
   // IR schemas and types
+  MultiplicitySchema,
   MultiplicityEnum,
+  VisibilitySchema,
+  type Visibility,
   type Multiplicity,
   PositionSchema,
   type Position,

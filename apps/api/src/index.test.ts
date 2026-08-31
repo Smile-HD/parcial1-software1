@@ -570,4 +570,63 @@ describe('API: Corrupt blob handling (editor:R5)', () => {
     const mults = body.diagram.associations.map((a: any) => `${a.sourceMultiplicity}|${a.targetMultiplicity}`).sort();
     expect(mults).toEqual(['0..1|1..*', '1..*|0..*', '1|1']);
   });
+
+  it('9.7 member adornments + ranged multiplicity round-trip through POST/GET (editor:R5)', async () => {
+    const classA = {
+      id: uuidv7(),
+      name: 'Invoice',
+      position: { x: 0, y: 0 },
+      attributes: [
+        { id: uuidv7(), name: 'total', type: 'Money', visibility: '-', isStatic: false, isDerived: true, multiplicity: '1..4' },
+        { id: uuidv7(), name: 'count', type: 'int', visibility: '#', isStatic: true },
+      ],
+      methods: [
+        { id: uuidv7(), name: 'compute', returnType: 'void', parameters: [], visibility: '~', isStatic: true },
+      ],
+    };
+    const classB = { id: uuidv7(), name: 'Line', position: { x: 100, y: 0 }, attributes: [], methods: [] };
+
+    const diagram = DiagramSchema.parse({
+      id: uuidv7(),
+      name: 'Adornment Round-trip',
+      classes: [classA, classB],
+      associations: [
+        { id: uuidv7(), sourceClassId: classA.id, targetClassId: classB.id, sourceMultiplicity: '3..7', targetMultiplicity: '*', directed: false },
+      ],
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Adornment Round-trip', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: `/diagrams/${diagram.id}`,
+    });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+
+    // Every Unit 9 field survives the blob-authoritative persistence path.
+    const attr0 = body.diagram.classes[0].attributes[0];
+    expect(attr0.visibility).toBe('-');
+    expect(attr0.isStatic).toBe(false);
+    expect(attr0.isDerived).toBe(true);
+    expect(attr0.multiplicity).toBe('1..4');
+
+    const attr1 = body.diagram.classes[0].attributes[1];
+    expect(attr1.visibility).toBe('#');
+    expect(attr1.isStatic).toBe(true);
+    expect(attr1.isDerived).toBe(false);
+
+    const method0 = body.diagram.classes[0].methods[0];
+    expect(method0.visibility).toBe('~');
+    expect(method0.isStatic).toBe(true);
+
+    const assoc = body.diagram.associations[0];
+    expect(assoc.sourceMultiplicity).toBe('3..7');
+    expect(assoc.targetMultiplicity).toBe('*');
+  });
 });

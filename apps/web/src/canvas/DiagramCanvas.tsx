@@ -10,10 +10,10 @@ import { ReactFlow, type Edge, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicityEnum, projectYDocToDiagram, type AssociationDelta, type ClassDelta, type Diagram, type MemberDelta, type Parameter } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type AssociationDelta, type ClassDelta, type Diagram, type MemberDelta, type Parameter } from '@app/core';
 
 import './canvas.css';
-import { ClassNode, type ClassNodeData, type ClassFlowNode } from './ClassNode';
+import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
 const nodeTypes = { class: ClassNode };
@@ -93,7 +93,9 @@ export function handleUpdateMultiplicity(
   endpoint: 'source' | 'target',
   value: string,
 ): void {
-  const parsed = MultiplicityEnum.safeParse(value);
+  // unit 9 — full UML 2.5.1 multiplicity grammar (*, integers, m..n, m..*);
+  // garbage is rejected and the previous value is retained (editor:R4).
+  const parsed = MultiplicitySchema.safeParse(value);
   if (!parsed.success) {
     return;
   }
@@ -202,7 +204,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     setLinkMode(false);
   };
 
-  const handleAddAttribute = (classId: string, name: string, type: string): void => {
+  const handleAddAttribute = (classId: string, name: string, type: string, adornments?: MemberAdornments): void => {
     const delta: MemberDelta = {
       kind: 'member',
       op: 'addAttribute',
@@ -213,12 +215,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       memberId: crypto.randomUUID(),
       name,
       type,
+      ...adornments,
     };
     applyDeltaToYDoc(doc, delta);
   };
 
   /** editor:R3 — in-place attribute edit emitted as an `editAttribute` delta. */
-  const handleEditAttribute = (classId: string, memberId: string, name: string, type: string): void => {
+  const handleEditAttribute = (classId: string, memberId: string, name: string, type: string, adornments?: MemberAdornments): void => {
     const delta: MemberDelta = {
       kind: 'member',
       op: 'editAttribute',
@@ -229,6 +232,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       memberId,
       name,
       type,
+      ...adornments,
     };
     applyDeltaToYDoc(doc, delta);
   };
@@ -251,6 +255,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     name: string,
     returnType: string,
     parameters: Parameter[],
+    adornments?: MemberAdornments,
   ): void => {
     const delta: MemberDelta = {
       kind: 'member',
@@ -263,6 +268,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       name,
       returnType,
       parameters,
+      ...adornments,
     };
     applyDeltaToYDoc(doc, delta);
   };
@@ -274,6 +280,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     name: string,
     returnType: string,
     parameters: Parameter[],
+    adornments?: MemberAdornments,
   ): void => {
     const delta: MemberDelta = {
       kind: 'member',
@@ -286,6 +293,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       name,
       returnType,
       parameters,
+      ...adornments,
     };
     applyDeltaToYDoc(doc, delta);
   };
@@ -315,14 +323,15 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           methods: cls.methods,
           onRename: (newName: string) => handleRename(cls.id, newName),
           onDelete: () => handleDeleteClass(cls.id),
-          onAddAttribute: (name: string, type: string) => handleAddAttribute(cls.id, name, type),
-          onEditAttribute: (memberId: string, name: string, type: string) =>
-            handleEditAttribute(cls.id, memberId, name, type),
+          onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) =>
+            handleAddAttribute(cls.id, name, type, adornments),
+          onEditAttribute: (memberId: string, name: string, type: string, adornments?: MemberAdornments) =>
+            handleEditAttribute(cls.id, memberId, name, type, adornments),
           onRemoveAttribute: (memberId: string) => handleRemoveAttribute(cls.id, memberId),
-          onAddMethod: (name: string, returnType: string, parameters: Parameter[]) =>
-            handleAddMethod(cls.id, name, returnType, parameters),
-          onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[]) =>
-            handleEditMethod(cls.id, memberId, name, returnType, parameters),
+          onAddMethod: (name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
+            handleAddMethod(cls.id, name, returnType, parameters, adornments),
+          onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
+            handleEditMethod(cls.id, memberId, name, returnType, parameters, adornments),
           onRemoveMethod: (memberId: string) => handleRemoveMethod(cls.id, memberId),
         } satisfies ClassNodeData,
       })),
@@ -380,35 +389,33 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         <div className="diagram-canvas__multiplicity">
           <label>
             Source multiplicity
-            <select
+            <input
               aria-label="Source multiplicity"
-              value={selectedAssociation.sourceMultiplicity}
-              onChange={(event) =>
+              defaultValue={selectedAssociation.sourceMultiplicity}
+              onBlur={(event) =>
                 handleUpdateMultiplicity(doc, diagram.id, selectedAssociation.id, 'source', event.target.value)
               }
-            >
-              {MultiplicityEnum.options.map((multiplicity) => (
-                <option key={multiplicity} value={multiplicity}>
-                  {multiplicity}
-                </option>
-              ))}
-            </select>
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleUpdateMultiplicity(doc, diagram.id, selectedAssociation.id, 'source', (event.target as HTMLInputElement).value);
+                }
+              }}
+            />
           </label>
           <label>
             Target multiplicity
-            <select
+            <input
               aria-label="Target multiplicity"
-              value={selectedAssociation.targetMultiplicity}
-              onChange={(event) =>
+              defaultValue={selectedAssociation.targetMultiplicity}
+              onBlur={(event) =>
                 handleUpdateMultiplicity(doc, diagram.id, selectedAssociation.id, 'target', event.target.value)
               }
-            >
-              {MultiplicityEnum.options.map((multiplicity) => (
-                <option key={multiplicity} value={multiplicity}>
-                  {multiplicity}
-                </option>
-              ))}
-            </select>
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleUpdateMultiplicity(doc, diagram.id, selectedAssociation.id, 'target', (event.target as HTMLInputElement).value);
+                }
+              }}
+            />
           </label>
         </div>
       )}

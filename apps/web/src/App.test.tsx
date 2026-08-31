@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { buildYDocFromDiagram, encodeYDoc, projectYDocToDiagram, type Delta, type Diagram } from '@app/core';
+import { buildYDocFromDiagram, DiagramSchema, encodeYDoc, projectYDocToDiagram, type Delta, type Diagram } from '@app/core';
 
 import {
   App,
@@ -35,8 +35,8 @@ function makeFixture(): Diagram {
         id: customerId,
         name: 'Customer',
         position: { x: 10, y: 20 },
-        attributes: [{ id: crypto.randomUUID(), name: 'name', type: 'string' }],
-        methods: [{ id: crypto.randomUUID(), name: 'getName', returnType: 'string', parameters: [] }],
+        attributes: [{ id: crypto.randomUUID(), name: 'name', type: 'string', visibility: '+', isStatic: false, isDerived: false }],
+        methods: [{ id: crypto.randomUUID(), name: 'getName', returnType: 'string', parameters: [], visibility: '+', isStatic: false }],
       },
       {
         id: orderId,
@@ -111,7 +111,7 @@ describe('App helpers', () => {
 
     hydrateDiagramIntoDoc(doc, bytesToBase64(encodeYDoc(buildYDocFromDiagram(diagram))));
 
-    expect(projectYDocToDiagram(doc)).toEqual(diagram);
+    expect(projectYDocToDiagram(doc)).toEqual(DiagramSchema.parse(diagram));
   });
 });
 
@@ -130,12 +130,12 @@ describe('App save handler (blob-preserving, 409-retry)', () => {
     expect(init.method).toBe('PUT');
     const body = JSON.parse(String(init.body)) as { name: string; diagram: Diagram; version: number; yjsState: string };
     expect(body.name).toBe(diagram.name);
-    expect(body.diagram).toEqual(diagram);
+    expect(body.diagram).toEqual(DiagramSchema.parse(diagram));
     expect(body.version).toBe(8);
     // The blob must decode into a doc that projects to the same diagram.
     const blobDoc = new Y.Doc();
     Y.applyUpdate(blobDoc, base64ToBytes(body.yjsState));
-    expect(projectYDocToDiagram(blobDoc)).toEqual(diagram);
+    expect(projectYDocToDiagram(blobDoc)).toEqual(DiagramSchema.parse(diagram));
   });
 
   it('retries with currentVersion from a 409 and succeeds (collab bumped the version)', async () => {
@@ -246,13 +246,17 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
     // Save: PUT carries the projected diagram, the loaded version AND a blob.
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(savedBody).not.toBeNull());
-    if (savedBody === null) {
+    // TS control-flow analysis cannot see the assignment inside the fetch
+    // stub's closure, so it narrows savedBody to `null` here — recover the
+    // runtime-observed type explicitly.
+    const saved = savedBody as { name: string; diagram: Diagram; version: number; yjsState: string } | null;
+    if (saved === null) {
       throw new Error('save never reached the API');
     }
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
-    expect(savedBody.version).toBe(3);
-    expect(savedBody.yjsState.length).toBeGreaterThan(0);
-    expect(savedBody.diagram.classes.map((cls) => cls.name)).toEqual(['Customer', 'Order', 'Product']);
+    expect(saved.version).toBe(3);
+    expect(saved.yjsState.length).toBeGreaterThan(0);
+    expect(saved.diagram.classes.map((cls) => cls.name)).toEqual(['Customer', 'Order', 'Product']);
     firstSession.unmount();
 
     // New session: fresh Y.Doc hydrated with the stored blob (server truth).
@@ -266,13 +270,13 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
     // Structural equivalence: the reloaded projection equals the saved one,
     // including positions and multiplicities.
     const reloaded = projectYDocToDiagram(freshDoc);
-    expect(reloaded).toEqual(savedBody.diagram);
+    expect(reloaded).toEqual(saved.diagram);
 
     // 6b killer assertion: a LAGGED client doc (hydrated from the original
     // blob, pre-mutation) merged with the stored blob must NOT duplicate any
     // array member — clocks line up because the save is blob-preserving.
     const laggedDoc = hydrateDiagramIntoDoc(new Y.Doc(), resourceOf(diagram, 3).yjsState as string);
-    Y.applyUpdate(laggedDoc, base64ToBytes(savedBody.yjsState));
+    Y.applyUpdate(laggedDoc, base64ToBytes(saved.yjsState));
     const laggedProjection = projectYDocToDiagram(laggedDoc);
     expect(laggedProjection.classes).toHaveLength(3);
     expect(laggedProjection.classes[0]!.attributes).toHaveLength(1);
