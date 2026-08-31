@@ -8,7 +8,15 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 
-import type { Attribute, Method, Parameter } from '@app/core';
+import type { Attribute, Method, Parameter, Visibility } from '@app/core';
+
+/** UML adornments carried by member add/edit operations (unit 9). */
+export interface MemberAdornments {
+  visibility?: Visibility;
+  isStatic?: boolean;
+  isDerived?: boolean;
+  multiplicity?: string;
+}
 
 export type ClassNodeData = Record<string, unknown> & {
   name: string;
@@ -16,11 +24,11 @@ export type ClassNodeData = Record<string, unknown> & {
   methods: readonly Method[];
   onRename: (newName: string) => void;
   onDelete: () => void;
-  onAddAttribute: (name: string, type: string) => void;
-  onEditAttribute: (memberId: string, name: string, type: string) => void;
+  onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) => void;
+  onEditAttribute: (memberId: string, name: string, type: string, adornments?: MemberAdornments) => void;
   onRemoveAttribute: (memberId: string) => void;
-  onAddMethod: (name: string, returnType: string, parameters: Parameter[]) => void;
-  onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[]) => void;
+  onAddMethod: (name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) => void;
+  onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) => void;
   onRemoveMethod: (memberId: string) => void;
 };
 
@@ -45,6 +53,23 @@ function parseParameters(input: string): Parameter[] {
     .filter((param) => param.name.length > 0);
 }
 
+/**
+ * UML 2.5.1 member rendering (unit 9.3): visibility prefix, `/` for derived,
+ * `[mult]` after the type, static names underlined via the CSS class.
+ */
+export function renderAttribute(attr: Attribute): string {
+  const vis = attr.visibility ?? '+';
+  const name = (attr.isDerived ? '/' : '') + attr.name;
+  const mult = attr.multiplicity !== undefined ? ` [${attr.multiplicity}]` : '';
+  return `${vis}${name}: ${attr.type}${mult}`;
+}
+
+export function renderMethod(method: Method): string {
+  const vis = method.visibility ?? '+';
+  const params = method.parameters.map((p) => p.type).join(', ');
+  return `${vis}${method.name}(${params}): ${method.returnType}`;
+}
+
 export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.name);
@@ -52,11 +77,17 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
   const [attrName, setAttrName] = useState('');
   const [attrType, setAttrType] = useState('');
+  const [attrVisibility, setAttrVisibility] = useState<Visibility>('+' as Visibility);
+  const [attrStatic, setAttrStatic] = useState(false);
+  const [attrDerived, setAttrDerived] = useState(false);
+  const [attrMultiplicity, setAttrMultiplicity] = useState('');
   const [attrError, setAttrError] = useState<string | null>(null);
 
   const [methodName, setMethodName] = useState('');
   const [methodReturnType, setMethodReturnType] = useState('');
   const [methodParams, setMethodParams] = useState('');
+  const [methodVisibility, setMethodVisibility] = useState<Visibility>('+' as Visibility);
+  const [methodStatic, setMethodStatic] = useState(false);
   const [methodError, setMethodError] = useState<string | null>(null);
 
   // editor:R3 — in-place member editing state (one member edited at a time).
@@ -66,6 +97,10 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState('');
   const [editParams, setEditParams] = useState('');
+  const [editVisibility, setEditVisibility] = useState<Visibility>('+' as Visibility);
+  const [editStatic, setEditStatic] = useState(false);
+  const [editDerived, setEditDerived] = useState(false);
+  const [editMultiplicity, setEditMultiplicity] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
   const startEditing = (): void => {
@@ -99,9 +134,17 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       return;
     }
     setAttrError(null);
-    data.onAddAttribute(name, type);
+    data.onAddAttribute(name, type, {
+      visibility: attrVisibility,
+      isStatic: attrStatic,
+      isDerived: attrDerived,
+      multiplicity: attrMultiplicity.trim() || undefined,
+    });
     setAttrName('');
     setAttrType('');
+    setAttrMultiplicity('');
+    setAttrStatic(false);
+    setAttrDerived(false);
   };
 
   const submitMethod = (): void => {
@@ -114,10 +157,14 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       return;
     }
     setMethodError(null);
-    data.onAddMethod(name, methodReturnType.trim() || 'void', parseParameters(methodParams));
+    data.onAddMethod(name, methodReturnType.trim() || 'void', parseParameters(methodParams), {
+      visibility: methodVisibility,
+      isStatic: methodStatic,
+    });
     setMethodName('');
     setMethodReturnType('');
     setMethodParams('');
+    setMethodStatic(false);
   };
 
   const startEditAttribute = (attr: Attribute): void => {
@@ -125,6 +172,10 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
     setEditName(attr.name);
     setEditType(attr.type);
     setEditParams('');
+    setEditVisibility((attr.visibility ?? '+') as Visibility);
+    setEditStatic(attr.isStatic ?? false);
+    setEditDerived(attr.isDerived ?? false);
+    setEditMultiplicity(attr.multiplicity ?? '');
     setEditError(null);
   };
 
@@ -133,6 +184,10 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
     setEditName(method.name);
     setEditType(method.returnType);
     setEditParams(method.parameters.map((param) => `${param.name}: ${param.type}`).join(', '));
+    setEditVisibility((method.visibility ?? '+') as Visibility);
+    setEditStatic(method.isStatic ?? false);
+    setEditDerived(false);
+    setEditMultiplicity('');
     setEditError(null);
   };
 
@@ -158,9 +213,17 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       return;
     }
     if (editingMember.kind === 'attribute') {
-      data.onEditAttribute(editingMember.id, name, type);
+      data.onEditAttribute(editingMember.id, name, type, {
+        visibility: editVisibility,
+        isStatic: editStatic,
+        isDerived: editDerived,
+        multiplicity: editMultiplicity.trim() || undefined,
+      });
     } else {
-      data.onEditMethod(editingMember.id, name, type, parseParameters(editParams));
+      data.onEditMethod(editingMember.id, name, type, parseParameters(editParams), {
+        visibility: editVisibility,
+        isStatic: editStatic,
+      });
     }
     setEditingMember(null);
     setEditError(null);
@@ -244,8 +307,11 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
               </div>
             ) : (
               <div key={attr.id} className="uml-class__member">
-                <span className="uml-class__member-text">
-                  {attr.name}: {attr.type}
+                <span
+                  className={`uml-class__member-text${attr.isStatic ? ' uml-member--static' : ''}`}
+                  data-testid={`attr-${attr.name}`}
+                >
+                  {renderAttribute(attr)}
                 </span>
                 <button
                   type="button"
@@ -270,6 +336,17 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       )}
 
       <div className="uml-class__section uml-class__add">
+        <select
+          className="uml-class__add-input"
+          aria-label="Attribute visibility"
+          value={attrVisibility}
+          onChange={(e) => setAttrVisibility(e.target.value as Visibility)}
+        >
+          <option value="+">+</option>
+          <option value="-">-</option>
+          <option value="#">#</option>
+          <option value="~">~</option>
+        </select>
         <input
           className="uml-class__add-input"
           aria-label="Attribute name"
@@ -284,6 +361,21 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           value={attrType}
           onChange={(e) => setAttrType(e.target.value)}
         />
+        <input
+          className="uml-class__add-input"
+          aria-label="Attribute multiplicity"
+          placeholder="[0..*]"
+          value={attrMultiplicity}
+          onChange={(e) => setAttrMultiplicity(e.target.value)}
+        />
+        <label className="uml-class__toggle">
+          <input type="checkbox" aria-label="Attribute static" checked={attrStatic} onChange={(e) => setAttrStatic(e.target.checked)} />
+          static
+        </label>
+        <label className="uml-class__toggle">
+          <input type="checkbox" aria-label="Attribute derived" checked={attrDerived} onChange={(e) => setAttrDerived(e.target.checked)} />
+          derived
+        </label>
         <button
           type="button"
           className="uml-class__add-button"
@@ -354,8 +446,11 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
             const params = method.parameters.map((p) => p.type).join(', ');
             return (
               <div key={method.id} className="uml-class__member">
-                <span className="uml-class__member-text">
-                  {method.name}({params}): {method.returnType}
+                <span
+                  className={`uml-class__member-text${method.isStatic ? ' uml-member--static' : ''}`}
+                  data-testid={`method-${method.name}`}
+                >
+                  {renderMethod(method)}
                 </span>
                 <button
                   type="button"
@@ -380,6 +475,17 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       )}
 
       <div className="uml-class__section uml-class__add">
+        <select
+          className="uml-class__add-input"
+          aria-label="Method visibility"
+          value={methodVisibility}
+          onChange={(e) => setMethodVisibility(e.target.value as Visibility)}
+        >
+          <option value="+">+</option>
+          <option value="-">-</option>
+          <option value="#">#</option>
+          <option value="~">~</option>
+        </select>
         <input
           className="uml-class__add-input"
           aria-label="Method name"
@@ -401,6 +507,10 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           value={methodParams}
           onChange={(e) => setMethodParams(e.target.value)}
         />
+        <label className="uml-class__toggle">
+          <input type="checkbox" aria-label="Method static" checked={methodStatic} onChange={(e) => setMethodStatic(e.target.checked)} />
+          static
+        </label>
         <button
           type="button"
           className="uml-class__add-button"

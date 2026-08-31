@@ -1,10 +1,10 @@
-/**
- * Text interpreter (PR 7) — API-side tests.
+﻿/**
+ * Text interpreter (PR 7) â€” API-side tests.
  *
- * 7.1 whole-design refusal (interpreter:R3) — automated RED first.
- * 7.2 schema-invalid LLM output → 422, model untouched (interpreter:R1).
+ * 7.1 whole-design refusal (interpreter:R3) â€” automated RED first.
+ * 7.2 schema-invalid LLM output â†’ 422, model untouched (interpreter:R1).
  * Pending-delta store + confirm/reject gate (interpreter:R2).
- * 7.5 out-of-vocabulary → refused with supported categories surfaced.
+ * 7.5 out-of-vocabulary â†’ refused with supported categories surfaced.
  *
  * The LLM is injected as a stub: the deterministic fake lives in
  * @app/adapters-ai; these tests pin the ENDPOINT contract, not the LLM.
@@ -12,7 +12,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildApp, closePool } from './index.js';
-import type { Diagram, LlmPort, LlmResult } from '@app/core';
+import { DiagramSchema, type Diagram, type LlmPort, type LlmResult } from '@app/core';
 
 function makeDiagram(): Diagram {
   const customerId = crypto.randomUUID();
@@ -87,7 +87,7 @@ describe('text interpreter API (PR 7)', () => {
 
     // Model untouched.
     const loaded = await app.inject({ method: 'GET', url: `/diagrams/${id}` });
-    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(diagram);
+    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(DiagramSchema.parse(diagram));
   });
 
   it('7.2 returns 422 and leaves the model untouched when LLM output fails delta-schema validation (interpreter:R1)', async () => {
@@ -115,7 +115,7 @@ describe('text interpreter API (PR 7)', () => {
 
     // Model untouched AND nothing pending.
     const loaded = await app.inject({ method: 'GET', url: `/diagrams/${id}` });
-    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(diagram);
+    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(DiagramSchema.parse(diagram));
   });
 
   it('a valid command stores a pending delta and the model stays untouched until confirm (interpreter:R2)', async () => {
@@ -146,7 +146,7 @@ describe('text interpreter API (PR 7)', () => {
 
     // Not applied yet.
     const loaded = await app.inject({ method: 'GET', url: `/diagrams/${id}` });
-    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(diagram);
+    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(DiagramSchema.parse(diagram));
 
     // Confirm returns the delta exactly once.
     const confirmed = await app.inject({ method: 'POST', url: `/deltas/${body.deltaId}/confirm` });
@@ -189,7 +189,7 @@ describe('text interpreter API (PR 7)', () => {
     expect(again.statusCode).toBe(404);
 
     const loaded = await app.inject({ method: 'GET', url: `/diagrams/${id}` });
-    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(diagram);
+    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(DiagramSchema.parse(diagram));
   });
 
   it('7.5 surfaces supported categories on out-of-vocabulary commands (interpreter:R4)', async () => {

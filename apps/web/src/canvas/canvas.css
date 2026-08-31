@@ -125,3 +125,15 @@
   color: #1a1a2e;
   cursor: pointer;
 }
+/* unit 9.3 — UML member adornments */
+.uml-member--static {
+  text-decoration: underline;
+}
+.uml-class__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: #555;
+  white-space: nowrap;
+}

@@ -61,7 +61,43 @@ export class FakeLlm implements LlmPort {
       };
     }
 
+    // Unit 9 — UML adornment heuristics from the utterance (optional).
+    const visibility = /\bprivate\b/i.test(utterance)
+      ? ('-' as const)
+      : /\bprotected\b/i.test(utterance)
+        ? ('#' as const)
+        : /\bpackage\b/i.test(utterance)
+          ? ('~' as const)
+          : undefined;
+    const isStatic = /\bstatic\b/i.test(utterance) || undefined;
+    const isDerived = /\bderived\b/i.test(utterance) || undefined;
+    const adornments = {
+      ...(visibility !== undefined ? { visibility } : {}),
+      ...(isStatic !== undefined ? { isStatic } : {}),
+      ...(isDerived !== undefined ? { isDerived } : {}),
+    };
+
     const refused = (reason: string): LlmResult => ({ kind: 'refused', reason });
+
+    // 4 (evaluated FIRST). add attribute to an EXISTING class. Checked before
+    // the create-class pattern so "add attribute x: int to the class Customer"
+    // is not misread as a class creation (offline demo fix, unit 9).
+    const addAttribute = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:attribute|atributo)\s+([A-Za-z_]\w*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    if (addAttribute) {
+      const classId = classIdByName(currentIr, addAttribute[3]!);
+      if (classId === null) return refused(`Unknown class "${addAttribute[3]}"`);
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'addAttribute',
+        ...deltaBase(currentIr),
+        classId,
+        memberId: crypto.randomUUID(),
+        name: addAttribute[1]!,
+        type: addAttribute[2]!,
+        ...adornments,
+      };
+      return { kind: 'delta', value: delta };
+    }
 
     // 1. create class [+ optional "with attribute name: type"]
     const createClass = /\b(?:add|create|crea|agregá|agrega|añade)\b[\s\S]*?\bclass(?:es)?\s+([A-Za-z_]\w*)/i.exec(utterance);
@@ -86,6 +122,7 @@ export class FakeLlm implements LlmPort {
           memberId: crypto.randomUUID(),
           name: attribute[1]!,
           type: attribute[2]!,
+          ...adornments,
         };
         const batch: Delta = { kind: 'batch', deltas: [create, addAttribute] };
         return { kind: 'delta', value: batch };
@@ -114,23 +151,6 @@ export class FakeLlm implements LlmPort {
       const classId = classIdByName(currentIr, deleteClass[1]!);
       if (classId === null) return refused(`Unknown class "${deleteClass[1]}"`);
       const delta: ClassDelta = { kind: 'class', op: 'delete', ...deltaBase(currentIr), classId };
-      return { kind: 'delta', value: delta };
-    }
-
-    // 4. add attribute
-    const addAttribute = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:attribute|atributo)\s+([A-Za-z_]\w*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|a|en)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
-    if (addAttribute) {
-      const classId = classIdByName(currentIr, addAttribute[3]!);
-      if (classId === null) return refused(`Unknown class "${addAttribute[3]}"`);
-      const delta: MemberDelta = {
-        kind: 'member',
-        op: 'addAttribute',
-        ...deltaBase(currentIr),
-        classId,
-        memberId: crypto.randomUUID(),
-        name: addAttribute[1]!,
-        type: addAttribute[2]!,
-      };
       return { kind: 'delta', value: delta };
     }
 
@@ -242,11 +262,11 @@ export class OpenAiLlm implements LlmPort {
       'CLASS RENAME: {"kind":"class","op":"rename", ...base, "classId":"<existing class uuid>","newName":"<NewName>"}',
       'CLASS REPOSITION: {"kind":"class","op":"reposition", ...base, "classId":"<existing class uuid>","newPosition":{"x":<number>,"y":<number>}}',
       'CLASS DELETE: {"kind":"class","op":"delete", ...base, "classId":"<existing class uuid>"}',
-      'ADD ATTRIBUTE: {"kind":"member","op":"addAttribute", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<attrName>","type":"<attrType>"}',
-      'EDIT ATTRIBUTE: {"kind":"member","op":"editAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>","name":"<newName>","type":"<newType>"}',
+      'ADD ATTRIBUTE: {"kind":"member","op":"addAttribute", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<attrName>","type":"<attrType>" [, "visibility":"+"|"-"|"#"|"~"] [, "isStatic":true] [, "isDerived":true] [, "multiplicity":"0..*"]}',
+      'EDIT ATTRIBUTE: {"kind":"member","op":"editAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>","name":"<newName>","type":"<newType>" [, visibility/isStatic/isDerived/multiplicity]}',
       'DELETE ATTRIBUTE: {"kind":"member","op":"deleteAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>"}',
-      'ADD METHOD: {"kind":"member","op":"addMethod", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<methodName>","returnType":"<type>","parameters":[]}',
-      'EDIT METHOD: {"kind":"member","op":"editMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>","name":"<newName>","returnType":"<newReturnType>","parameters":[]}',
+      'ADD METHOD: {"kind":"member","op":"addMethod", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<methodName>","returnType":"<type>","parameters":[] [, "visibility":"+"|"-"|"#"|"~"] [, "isStatic":true]}',
+      'EDIT METHOD: {"kind":"member","op":"editMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>","name":"<newName>","returnType":"<newReturnType>","parameters":[] [, visibility/isStatic]}',
       'DELETE METHOD: {"kind":"member","op":"deleteMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>"}',
       'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false}',
       'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*"}',

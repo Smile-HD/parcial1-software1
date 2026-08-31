@@ -1,4 +1,4 @@
-import { type Diagram, type Class, type Association, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, AttributeSchema, MethodSchema } from './ir.js';
 import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type BatchDelta, DeltaSchema } from './delta.js';
 import { z } from 'zod';
 
@@ -199,7 +199,15 @@ function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Dia
       if (isDuplicateMemberName(classObj, delta.name)) {
         return err({ kind: 'DuplicateMemberError', memberName: delta.name, classId: delta.classId });
       }
-      const newAttribute = { id: delta.memberId, name: delta.name, type: delta.type };
+      const newAttribute = AttributeSchema.parse({
+        id: delta.memberId,
+        name: delta.name,
+        type: delta.type,
+        ...(delta.visibility !== undefined ? { visibility: delta.visibility } : {}),
+        ...(delta.isStatic !== undefined ? { isStatic: delta.isStatic } : {}),
+        ...(delta.isDerived !== undefined ? { isDerived: delta.isDerived } : {}),
+        ...(delta.multiplicity !== undefined ? { multiplicity: delta.multiplicity } : {}),
+      });
       const updatedClass = {
         ...classObj,
         attributes: [...classObj.attributes, newAttribute],
@@ -221,7 +229,15 @@ function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Dia
         return err({ kind: 'DuplicateMemberError', memberName: delta.name, classId: delta.classId });
       }
       const updatedAttributes = [...classObj.attributes];
-      updatedAttributes[attrIndex] = { ...updatedAttributes[attrIndex], name: delta.name, type: delta.type };
+      updatedAttributes[attrIndex] = AttributeSchema.parse({
+        ...updatedAttributes[attrIndex],
+        name: delta.name,
+        type: delta.type,
+        ...(delta.visibility !== undefined ? { visibility: delta.visibility } : {}),
+        ...(delta.isStatic !== undefined ? { isStatic: delta.isStatic } : {}),
+        ...(delta.isDerived !== undefined ? { isDerived: delta.isDerived } : {}),
+        ...(delta.multiplicity !== undefined ? { multiplicity: delta.multiplicity } : {}),
+      });
       const updatedClass = { ...classObj, attributes: updatedAttributes };
       const updatedClasses = [...diagram.classes];
       updatedClasses[classIndex] = updatedClass;
@@ -247,12 +263,14 @@ function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Dia
       if (isDuplicateMemberName(classObj, delta.name)) {
         return err({ kind: 'DuplicateMemberError', memberName: delta.name, classId: delta.classId });
       }
-      const newMethod = {
+      const newMethod = MethodSchema.parse({
         id: delta.memberId,
         name: delta.name,
         returnType: delta.returnType,
         parameters: delta.parameters,
-      };
+        ...(delta.visibility !== undefined ? { visibility: delta.visibility } : {}),
+        ...(delta.isStatic !== undefined ? { isStatic: delta.isStatic } : {}),
+      });
       const updatedClass = {
         ...classObj,
         methods: [...classObj.methods, newMethod],
@@ -274,12 +292,14 @@ function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Dia
         return err({ kind: 'DuplicateMemberError', memberName: delta.name, classId: delta.classId });
       }
       const updatedMethods = [...classObj.methods];
-      updatedMethods[methodIndex] = {
+      updatedMethods[methodIndex] = MethodSchema.parse({
         ...updatedMethods[methodIndex],
         name: delta.name,
         returnType: delta.returnType,
         parameters: delta.parameters,
-      };
+        ...(delta.visibility !== undefined ? { visibility: delta.visibility } : {}),
+        ...(delta.isStatic !== undefined ? { isStatic: delta.isStatic } : {}),
+      });
       const updatedClass = { ...classObj, methods: updatedMethods };
       const updatedClasses = [...diagram.classes];
       updatedClasses[classIndex] = updatedClass;

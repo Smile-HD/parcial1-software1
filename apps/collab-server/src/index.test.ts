@@ -366,6 +366,47 @@ describe('collab-server transport (PR 5)', () => {
     );
   }, 30_000);
 
+  it('9.7 adornments + ranged multiplicity survive collab and converge schema-valid (realtime:R3, editor:R5)', async () => {
+    const diagram = makeDiagram();
+    await insertDiagramRow(diagram);
+    const alice = connectClient(diagram.id, 'Alice');
+    const bob = connectClient(diagram.id, 'Bob');
+    await alice.synced;
+    await bob.synced;
+
+    // Alice edits member adornments; Bob edits the association multiplicity.
+    const yAttr = classMap(alice, diagram.classes[0].id)
+      .get('attributes') as Y.Array<Y.Map<unknown>>;
+    const attr0 = yAttr.get(0);
+    if (!(attr0 instanceof Y.Map)) throw new Error('attribute 0 not found');
+    attr0.set('visibility', '-');
+    attr0.set('isStatic', true);
+    attr0.set('isDerived', true);
+    attr0.set('multiplicity', '1..4');
+
+    const yAssoc = alice.ydoc.getMap('associations').get(diagram.associations[0].id);
+    if (!(yAssoc instanceof Y.Map)) throw new Error('association not found');
+    yAssoc.set('sourceMultiplicity', '3..7');
+
+    await waitFor(
+      () => JSON.stringify(diagramOf(alice)) === JSON.stringify(diagramOf(bob)),
+      'docs converge',
+    );
+    const parsed = DiagramSchema.safeParse(diagramOf(alice));
+    expect(parsed.success).toBe(true);
+
+    // Both sides see every Unit 9 field after convergence.
+    const bobAttr0 = (classMap(bob, diagram.classes[0].id)
+      .get('attributes') as Y.Array<Y.Map<unknown>>).get(0);
+    expect(bobAttr0).toBeInstanceOf(Y.Map);
+    expect(bobAttr0.get('visibility')).toBe('-');
+    expect(bobAttr0.get('isStatic')).toBe(true);
+    expect(bobAttr0.get('isDerived')).toBe(true);
+    expect(bobAttr0.get('multiplicity')).toBe('1..4');
+    const bobAssoc = bob.ydoc.getMap('associations').get(diagram.associations[0].id) as Y.Map<unknown>;
+    expect(bobAssoc.get('sourceMultiplicity')).toBe('3..7');
+  }, 15_000);
+
   it('API PUT and collab debounce do not corrupt each other (5.2, two writers)', async () => {
     const diagram = makeDiagram();
     await insertDiagramRow(diagram);

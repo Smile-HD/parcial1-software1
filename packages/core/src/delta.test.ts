@@ -92,7 +92,25 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects invalid multiplicity in association delta', () => {
+  it('accepts ranged multiplicity in association delta (editor:R4)', () => {
+    const rangedAssociationDelta = {
+      id: '0192f0c1-2345-7123-8abc-def012345678',
+      diagramId: '0192f0c1-2345-7123-8abc-def012345679',
+      timestamp: '2025-01-15T10:30:00.000Z',
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: '0192f0c1-2345-7123-8abc-def01234567c',
+      sourceClassId: '0192f0c1-2345-7123-8abc-def01234567a',
+      targetClassId: '0192f0c1-2345-7123-8abc-def01234567b',
+      sourceMultiplicity: '3..7', // valid since editor:R4
+      targetMultiplicity: '0..*',
+      directed: true,
+    };
+    const result = DeltaSchema.safeParse(rangedAssociationDelta);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects non-numeric garbage multiplicity in association delta', () => {
     const invalidAssociationDelta = {
       id: '0192f0c1-2345-7123-8abc-def012345678',
       diagramId: '0192f0c1-2345-7123-8abc-def012345679',
@@ -102,7 +120,7 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
       associationId: '0192f0c1-2345-7123-8abc-def01234567c',
       sourceClassId: '0192f0c1-2345-7123-8abc-def01234567a',
       targetClassId: '0192f0c1-2345-7123-8abc-def01234567b',
-      sourceMultiplicity: '3..7', // invalid!
+      sourceMultiplicity: 'abc', // non-numeric garbage is still invalid
       targetMultiplicity: '0..*',
       directed: true,
     };

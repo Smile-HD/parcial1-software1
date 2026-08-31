@@ -112,13 +112,13 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 
 ### Unit 9: Member adornments + arbitrary multiplicities (PR 9)
 
-- [ ] 9.1 RED: `AttributeSchema`/`MethodSchema` accept `visibility` enum `+|-|#|~` (default `+`), `isStatic`/`isDerived` booleans (default false); attribute optional `multiplicity` string — old diagrams (no fields) still validate (backward compat).
-- [ ] 9.2 RED: `MultiplicitySchema` (association endpoints) accepts `*`, `0`, plain integers, and ranged `m..n` (e.g. `1..4`, `2..2`) alongside the legacy four; `3..7` now VALID (editor:R4 MODIFIED — update existing rejection test + spec scenario delta).
-- [ ] 9.3 Renderer: `+name`, `-name`, `#name`, `~name` prefixes; static members underlined; derived members `/name`; attribute multiplicity rendered `[0..*]` after type; update canvas.css.
-- [ ] 9.4 Editor UI: visibility select + static/derived toggles + attribute multiplicity input in ClassNode edit rows; association multiplicity inputs freed from enum (text input + validation).
-- [ ] 9.5 Interpreter: FakeLlm + OpenAiLlm prompt cover new fields; "private attribute x: int", "static method count", "multiplicity many" commands; `supportedCategories` updated.
-- [ ] 9.6 Apply engine: no new delta kinds (member deltas carry the new optional fields); engine round-trips them untouched.
-- [ ] 9.7 Verify: round-trip persistence of all new fields through API (editor:R5) + collab convergence; existing tests updated for R4 change.
+- [x] 9.1 RED: `AttributeSchema`/`MethodSchema` accept `visibility` enum `+|-|#|~` (default `+`), `isStatic`/`isDerived` booleans (default false); attribute optional `multiplicity` string — old diagrams (no fields) still validate (backward compat).
+- [x] 9.2 RED: `MultiplicitySchema` (association endpoints) accepts `*`, `0`, plain integers, and ranged `m..n` (e.g. `1..4`, `2..2`) alongside the legacy four; `3..7` now VALID (editor:R4 MODIFIED — update existing rejection test + spec scenario delta).
+- [x] 9.3 Renderer: `+name`, `-name`, `#name`, `~name` prefixes; static members underlined; derived members `/name`; attribute multiplicity rendered `[0..*]` after type; update canvas.css.
+- [x] 9.4 Editor UI: visibility select + static/derived toggles + attribute multiplicity input in ClassNode edit rows; association multiplicity inputs freed from enum (text input + validation).
+- [x] 9.5 Interpreter: FakeLlm + OpenAiLlm prompt cover new fields; "private attribute x: int", "static method count", "multiplicity many" commands; `supportedCategories` updated.
+- [x] 9.6 Apply engine: no new delta kinds (member deltas carry the new optional fields); engine round-trips them untouched.
+- [x] 9.7 Verify: round-trip persistence of all new fields through API (editor:R5) + collab convergence; existing tests updated for R4 change.
 
 ### Unit 10: Aggregation/composition + association names & roles (PR 10)
 

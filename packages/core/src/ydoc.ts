@@ -45,6 +45,12 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
       yAttr.set('id', attr.id);
       yAttr.set('name', attr.name);
       yAttr.set('type', attr.type);
+      yAttr.set('visibility', attr.visibility ?? '+');
+      yAttr.set('isStatic', attr.isStatic ?? false);
+      yAttr.set('isDerived', attr.isDerived ?? false);
+      if (attr.multiplicity !== undefined) {
+        yAttr.set('multiplicity', attr.multiplicity);
+      }
       yAttributes.push([yAttr]);
     }
     yClass.set('attributes', yAttributes);
@@ -56,6 +62,8 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
       yMethod.set('id', method.id);
       yMethod.set('name', method.name);
       yMethod.set('returnType', method.returnType);
+      yMethod.set('visibility', method.visibility ?? '+');
+      yMethod.set('isStatic', method.isStatic ?? false);
       const yParams = new Y.Array();
       for (const param of method.parameters) {
         const yParam = new Y.Map();
@@ -114,10 +122,15 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     if (yAttributes) {
       yAttributes.forEach((yAttr) => {
         if (yAttr instanceof Y.Map) {
+          const multiplicity = yAttr.get('multiplicity') as string | undefined;
           attributes.push({
             id: yAttr.get('id') as string,
             name: yAttr.get('name') as string,
             type: yAttr.get('type') as string,
+            visibility: (yAttr.get('visibility') as '+') ?? '+',
+            isStatic: (yAttr.get('isStatic') as boolean) ?? false,
+            isDerived: (yAttr.get('isDerived') as boolean) ?? false,
+            ...(multiplicity !== undefined ? { multiplicity } : {}),
           });
         }
       });
@@ -145,6 +158,8 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
             name: yMethod.get('name') as string,
             returnType: yMethod.get('returnType') as string,
             parameters,
+            visibility: (yMethod.get('visibility') as '+') ?? '+',
+            isStatic: (yMethod.get('isStatic') as boolean) ?? false,
           });
         }
       });

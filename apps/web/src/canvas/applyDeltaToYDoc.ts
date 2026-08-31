@@ -83,6 +83,12 @@ function buildYClass(cls: Class): Y.Map<unknown> {
     yAttr.set('id', attr.id);
     yAttr.set('name', attr.name);
     yAttr.set('type', attr.type);
+    yAttr.set('visibility', attr.visibility ?? '+');
+    yAttr.set('isStatic', attr.isStatic ?? false);
+    yAttr.set('isDerived', attr.isDerived ?? false);
+    if (attr.multiplicity !== undefined) {
+      yAttr.set('multiplicity', attr.multiplicity);
+    }
     yAttributes.push([yAttr]);
   }
   yClass.set('attributes', yAttributes);
@@ -93,6 +99,8 @@ function buildYClass(cls: Class): Y.Map<unknown> {
     yMethod.set('id', method.id);
     yMethod.set('name', method.name);
     yMethod.set('returnType', method.returnType);
+    yMethod.set('visibility', method.visibility ?? '+');
+    yMethod.set('isStatic', method.isStatic ?? false);
 
     const yParams = new Y.Array<Y.Map<unknown>>();
     for (const param of method.parameters) {

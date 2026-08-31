@@ -9,7 +9,7 @@ import { DiagramCanvas, handleCreateAssociation, handleNodeDragStop, handleUpdat
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
 /**
- * editor:R1 — canvas renders EXCLUSIVELY from the Y.Doc (canonical IR).
+ * editor:R1 â€” canvas renders EXCLUSIVELY from the Y.Doc (canonical IR).
  * No local React state is the model source of truth: nodes derive from
  * projecting the Y.Doc, and mutations flow through applyDelta before
  * being written back into the same Y.Doc so observers re-render.
@@ -36,6 +36,29 @@ function makeFixture(): Diagram {
     ],
     associations: [],
   };
+}
+
+/**
+ * Module-scope query helpers (unit 9): jsdom keeps React Flow node wrappers
+ * `visibility: hidden`, so role-based queries exclude node-internal elements.
+ * Every describe block queries the container directly through these.
+ */
+function nodeButton(container: HTMLElement, label: string): HTMLButtonElement {
+  const btn = container.querySelector(`button[aria-label="${label}"]`);
+  expect(btn).not.toBeNull();
+  return btn as HTMLButtonElement;
+}
+
+function nodeInput(container: HTMLElement, label: string): HTMLInputElement {
+  const input = container.querySelector(`input[aria-label="${label}"]`);
+  expect(input).not.toBeNull();
+  return input as HTMLInputElement;
+}
+
+function nodeSelect(container: HTMLElement, label: string): HTMLSelectElement {
+  const select = container.querySelector(`select[aria-label="${label}"]`);
+  expect(select).not.toBeNull();
+  return select as HTMLSelectElement;
 }
 
 describe('DiagramCanvas (renders exclusively from Y.Doc)', () => {
@@ -311,7 +334,7 @@ describe('6.3b method editing (member add/remove via applyDeltaToYDoc)', () => {
   });
 });
 
-describe('6.4a association creation between two classes (editor:R4 — first half)', () => {
+describe('6.4a association creation between two classes (editor:R4 â€” first half)', () => {
   it('creates an undirected association with default multiplicities between two existing classes', () => {
     const diagram = makeFixture();
     const doc = buildYDocFromDiagram(diagram);
@@ -356,7 +379,7 @@ describe('6.4a association creation between two classes (editor:R4 — first hal
   });
 });
 
-describe('6.4b multiplicity editing (editor:R4 — second half)', () => {
+describe('6.4b multiplicity editing (editor:R4 â€” second half)', () => {
   function makeAssociationFixture(): { diagram: Diagram; doc: Y.Doc; associationId: string } {
     const diagram = makeFixture();
     diagram.associations = [{
@@ -383,13 +406,32 @@ describe('6.4b multiplicity editing (editor:R4 — second half)', () => {
     expect(assoc?.targetMultiplicity).toBe('1'); // untouched endpoint unchanged
   });
 
-  it('rejects an out-of-enum multiplicity like 3..7: no throw escapes, no delta emitted, previous value retained', () => {
+  it('accepts UML 2.5.1 arbitrary multiplicities (3..7, 2, *) — R4 modified by the compliance amendment', () => {
+    const { diagram, doc, associationId } = makeAssociationFixture();
+
+    act(() => {
+      handleUpdateMultiplicity(doc, diagram.id, associationId, 'source', '3..7');
+    });
+    expect(projectYDocToDiagram(doc).associations.find((a) => a.id === associationId)?.sourceMultiplicity).toBe('3..7');
+
+    act(() => {
+      handleUpdateMultiplicity(doc, diagram.id, associationId, 'source', '2');
+    });
+    expect(projectYDocToDiagram(doc).associations.find((a) => a.id === associationId)?.sourceMultiplicity).toBe('2');
+
+    act(() => {
+      handleUpdateMultiplicity(doc, diagram.id, associationId, 'source', '*');
+    });
+    expect(projectYDocToDiagram(doc).associations.find((a) => a.id === associationId)?.sourceMultiplicity).toBe('*');
+  });
+
+  it('rejects non-numeric garbage: no delta emitted, previous value retained', () => {
     const { diagram, doc, associationId } = makeAssociationFixture();
     let threw: unknown = null;
 
     act(() => {
       try {
-        handleUpdateMultiplicity(doc, diagram.id, associationId, 'source', '3..7');
+        handleUpdateMultiplicity(doc, diagram.id, associationId, 'source', 'abc');
       } catch (error) {
         threw = error;
       }
@@ -401,7 +443,7 @@ describe('6.4b multiplicity editing (editor:R4 — second half)', () => {
     expect(assoc?.targetMultiplicity).toBe('1');
   });
 
-  it('renders the multiplicity editor with two selects (only the 4 enum values) when an edge is clicked, and changing a select updates the model', async () => {
+  it('renders the multiplicity editor with two free text inputs when an edge is clicked, and editing updates the model', async () => {
     const diagram = makeFixture();
     diagram.associations = [{ id: crypto.randomUUID(), sourceClassId: diagram.classes[0]!.id, targetClassId: diagram.classes[1]!.id, sourceMultiplicity: '1', targetMultiplicity: '1', directed: false }];
     const doc = buildYDocFromDiagram(diagram);
@@ -417,37 +459,26 @@ describe('6.4b multiplicity editing (editor:R4 — second half)', () => {
     expect(edge).not.toBeNull();
     fireEvent.click(edge!);
 
-    const source = screen.getByLabelText('Source multiplicity') as HTMLSelectElement;
-    const target = screen.getByLabelText('Target multiplicity') as HTMLSelectElement;
-    expect(Array.from(source.querySelectorAll('option')).map((o) => o.value)).toEqual(['1', '0..1', '1..*', '0..*']);
-    expect(Array.from(target.querySelectorAll('option')).map((o) => o.value)).toEqual(['1', '0..1', '1..*', '0..*']);
-
-    fireEvent.change(source, { target: { value: '0..*' } });
-    expect(projectYDocToDiagram(doc).associations[0]!.sourceMultiplicity).toBe('0..*');
-    expect(source.value).toBe('0..*');
+    const source = screen.getByLabelText('Source multiplicity') as HTMLInputElement;
+    const target = screen.getByLabelText('Target multiplicity') as HTMLInputElement;
+    expect(source.tagName).toBe('INPUT');
+    expect(target.tagName).toBe('INPUT');
+    expect(source.value).toBe('1');
     expect(target.value).toBe('1');
+
+    // Free text: arbitrary UML range accepted on blur.
+    fireEvent.change(source, { target: { value: '3..7' } });
+    fireEvent.blur(source);
+    expect(projectYDocToDiagram(doc).associations[0]!.sourceMultiplicity).toBe('3..7');
+
+    // Garbage retained: the model keeps the previous value.
+    fireEvent.change(target, { target: { value: 'abc' } });
+    fireEvent.blur(target);
+    expect(projectYDocToDiagram(doc).associations[0]!.targetMultiplicity).toBe('1');
   });
 });
 
-describe('editor:R3 — in-place member editing', () => {
-  /**
-   * jsdom keeps React Flow node wrappers `visibility: hidden` (nodes are only
-   * revealed after real layout measurement), so role-based queries exclude
-   * node-internal elements from the accessibility tree. These helpers query
-   * the container directly; `getByText` still works for node text.
-   */
-  function nodeButton(container: HTMLElement, label: string): HTMLButtonElement {
-    const btn = container.querySelector(`button[aria-label="${label}"]`);
-    expect(btn).not.toBeNull();
-    return btn as HTMLButtonElement;
-  }
-
-  function nodeInput(container: HTMLElement, label: string): HTMLInputElement {
-    const input = container.querySelector(`input[aria-label="${label}"]`);
-    expect(input).not.toBeNull();
-    return input as HTMLInputElement;
-  }
-
+describe('editor:R3 â€” in-place member editing', () => {
   function nodeAlertText(container: HTMLElement): string {
     const alert = container.querySelector('[role="alert"]');
     expect(alert).not.toBeNull();
@@ -469,7 +500,7 @@ describe('editor:R3 — in-place member editing', () => {
     fireEvent.change(nameInput, { target: { value: 'email' } });
     fireEvent.click(nodeButton(container, 'Confirm edit'));
 
-    expect(screen.getByText('email: string')).toBeTruthy();
+    expect(screen.getByText('+email: string')).toBeTruthy();
     const projected = projectYDocToDiagram(doc);
     expect(projected.classes[0]!.attributes[0]).toMatchObject({ name: 'email', type: 'string' });
   });
@@ -490,7 +521,7 @@ describe('editor:R3 — in-place member editing', () => {
     fireEvent.change(paramsInput, { target: { value: 'id: String' } });
     fireEvent.click(nodeButton(container, 'Confirm edit'));
 
-    expect(screen.getByText('getName(String): BigDecimal')).toBeTruthy();
+    expect(screen.getByText('+getName(String): BigDecimal')).toBeTruthy();
     const method = projectYDocToDiagram(doc).classes[0]!.methods[0]!;
     expect(method.returnType).toBe('BigDecimal');
     expect(method.parameters).toEqual([{ name: 'id', type: 'String' }]);
@@ -519,7 +550,86 @@ describe('editor:R3 — in-place member editing', () => {
     fireEvent.change(nodeInput(container, 'Edit attribute name'), { target: { value: 'email' } });
     fireEvent.click(nodeButton(container, 'Cancel edit'));
 
-    expect(screen.getByText('name: string')).toBeTruthy();
+    expect(screen.getByText('+name: string')).toBeTruthy();
     expect(projectYDocToDiagram(doc).classes[0]!.attributes[0]).toMatchObject({ name: 'name' });
+  });
+});
+
+describe('UML member adornments render (unit 9.3)', () => {
+  it('renders visibility prefix, derived slash, multiplicity and static underline class', () => {
+    const diagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Adorn',
+      classes: [
+        {
+          id: crypto.randomUUID(),
+          name: 'Product',
+          position: { x: 0, y: 0 },
+          attributes: [
+            { id: crypto.randomUUID(), name: 'secret', type: 'string', visibility: '-', isStatic: false, isDerived: false },
+            { id: crypto.randomUUID(), name: 'total', type: 'number', visibility: '+', isStatic: false, isDerived: true, multiplicity: '0..*' },
+          ],
+          methods: [
+            { id: crypto.randomUUID(), name: 'count', returnType: 'int', parameters: [], visibility: '#', isStatic: true },
+          ],
+        },
+      ],
+      associations: [],
+    };
+    const doc = buildYDocFromDiagram(diagram);
+
+    render(<DiagramCanvas doc={doc} />);
+
+    expect(screen.getByText('-secret: string')).toBeTruthy();
+    expect(screen.getByTestId('attr-total').textContent).toBe('+/total: number [0..*]');
+    expect(screen.getByTestId('method-count').textContent).toBe('#count(): int');
+    // Static members get the underline class.
+    expect(screen.getByTestId('method-count').className).toContain('uml-member--static');
+    expect(screen.getByTestId('attr-total').className).not.toContain('uml-member--static');
+  });
+});
+
+describe('unit 9 — editor wiring: adornments flow from controls to the model', () => {
+  it('adding an attribute with private/derived/0..* controls stores the adornments', () => {
+    const diagram = makeFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const vis = nodeSelect(container, 'Attribute visibility');
+    expect(vis).not.toBeNull();
+    fireEvent.change(vis, { target: { value: '-' } });
+    fireEvent.change(nodeInput(container, 'Attribute name'), { target: { value: 'secret' } });
+    fireEvent.change(nodeInput(container, 'Attribute type'), { target: { value: 'string' } });
+    fireEvent.change(nodeInput(container, 'Attribute multiplicity'), { target: { value: '0..*' } });
+    fireEvent.click(nodeInput(container, 'Attribute derived'));
+    fireEvent.click(nodeButton(container, 'Add attribute'));
+
+    const customer = projectYDocToDiagram(doc).classes[0]!;
+    const attr = customer.attributes.find((a) => a.name === 'secret');
+    expect(attr).toBeDefined();
+    expect(attr!.visibility).toBe('-');
+    expect(attr!.isDerived).toBe(true);
+    expect(attr!.multiplicity).toBe('0..*');
+    // And the render shows the UML notation: private + derived slash + multiplicity.
+    expect(screen.getByText('-/secret: string [0..*]')).toBeTruthy();
+  });
+
+  it('adding a method with static checkbox stores isStatic', () => {
+    const diagram = makeFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    fireEvent.change(nodeSelect(container, 'Method visibility'), { target: { value: '#' } });
+    fireEvent.change(nodeInput(container, 'Method name'), { target: { value: 'count' } });
+    fireEvent.change(nodeInput(container, 'Method return type'), { target: { value: 'int' } });
+    fireEvent.click(nodeInput(container, 'Method static'));
+    fireEvent.click(nodeButton(container, 'Add method'));
+
+    const customer = projectYDocToDiagram(doc).classes[0]!;
+    const method = customer.methods.find((m) => m.name === 'count');
+    expect(method).toBeDefined();
+    expect(method!.visibility).toBe('#');
+    expect(method!.isStatic).toBe(true);
+    expect(screen.getByTestId('method-count').className).toContain('uml-member--static');
   });
 });

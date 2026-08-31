@@ -220,3 +220,45 @@ describe('OpenAiLlm (wiring contract, stubbed fetch)', () => {
     await expect(llm.interpret('add class Invoice', schema, makeDiagram())).rejects.toThrow('non-JSON');
   });
 });
+
+describe('FakeLlm member adornments (unit 9.5)', () => {
+  it('extracts visibility/static/derived from the utterance into the delta', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagram();
+    const result = await llm.interpret(
+      'add a private static derived attribute cache: int to Customer',
+      {},
+      diagram,
+    );
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; visibility?: string; isStatic?: boolean; isDerived?: boolean };
+      expect(delta.kind).toBe('member');
+      expect(delta.visibility).toBe('-');
+      expect(delta.isStatic).toBe(true);
+      expect(delta.isDerived).toBe(true);
+    }
+  });
+
+  it('omits adornments when the utterance has none', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('add attribute email: string to Customer', {}, makeDiagram());
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { visibility?: string; isStatic?: boolean };
+      expect(delta.visibility).toBeUndefined();
+      expect(delta.isStatic).toBeUndefined();
+    }
+  });
+
+  it('attribute-to-existing-class commands are not misread as class creation', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('add attribute email: string to the class Customer', {}, makeDiagram());
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; name?: string };
+      expect(delta.kind).toBe('member');
+      expect(delta.name).toBe('email');
+    }
+  });
+});
