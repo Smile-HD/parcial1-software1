@@ -30,22 +30,32 @@ export async function closePool(): Promise<void> {
   await pool.end();
 }
 
-// Request/Response schemas
+// Request/Response schemas.
+// `yjsState` (base64 Yjs update) is the authoritative persisted state: clients
+// connected to the collab server share the blob's Yjs clocks, so the API must
+// store the client's own blob instead of rebuilding one from the JSON
+// projection (a rebuilt blob resets clocks and CRDT-merging it against live
+// client docs duplicates Y.Array members). See work unit 6b / design D4.
+// NOTE: declared as plain strings — Fastify's AjV does not know the `base64`
+// format; base64 correctness is enforced in preparePersistence (400 on junk).
 const CreateDiagramBodySchema = z.object({
   name: z.string().min(1),
   diagram: DiagramSchema,
+  yjsState: z.string().min(1).optional(),
 }).strict();
 
 const UpdateDiagramBodySchema = z.object({
   name: z.string().min(1).optional(),
   diagram: DiagramSchema,
   version: z.number().int().positive(),
+  yjsState: z.string().min(1).optional(),
 }).strict();
 
 const DiagramResponseSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   diagram: DiagramSchema,
+  yjsState: z.string(),
   version: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -68,6 +78,7 @@ function mapRowToResponse(row: {
   id: string;
   name: string;
   doc: Diagram;
+  yjs_state: Buffer;
   version: number;
   created_at: Date;
   updated_at: Date;
@@ -76,14 +87,42 @@ function mapRowToResponse(row: {
     id: row.id,
     name: row.name,
     diagram: row.doc,
+    yjsState: row.yjs_state.toString('base64'),
     version: row.version,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
 }
 
-// Build Y.Doc from validated diagram, encode to blob, return both
-function preparePersistence(diagram: Diagram): { doc: Diagram; yjsState: Buffer; version: number } {
+// Build persistence state for a diagram. When the client supplies its own
+// Yjs blob (collab-connected clients do), the blob is authoritative: decode,
+// validate its projection and persist it AS IS so every connected client's
+// clocks keep converging (work unit 6b). Without a blob, rebuild one from the
+// validated JSON projection (legacy/API-only callers).
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function preparePersistence(
+  diagram: Diagram,
+  yjsStateBase64?: string,
+): { doc: Diagram; yjsState: Buffer; version: number } {
+  if (yjsStateBase64 !== undefined) {
+    let update: Uint8Array;
+    try {
+      if (!BASE64_PATTERN.test(yjsStateBase64)) {
+        throw new Error('not base64');
+      }
+      update = new Uint8Array(Buffer.from(yjsStateBase64, 'base64'));
+      const decoded = validateYDocProjection(loadYDocFromUpdate(update));
+      if (!decoded.ok) {
+        throw new Error('projection failed schema validation');
+      }
+      return { doc: decoded.diagram, yjsState: Buffer.from(update), version: 1 };
+    } catch (error) {
+      const reason = error instanceof Error && error.message !== 'not base64' ? error.message : 'cannot decode Y.Doc';
+      throw new Error(`Invalid yjsState blob: ${reason}`);
+    }
+  }
+
   const yDoc = buildYDocFromDiagram(diagram);
   const update = encodeYDoc(yDoc);
   const yjsState = Buffer.from(update);
@@ -165,7 +204,16 @@ export function buildApp(options?: { logger?: boolean }): FastifyInstance {
       const diagramId = diagramData.id ?? uuidv7();
       const validatedDiagram = DiagramSchema.parse({ ...diagramData, id: diagramId });
 
-      const { doc, yjsState, version } = preparePersistence(validatedDiagram);
+      let persisted: { doc: Diagram; yjsState: Buffer; version: number };
+      try {
+        persisted = preparePersistence(validatedDiagram, request.body.yjsState);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('Invalid yjsState')) {
+          return reply.status(400).send({ error: error.message });
+        }
+        throw error;
+      }
+      const { doc, yjsState, version } = persisted;
 
       const client = await pool.connect();
       try {
@@ -224,6 +272,7 @@ export function buildApp(options?: { logger?: boolean }): FastifyInstance {
           id: row.id,
           name: row.name,
           doc: diagram,
+          yjs_state: row.yjs_state,
           version,
           created_at: row.created_at,
           updated_at: row.updated_at,
@@ -246,7 +295,16 @@ export function buildApp(options?: { logger?: boolean }): FastifyInstance {
       // Validate diagram ID matches URL
       const validatedDiagram = DiagramSchema.parse({ ...diagramData, id });
 
-      const { doc, yjsState } = preparePersistence(validatedDiagram);
+      let persisted: { doc: Diagram; yjsState: Buffer; version: number };
+      try {
+        persisted = preparePersistence(validatedDiagram, request.body.yjsState);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('Invalid yjsState')) {
+          return reply.status(400).send({ error: error.message });
+        }
+        throw error;
+      }
+      const { doc, yjsState } = persisted;
 
       const client = await pool.connect();
       try {
