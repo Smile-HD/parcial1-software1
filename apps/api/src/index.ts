@@ -13,12 +13,15 @@ import { z } from 'zod';
 import {
   type Diagram,
   DiagramSchema,
+  type LlmPort,
   buildYDocFromDiagram,
   projectYDocToDiagram,
   encodeYDoc,
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
+import { FakeLlm, OpenAiLlm } from '@app/adapters-ai';
+import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { pathToFileURL } from 'node:url';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
@@ -29,6 +32,16 @@ const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
 export async function closePool(): Promise<void> {
   await pool.end();
 }
+
+// Interpreter LLM wiring: an injected llm (tests) wins over env config
+// (OpenAI-compatible when OPENAI_API_KEY is set), with the deterministic
+// FakeLlm as the offline default so dev/demo never require network.
+export interface AppOptions {
+  logger?: boolean;
+  llm?: LlmPort;
+}
+
+const pendingDeltas = new PendingDeltaStore();
 
 // Request/Response schemas.
 // `yjsState` (base64 Yjs update) is the authoritative persisted state: clients
@@ -178,8 +191,9 @@ async function loadDiagramFromRow(row: {
 }
 
 /** Builds the Fastify app (routes registered, not listening). Exported for smoke tests. */
-export function buildApp(options?: { logger?: boolean }): FastifyInstance {
+export function buildApp(options?: AppOptions): FastifyInstance {
   const app = Fastify({ logger: options?.logger ?? true });
+  const llm: LlmPort = options?.llm ?? OpenAiLlm.fromEnv() ?? new FakeLlm();
 
   // CORS — the web editor (apps/web) is a separate origin in dev (Vite :5173)
   // and calls this API cross-origin; without these headers every browser
@@ -348,6 +362,77 @@ export function buildApp(options?: { logger?: boolean }): FastifyInstance {
       }
     }
   );
+
+  // POST /diagrams/:id/interpret — natural language → refusal | pending delta.
+  // interpreter:R1 — schema-invalid LLM output → 422, model untouched.
+  // interpreter:R3/R4 — refusals carry the supported command categories.
+  app.post<{ Params: { id: string }; Body: { text?: string } }>(
+    '/diagrams/:id/interpret',
+    async (request, reply) => {
+      const { id } = request.params;
+      const text = request.body?.text;
+      if (typeof text !== 'string' || text.trim().length === 0) {
+        return reply.status(400).send({ error: 'text is required' });
+      }
+
+      const result = await pool.query(
+        'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
+        [id],
+      );
+      if (result.rows.length === 0) {
+        return reply.status(404).send({ error: 'Diagram not found' });
+      }
+      const row = result.rows[0];
+
+      let currentIr: Diagram;
+      try {
+        currentIr = (
+          await loadDiagramFromRow({
+            id: row.id,
+            name: row.name,
+            doc: row.doc,
+            yjs_state: row.yjs_state,
+            version: row.version,
+          })
+        ).diagram;
+      } catch (error) {
+        return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
+      }
+
+      try {
+        const outcome = await interpretCommand(text, llm, currentIr, pendingDeltas);
+        if (outcome.status === 'error') {
+          return reply.status(422).send({ status: 'error', error: outcome.message });
+        }
+        return reply.send(outcome);
+      } catch (error) {
+        if (error instanceof LlmUnavailableError) {
+          return reply.status(502).send({ error: `LLM unavailable: ${error.message}` });
+        }
+        throw error;
+      }
+    }
+  );
+
+  // POST /deltas/:id/confirm — releases the pending delta to the confirming
+  // client, which applies it to its Y.Doc and propagates via collab
+  // (interpreter:R2 — the API itself never mutates the diagram here).
+  app.post<{ Params: { id: string } }>('/deltas/:id/confirm', async (request, reply) => {
+    const pending = pendingDeltas.take(request.params.id);
+    if (!pending) {
+      return reply.status(404).send({ error: 'Unknown or already used delta id' });
+    }
+    return { status: 'confirmed', delta: pending.delta, diagramId: pending.diagramId };
+  });
+
+  // POST /deltas/:id/reject — discards the pending delta, model unchanged.
+  app.post<{ Params: { id: string } }>('/deltas/:id/reject', async (request, reply) => {
+    const pending = pendingDeltas.take(request.params.id);
+    if (!pending) {
+      return reply.status(404).send({ error: 'Unknown or already used delta id' });
+    }
+    return { status: 'rejected' };
+  });
 
   return app;
 }
