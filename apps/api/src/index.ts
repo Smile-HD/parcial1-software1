@@ -25,6 +25,16 @@ import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { pathToFileURL } from 'node:url';
 
+// Load apps/api/.env when present so the OpenAI-compatible provider config
+// (OPENAI_API_KEY / OPENAI_BASE_URL / LLM_MODEL / WHISPER_MODEL) and
+// DATABASE_URL survive restarts without shell setup. Missing file is fine —
+// env vars can still come from the shell.
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env in the current directory — rely on the process environment.
+}
+
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
