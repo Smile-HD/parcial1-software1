@@ -229,13 +229,37 @@ export class OpenAiLlm implements LlmPort {
     });
   }
 
-  async interpret(utterance: string, deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
+  async interpret(utterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
     const system = [
-      'You interpret UML class-diagram EDIT commands and translate them into a single structured delta.',
+      'You translate UML class-diagram EDIT commands into structured deltas.',
       'You are an interpreter of user intent, NOT a design generator: refuse any request to invent a complete design, explaining that you edit an existing model on explicit instruction.',
       'Respond ONLY with a JSON object: {"action":"apply","delta":<delta>} or {"action":"refuse","reason":"..."}',
-      'The delta must conform to this JSON Schema:',
-      JSON.stringify(deltaJsonSchema),
+      '',
+      'BASE FIELDS (required on EVERY delta and on EVERY inner batch item): "id":"<new uuid>","diagramId":"<currentIr.id>","timestamp":"<RFC3339 UTC like 2026-08-31T12:00:00.000Z>"',
+      '',
+      'Shapes (use EXACTLY these field names; pick by command):',
+      'CLASS CREATE: {"kind":"class","op":"create", ...base, "classId":"<new uuid or placeholder>","name":"<ClassName>","position":{"x":120,"y":80}}',
+      'CLASS RENAME: {"kind":"class","op":"rename", ...base, "classId":"<existing class uuid>","newName":"<NewName>"}',
+      'CLASS REPOSITION: {"kind":"class","op":"reposition", ...base, "classId":"<existing class uuid>","newPosition":{"x":<number>,"y":<number>}}',
+      'CLASS DELETE: {"kind":"class","op":"delete", ...base, "classId":"<existing class uuid>"}',
+      'ADD ATTRIBUTE: {"kind":"member","op":"addAttribute", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<attrName>","type":"<attrType>"}',
+      'EDIT ATTRIBUTE: {"kind":"member","op":"editAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>","name":"<newName>","type":"<newType>"}',
+      'DELETE ATTRIBUTE: {"kind":"member","op":"deleteAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>"}',
+      'ADD METHOD: {"kind":"member","op":"addMethod", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<methodName>","returnType":"<type>","parameters":[]}',
+      'EDIT METHOD: {"kind":"member","op":"editMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>","name":"<newName>","returnType":"<newReturnType>","parameters":[]}',
+      'DELETE METHOD: {"kind":"member","op":"deleteMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>"}',
+      'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false}',
+      'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*"}',
+      'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
+      'BATCH (multi-change command): {"kind":"batch","id":"<uuid>","diagramId":"<currentIr.id>","timestamp":"<RFC3339>","deltas":[<inner1>,<inner2>,...]} — each inner item ALSO carries its own base fields.',
+      '',
+      'HARD RULES:',
+      '- Every uuid you output MUST be hex-only (0-9a-f) UUID v4.',
+      '- diagramId is copied EXACTLY from currentIr.id.',
+      '- Valid multiplicities are ONLY: 1, 0..1, 1..*, 0..*.',
+      '- For a class you CREATE inside this response, do NOT invent a real uuid: use a PLACEHOLDER like NEW_CLASS_1 (NEW_CLASS_2 for the second, etc.) in the create AND in every other delta that references it (attributes, methods, associations). The system assigns real ids consistently.',
+      '- Classes that ALREADY exist in the current diagram must be referenced by their EXACT uuid from the IR.',
+      '- Never invent fields outside the shapes. Never nest class arrays.',
       `Current diagram (IR): ${JSON.stringify(currentIr)}`,
     ].join('\n');
 
@@ -278,14 +302,60 @@ export class OpenAiLlm implements LlmPort {
       return { kind: 'refused', reason: parsed.reason ?? 'Refused.' };
     }
     if (parsed.action === 'apply' && parsed.delta !== undefined) {
+      // Repair known provider quirks (e.g. Groq gpt-oss hallucinating
+      // non-hex UUID characters) BEFORE validation: ids this tool generates
+      // anyway are regenerated when malformed. The caller's Zod gate
+      // (interpreter:R1) still validates the FULL delta afterwards.
+      const repaired = repairModelIdentifiers(parsed.delta);
       // Schema-shape check happens here as a first gate; the caller still
       // runs DeltaSchema.safeParse (interpreter:R1 is enforced there).
-      const check = DeltaSchema.safeParse(parsed.delta);
+      const check = DeltaSchema.safeParse(repaired);
       if (!check.success) {
-        return { kind: 'delta', value: parsed.delta };
+        return { kind: 'delta', value: repaired };
       }
       return { kind: 'delta', value: check.data };
     }
     throw new Error('LLM returned an unexpected action');
   }
+}
+
+// ── Model-output repair (provider quirk normalization) ─────────────────────
+
+/** UUID fields the MODEL is allowed to invent; malformed values are regenerated. */
+const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'sourceClassId', 'targetClassId']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * Deep-walks a model-produced delta and regenerates malformed ids/timestamps.
+ * Every occurrence of the SAME invalid id string maps to the SAME generated
+ * UUID (memoized), so model placeholders like "NEW_CLASS_1" stay coherent
+ * across batch items (create + attribute + association reference the same
+ * class). `diagramId` is deliberately NOT repairable — it must match the
+ * current IR, and a mismatch is a real error the Zod gate must catch.
+ */
+export function repairModelIdentifiers(value: unknown, memo: Map<string, string> = new Map()): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => repairModelIdentifiers(item, memo));
+  }
+  if (typeof value !== 'object' || value === null) {
+    return value;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof val === 'string' && REPAIRABLE_ID_FIELDS.has(key) && !UUID_RE.test(val)) {
+      const existing = memo.get(val);
+      out[key] = existing ?? crypto.randomUUID();
+      if (existing === undefined) {
+        memo.set(val, out[key] as string);
+      }
+      continue;
+    }
+    if (typeof val === 'string' && key === 'timestamp' && !RFC3339_RE.test(val)) {
+      out[key] = new Date().toISOString();
+      continue;
+    }
+    out[key] = repairModelIdentifiers(val, memo);
+  }
+  return out;
 }

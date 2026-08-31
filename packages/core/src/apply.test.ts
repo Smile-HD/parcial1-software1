@@ -538,3 +538,36 @@ describe('applyDelta — Basic Operations (task 3.2)', () => {
     expect(state.classes[0].methods).toHaveLength(0);
   });
 });
+describe('recursive (self) associations', () => {
+  it('applies an association create with source === target (recursive association, e.g. Product is-component-of Product)', () => {
+    const state = createDiagram({
+      classes: [createClass({ name: 'Product' })],
+    });
+    const productId = state.classes[0].id;
+
+    const selfAssocDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: productId,
+      targetClassId: productId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '0..*' as const,
+      directed: false,
+    };
+
+    const result = applyDelta(state, selfAssocDelta);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.associations).toHaveLength(1);
+      expect(result.value.associations[0].sourceClassId).toBe(productId);
+      expect(result.value.associations[0].targetClassId).toBe(productId);
+    }
+    // Original unchanged
+    expect(state.associations).toHaveLength(0);
+  });
+});
