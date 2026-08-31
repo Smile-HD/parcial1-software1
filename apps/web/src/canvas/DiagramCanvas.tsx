@@ -52,14 +52,15 @@ export interface AssociationLink {
 /**
  * editor:R4 - emits an association `create` delta via applyDeltaToYDoc.
  * Guards before emitting: the delta schema throws on invalid input, so no
- * self-loop or empty class id ever reaches it.
+ * empty class id ever reaches it. Self (recursive) associations — the same
+ * class on both ends — are valid UML and allowed by the core engine.
  */
 export function handleCreateAssociation(
   doc: Y.Doc,
   diagramId: string,
   link: AssociationLink,
 ): void {
-  if (link.sourceClassId === link.targetClassId || link.sourceClassId === '' || link.targetClassId === '') {
+  if (link.sourceClassId === '' || link.targetClassId === '') {
     return;
   }
   const delta: AssociationDelta = {

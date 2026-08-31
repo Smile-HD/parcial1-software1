@@ -109,6 +109,84 @@ describe('OpenAiLlm (wiring contract, stubbed fetch)', () => {
     expect(result.kind).toBe('delta');
   });
 
+  /**
+   * Groq's gpt-oss-120b hallucinates non-hex UUID characters ("...5f6g") even
+   * with strict shape instructions. The adapter repairs malformed ids BEFORE
+   * returning the result — the caller's Zod gate (interpreter:R1) still
+   * validates everything, but legitimate commands stop failing on ids.
+   */
+  it('repairs hallucinated non-hex ids with fresh UUID v4 values', async () => {
+    const diagram = makeDiagram();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ action: 'apply', delta: { kind: 'class', op: 'create', id: 'not-a-valid-uuid-at-all', diagramId: diagram.id, timestamp: 'garbage-timestamp', classId: 'e7f8g9h0-1i2j-3k4l-5m6n-7o8p9q0r1s2t', name: 'Product', position: { x: 0, y: 0 } } }) } }],
+        }),
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    const result = await llm.interpret('add class Product', schema, diagram);
+
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { id: string; classId: string; timestamp: string; diagramId: string };
+      const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      expect(delta.id).toMatch(UUID_V4);
+      expect(delta.classId).toMatch(UUID_V4);
+      expect(delta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/);
+      // diagramId is NEVER repaired: it must match the current IR exactly.
+      expect(delta.diagramId).toBe(diagram.id);
+    }
+  });
+
+  /**
+   * Cross-reference coherence: when a batch creates a class and other inner
+   * deltas reference it, the model may use a symbolic placeholder (or repeat
+   * the same malformed id). Every occurrence of the SAME invalid string must
+   * map to the SAME generated UUID, or applyDelta fails with dangling refs.
+   */
+  it('maps every occurrence of the same placeholder id to one shared UUID', async () => {
+    const diagram = makeDiagram();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ action: 'apply', delta: {
+            kind: 'batch',
+            id: 'batch-id-placeholder',
+            diagramId: diagram.id,
+            timestamp: new Date().toISOString(),
+            deltas: [
+              { kind: 'class', op: 'create', id: 'delta-1-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', name: 'Supplier', position: { x: 0, y: 0 } },
+              { kind: 'member', op: 'addAttribute', id: 'delta-2-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', memberId: 'member-1-placeholder', name: 'name', type: 'string' },
+              { kind: 'association', op: 'create', id: 'delta-3-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), associationId: 'assoc-1-placeholder', sourceClassId: 'NEW_CLASS_1', targetClassId: diagram.classes[0]!.id, sourceMultiplicity: '1', targetMultiplicity: '0..*', directed: false },
+            ],
+          } }) } }],
+        }),
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    const result = await llm.interpret('create class Supplier with attribute name: string and link Supplier with Customer', schema, diagram);
+
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const batch = result.value as { kind: string; deltas: Array<{ classId?: string; sourceClassId?: string }> };
+      expect(batch.kind).toBe('batch');
+      const [created, added, assoc] = batch.deltas;
+      expect(created!.classId).toMatch(/^[0-9a-f-]{36}$/i);
+      // The SAME placeholder → the SAME uuid across all three deltas.
+      expect(added!.classId).toBe(created!.classId);
+      expect(assoc!.sourceClassId).toBe(created!.classId);
+      // Distinct placeholders get distinct uuids.
+      expect(added!['memberId' as keyof typeof added]).not.toBe(created!.classId);
+    }
+  });
+
   it('parses a refuse action into a refusal result', async () => {
     vi.stubGlobal(
       'fetch',
