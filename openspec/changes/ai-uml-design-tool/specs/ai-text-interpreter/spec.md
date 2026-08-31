@@ -59,7 +59,9 @@ The system MUST refuse requests to invent a complete design (for example "genera
 
 ### Requirement: Supported Command Vocabulary
 
-The system MUST document and support a bounded command set covering: add/rename/delete class, add/remove attribute, add/remove method, add/remove association with multiplicities. Out-of-vocabulary commands MUST be rejected with a clear message rather than guessed.
+The system MUST document and support a bounded command set covering: add/rename/delete class, add/remove/edit attribute (with visibility, static, derived adornments), add/remove/edit method, add/remove/edit association with UML 2.5.1 multiplicities, aggregation/composition (including association names and roles), generalization (create/delete), interfaces/abstract classes, realization and dependency edges, and n-ary associations. Out-of-vocabulary commands MUST be rejected with a clear message rather than guessed.
+
+> EXPANDED 2026-08-31 (UML 2.5.1 compliance amendment): the vocabulary grows per compliance units 9–13; every new delta kind still passes the same schema gate and confirm-before-apply flow.
 
 #### Scenario: Out-of-vocabulary command
 
@@ -67,6 +69,18 @@ The system MUST document and support a bounded command set covering: add/rename/
 - WHEN the user submits "make the diagram prettier"
 - THEN the command is rejected as unsupported
 - AND the supported command categories are surfaced to the user
+
+#### Scenario: Composition command
+
+- GIVEN classes `Order` and `OrderLine`
+- WHEN the user submits "Order is composed of OrderLines"
+- THEN a pending association delta with `aggregation: composite` is offered for confirmation
+
+#### Scenario: Generalization command
+
+- GIVEN classes `Item` and `Product`
+- WHEN the user submits "Product is a kind of Item"
+- THEN a pending generalization delta is offered for confirmation
 
 ## Acceptance Criteria
 

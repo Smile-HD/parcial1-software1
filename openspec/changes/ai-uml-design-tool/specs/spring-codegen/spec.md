@@ -52,6 +52,41 @@ The system MUST translate associations and multiplicities into JPA relationship 
 - THEN the association is skipped with a reported warning
 - AND the remaining generation still completes
 
+### Requirement: UML 2.5.1 Element Mapping (added 2026-08-31)
+
+The system MUST map the UML 2.5.1 elements added by the compliance series to JPA constructs via a documented mapping table:
+
+| UML element | JPA/Java mapping |
+|---|---|
+| Composition (container end) | owning side `cascade = CascadeType.ALL, orphanRemoval = true` |
+| Shared aggregation | plain association (no cascade) — documented decision |
+| Generalization | `@Inheritance(strategy = SINGLE_TABLE)` + `@DiscriminatorColumn` on the superclass |
+| Interface with realizations | generated `interface` + `implements` clause on realizers |
+| Abstract class | `abstract` entity class (warn if mapped table needed) |
+| Member visibility `-`/`#` | `private`/`protected` field modifiers |
+| Attribute multiplicity >1 | `List<T>` field with `@ElementCollection` |
+| N-ary association | intermediate join entity with `@ManyToOne` to each member |
+
+Unmappable combinations MUST be reported as warnings and degrade per the mapping table, never silently dropped.
+
+#### Scenario: Composition maps to cascade
+
+- GIVEN `Order ◆—— OrderLine` (composite, Order is container)
+- WHEN generation runs
+- THEN `Order`'s collection of `OrderLine` declares `cascade = ALL, orphanRemoval = true`
+
+#### Scenario: Generalization maps to single-table inheritance
+
+- GIVEN `Item` superclass with subclass `Product`
+- WHEN generation runs
+- THEN `Item` declares `@Inheritance(strategy = SINGLE_TABLE)` and `Product` extends `Item`
+
+#### Scenario: N-ary becomes join entity
+
+- GIVEN a ternary association Supplier–Part–Project
+- WHEN generation runs
+- THEN an intermediate entity with `@ManyToOne` references to all three is generated
+
 ### Requirement: Repositories And Minimal Controllers
 
 The system MUST emit one Spring Data repository per entity and one REST controller per entity exposing create, read (single + list), update and delete.
