@@ -85,4 +85,4 @@ The client SHOULD remain a thin demo harness: no offline caching, no auth, no mu
 
 ## Open Questions
 
-- Client technology is unresolved: web/PWA versus thin native. Pick before the tasks phase, since it drives effort and demo-day device setup.
+- RESOLVED (2026-08-31): client technology = **Flutter** (exam's mandated frontend stack; doubles as a reference the student can read before hand-building the exam's Flutter app). Requirement: Dart SDK + Flutter toolchain on the dev machine; test command `flutter test` inside `mobile-test-client/`.

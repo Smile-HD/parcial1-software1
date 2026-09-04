@@ -50,7 +50,7 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 | 16 | Photo importer | 16 | `pnpm --filter @app/api test` | fake vision + golden photo | drop photo route/UI |
 | 17 | System B offline verification | 17 | `node tools/golden-check.mjs` | offline run, restart survival | revert golden-check extensions |
 | 18 | Offline assistant (System B) | 18 | `node tools/golden-check.mjs` | assistant CRUD offline | revert assistant templates |
-| 19 | Mobile test client + demo hardening | 19 | `pnpm --filter mobile-test-client test` | Expo Go vs generated backend | delete `mobile-test-client/` |
+| 19 | Mobile test client + demo hardening | 19 | `flutter test` (mobile-test-client/) | Flutter app vs generated backend | delete `mobile-test-client/` |
 
 ## Phase 1: Foundation (PR 1)
 
@@ -163,6 +163,7 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 - [ ] 14.4 Test: 3-class diagram output contains ONLY backend sources/resources/build file — zero frontend dirs (codegen:R1).
 - [ ] 14.5 UML-v2 mapping: composition ⇒ owning-side `cascade = ALL, orphanRemoval = true`; shared aggregation ⇒ plain association (documented decision); generalization ⇒ `@Inheritance` single-table strategy with discriminator (warning per unmapped case); interfaces with realizations ⇒ `implements` clause; abstract class ⇒ `@MappedSuperclass` fallback OR abstract entity (warning); visibility `-`/`#` ⇒ private/protected fields; n-ary ⇒ intermediate join entity (documented); attribute multiplicity >1 ⇒ `List<T>` with `@ElementCollection`. Documented as codegen mapping table extension (spec delta below).
 - [ ] 14.6 Create `templates/spring-backend/**/*.hbs` (pom, application.properties, entity, repository, controller) + `golden/reference-diagram.json` (uses composition, generalization, interface + n-ary to lock the mappings) + `tools/golden-check.mjs` — `spawn` argv array, `shell:false`, fixed cwd, timeout (codegen threat row 2).
+- [ ] 14.6b Production profile in generated backend: `application-prod.properties` (PostgreSQL via env vars, schema managed by JPA/Flyway) alongside the offline H2 profile; generated README documents the AWS deploy path (EB/EC2 + RDS PostgreSQL) — production deploy itself is operator work.
 - [ ] 14.7 `POST /diagrams/:id/generate` → `{jobId}`; `GET /jobs/:id`; artifact download — in-process job registry (design D8).
 - [ ] 14.8 Verify: golden build green (codegen:R5); intentionally break one template once and confirm the check fails naming it (codegen:R5).
 - [ ] 15.1 [P] RED: unsupported XMI version rejected naming supported version; current diagram unchanged (xmi:R1).
@@ -185,14 +186,15 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 - [ ] 17.3 Test: CRUD cycle per generated entity; missing-required-field create ⇒ client error, nothing persisted (offline:R3).
 - [ ] 17.4 Generated README documents single-command `./mvnw spring-boot:run`; fresh-operator scenario passes without source edits (offline:R4).
 - [ ] 17.5 Verify: all offline-backend-artifact acceptance criteria via golden check run fully offline.
+- [ ] 17.6 Production profile test: generated backend boots with `application-prod.properties` against a real PostgreSQL (local 5433 instance); schema created on first start and records survive restart — the production counterpart of 17.2's H2 test.
 - [ ] 18.1 Assistant templates: `POST /api/assistant`; deterministic intent matcher → fixed action enum (list/count/create) bound to generated CRUD (assistant:R2, design D11 — Ollama `qwen2.5:1.5b`, localhost only).
 - [ ] 18.2 RED (JUnit in generated project): raw datastore query refused, no mutation (assistant:R2); unmappable request ⇒ canned capability response, no guess (assistant:R3).
 - [ ] 18.3 Model-unavailable ⇒ explicit unavailable response; CRUD unaffected (assistant:R1).
 - [ ] 18.4 Local audit log: timestamp + action name + outcome per executed action (assistant:R4).
 - [ ] 18.5 Verify: assistant answers offline inside golden check; no outbound calls (assistant:R1).
-- [ ] 19.1 Create external `mobile-test-client/` (Expo React Native, outside codegen output, excluded from A's build) (mobile:R1).
-- [ ] 19.2 Runtime-configurable backend base URL; retarget without rebuild (mobile:R4).
-- [ ] 19.3 CRUD screen: full cycle on demo entity; backend-down ⇒ explicit connection error, no stale data shown (mobile:R2).
+- [ ] 19.1 Create external `mobile-test-client/` (Flutter, Dart SDK required; outside codegen output, excluded from A's pnpm build) (mobile:R1).
+- [ ] 19.2 Runtime-configurable backend base URL (settings screen persisted via shared_preferences); retarget without rebuild (mobile:R4).
+- [ ] 19.3 CRUD screen: full cycle on demo entity via `http` package; backend-down ⇒ explicit connection error, no stale data shown (mobile:R2).
 - [ ] 19.4 Assistant screen: scripted action results + canned fallback verbatim (mobile:R3).
 - [ ] 19.5 Scope check: only endpoint config + demo-entity CRUD + assistant view (mobile:R5).
 - [ ] 19.6 Demo hardening: README + rehearsed demo script; verify every proposal fallback rung (AI→video, collab→scripted, photo→golden, XMI→sample, assistant→canned, codegen→pre-generated, client→web/REST).

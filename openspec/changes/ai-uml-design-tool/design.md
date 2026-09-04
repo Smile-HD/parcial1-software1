@@ -19,7 +19,7 @@ One TypeScript pnpm monorepo for System A: pure `packages/core` owns the canonic
 | 9 | Codegen engine | Handlebars `.hbs` files loaded at runtime from `templates/` | String concatenation in TS (templates become code) | Keeps templates as data, never runtime — the A/B boundary |
 | 10 | System B stack | Java 21, Spring Boot 3.3, Spring Data JPA, H2 file mode, Maven wrapper | Gradle (heavier first build); embedded Postgres | `./mvnw spring-boot:run` is the documented one-command start; H2 file survives restart |
 | 11 | Offline assistant | Deterministic intent matcher first; local Ollama (`qwen2.5:1.5b`) only classifies intent → fixed action enum; canned fallback | LLM free-text tool-calling (unreliable at 1.5B); pure keywords (not "AI") | Bounded action set, no arbitrary queries, localhost-only traffic |
-| 12 | Mobile test client | Expo React Native, endpoint configurable at runtime — separate repo/tree, NOT generated | Native Android; web PWA (weaker "mobile" claim) | Reuses TS skills; explicit non-generation per spec |
+| 12 | Mobile test client | Flutter (exam's mandated frontend stack), endpoint configurable at runtime — separate tree, NOT generated | Native Android via Expo React Native (rejected: exam stack is Flutter) | Doubles as a reference app the student reads before hand-building the exam's Flutter client; explicit non-generation per spec |
 | 13 | IR v2 — UML 2.5.1 compliance (added 2026-08-31, units 9–13) | Extend the IR in place: member adornments (visibility/static/derived/attr-multiplicity), arbitrary multiplicities, `aggregation: none\|shared\|composite` on Association + name/roles, separate `generalizations`/`dependencies` collections + `realization` (dependency with interface supplier), `kind: class\|interface` + `isAbstract` on Class, separate `naryAssociations` collection (≥3 memberEnds) | Restrictive subset (rejected: exam DB diagrams need composition cascades, inheritance strategies); a full metamodel port (rejected: 10x scope) | Every mutation still flows through DeltaSchema + confirm gate (interpreter:R1 unchanged); new fields are optional so existing diagrams stay valid; codegen (unit 14) and XMI (unit 15) consume the enriched IR; n-ary kept in a separate collection to leave the binary path untouched |
 
 ## Data Flow
@@ -66,7 +66,7 @@ Interpreter sequence:
 | `apps/collab-server/src/index.ts` | Create | `y-websocket` host, per-diagram rooms |
 | `golden/reference-diagram.json` | Create | Golden IR for the always-buildable check |
 | `tools/golden-check.mjs` | Create | Generate → `mvnw -q package` in a sandbox dir → assert start |
-| `mobile-test-client/` | Create | External Expo client (separate tree, excluded from A's build) |
+| `mobile-test-client/` | Create | External Flutter client (separate tree, excluded from A's pnpm build; verified with `flutter test`) |
 
 ## Interfaces / Contracts
 
@@ -110,7 +110,7 @@ Scope notes (explicit non-requirements): no auth/login/registration — verified
 
 ## Deployment Model
 
-System A: three local processes — Vite dev server (web), Fastify API, `y-websocket` collab server — on one LAN host; PostgreSQL 16 via Docker compose (single container locally; managed instance on AWS if deployed). System B: generated into a temp tree, zipped for download, unzipped by the operator, run with `./mvnw spring-boot:run`; H2 file created on first start; Ollama installed once on the demo machine (localhost only). Mobile client runs via Expo Go against a configured LAN endpoint.
+System A: three local processes — Vite dev server (web), Fastify API, `y-websocket` collab server — on one LAN host; PostgreSQL 16 via Docker compose (single container locally; managed instance on AWS if deployed). System B: generated into a temp tree, zipped for download, unzipped by the operator, run with `./mvnw spring-boot:run`; H2 file created on first start; Ollama installed once on the demo machine (localhost only). Production profile (`application-prod.properties`, PostgreSQL) targets AWS deploy — operator work. Mobile client is a Flutter app run on a device/emulator against a configured LAN endpoint.
 
 ## Build Order
 
