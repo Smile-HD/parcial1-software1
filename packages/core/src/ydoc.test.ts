@@ -207,3 +207,120 @@ describe('ydoc codec', () => {
     expect(() => applyUpdateToYDoc(doc, corruptUpdate)).toThrow();
   });
 });
+
+describe('ydoc codec — Association aggregationEnd round-trip', () => {
+  it('buildYDocFromDiagram → projectYDocToDiagram preserves aggregationEnd', () => {
+    const diagram = DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'AggregationEnd Test',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'OrderLine', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440003',
+          sourceClassId: '550e8400-e29b-41d4-a716-446655440001',
+          targetClassId: '550e8400-e29b-41d4-a716-446655440002',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'composite',
+          aggregationEnd: 'target',
+        },
+        {
+          id: '550e8400-e29b-41d4-a716-446655440004',
+          sourceClassId: '550e8400-e29b-41d4-a716-446655440001',
+          targetClassId: '550e8400-e29b-41d4-a716-446655440002',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'shared',
+          aggregationEnd: 'source',
+        },
+      ],
+    });
+
+    const doc = buildYDocFromDiagram(diagram);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.associations).toHaveLength(2);
+    const compositeAssoc = projected.associations.find(a => a.aggregation === 'composite')!;
+    expect(compositeAssoc.aggregationEnd).toBe('target');
+    const sharedAssoc = projected.associations.find(a => a.aggregation === 'shared')!;
+    expect(sharedAssoc.aggregationEnd).toBe('source');
+  });
+
+  it('round-trip through encode/load preserves aggregationEnd', () => {
+    const diagram = DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'AggregationEnd Test',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'OrderLine', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440003',
+          sourceClassId: '550e8400-e29b-41d4-a716-446655440001',
+          targetClassId: '550e8400-e29b-41d4-a716-446655440002',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'composite',
+          aggregationEnd: 'target',
+        },
+      ],
+    });
+
+    const doc = buildYDocFromDiagram(diagram);
+    const update = encodeYDoc(doc);
+    const loadedDoc = loadYDocFromUpdate(update);
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.associations).toHaveLength(1);
+    expect(projected.associations[0].aggregationEnd).toBe('target');
+  });
+
+  it('associations without aggregationEnd in Y.Doc get IR default "source" on projection', () => {
+    // Simulate old Y.Doc without aggregationEnd field
+    const doc = new Y.Doc();
+    const yClasses = doc.getMap('classes');
+    const yAssociations = doc.getMap('associations');
+    const yMeta = doc.getMap('meta');
+
+    yMeta.set('id', '550e8400-e29b-41d4-a716-446655440000');
+    yMeta.set('name', 'Old Diagram');
+
+    const yClass1 = new Y.Map();
+    yClass1.set('id', '550e8400-e29b-41d4-a716-446655440001');
+    yClass1.set('name', 'Order');
+    yClass1.set('position', new Y.Map([['x', 0], ['y', 0]]));
+    yClass1.set('attributes', new Y.Array());
+    yClass1.set('methods', new Y.Array());
+    yClasses.set('550e8400-e29b-41d4-a716-446655440001', yClass1);
+
+    const yClass2 = new Y.Map();
+    yClass2.set('id', '550e8400-e29b-41d4-a716-446655440002');
+    yClass2.set('name', 'OrderLine');
+    yClass2.set('position', new Y.Map([['x', 300], ['y', 0]]));
+    yClass2.set('attributes', new Y.Array());
+    yClass2.set('methods', new Y.Array());
+    yClasses.set('550e8400-e29b-41d4-a716-446655440002', yClass2);
+
+    const yAssoc = new Y.Map();
+    yAssoc.set('id', '550e8400-e29b-41d4-a716-446655440003');
+    yAssoc.set('sourceClassId', '550e8400-e29b-41d4-a716-446655440001');
+    yAssoc.set('targetClassId', '550e8400-e29b-41d4-a716-446655440002');
+    yAssoc.set('sourceMultiplicity', '1');
+    yAssoc.set('targetMultiplicity', '0..*');
+    yAssoc.set('directed', false);
+    yAssoc.set('aggregation', 'composite');
+    // aggregationEnd NOT SET (old doc)
+    yAssociations.set('550e8400-e29b-41d4-a716-446655440003', yAssoc);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.associations).toHaveLength(1);
+    expect(projected.associations[0].aggregationEnd).toBe('source'); // IR default
+  });
+});

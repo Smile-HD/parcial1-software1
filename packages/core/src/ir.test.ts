@@ -80,3 +80,143 @@ describe('IR Schema — Member adornments (unit 9.1, UML 2.5.1 compliance)', () 
     expect(AttributeSchema.safeParse({ id: crypto.randomUUID(), name: 'x', type: 'int', multiplicity: '*' }).success).toBe(true);
   });
 });
+
+describe('IR Schema — Association aggregation, name, roles (unit 10.1, 10.2)', () => {
+  it('defaults aggregation to "none" when absent (backward compat)', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+    });
+    expect(parsed.aggregation).toBe('none');
+  });
+
+  it('accepts aggregation enum: none, shared, composite', () => {
+    for (const agg of ['none', 'shared', 'composite'] as const) {
+      const parsed = AssociationSchema.parse({
+        id: crypto.randomUUID(),
+        sourceClassId: crypto.randomUUID(),
+        targetClassId: crypto.randomUUID(),
+        sourceMultiplicity: '1',
+        targetMultiplicity: '0..*',
+        directed: true,
+        aggregation: agg,
+      });
+      expect(parsed.aggregation).toBe(agg);
+    }
+  });
+
+  it('REJECTS invalid aggregation value', () => {
+    const result = AssociationSchema.safeParse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'invalid',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts optional association name', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      name: 'places',
+    });
+    expect(parsed.name).toBe('places');
+  });
+
+  it('accepts optional sourceRole and targetRole', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      sourceRole: 'buyer',
+      targetRole: 'order',
+    });
+    expect(parsed.sourceRole).toBe('buyer');
+    expect(parsed.targetRole).toBe('order');
+  });
+
+  it('name, sourceRole, targetRole default to undefined when absent (backward compat)', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+    });
+    expect(parsed.name).toBeUndefined();
+    expect(parsed.sourceRole).toBeUndefined();
+    expect(parsed.targetRole).toBeUndefined();
+  });
+});
+
+describe('IR Schema — Association aggregationEnd (UML 2.5.1 explicit end ownership)', () => {
+  it('defaults aggregationEnd to "source" when absent (backward compat)', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'composite',
+    });
+    expect(parsed.aggregationEnd).toBe('source');
+  });
+
+  it('accepts explicit aggregationEnd "target"', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'composite',
+      aggregationEnd: 'target',
+    });
+    expect(parsed.aggregationEnd).toBe('target');
+  });
+
+  it('REJECTS invalid aggregationEnd value', () => {
+    const result = AssociationSchema.safeParse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'composite',
+      aggregationEnd: 'invalid',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('aggregationEnd is present even when aggregation is "none" (field always exists)', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'none',
+    });
+    expect(parsed.aggregationEnd).toBe('source');
+  });
+});

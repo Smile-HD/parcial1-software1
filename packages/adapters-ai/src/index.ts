@@ -17,6 +17,7 @@ import {
   type LlmPort,
   type LlmResult,
   type MemberDelta,
+  AggregationKindSchema,
 } from '@app/core';
 
 export const PACKAGE_NAME = '@app/adapters-ai' as const;
@@ -187,7 +188,32 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 7. association between two classes
+    // 7. named association with roles: "association X Y named Z role A role B"
+    // Must be checked BEFORE the generic association pattern
+    const namedAssociation = /\b(?:association|link|asocia(?:ci[óo]n)?)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:(?:with|con|y|and)\s+)?([A-Za-z_]\w*)\s+(?:named|called|llama(?:da)?)\s+([A-Za-z_]\w*)(?:(?:\s+(?:role|rol)\s+([A-Za-z_]\w*))?(?:\s+(?:role|rol)\s+([A-Za-z_]\w*))?)?/i.exec(utterance);
+    if (namedAssociation) {
+      const sourceClassId = classIdByName(currentIr, namedAssociation[1]!);
+      const targetClassId = classIdByName(currentIr, namedAssociation[2]!);
+      if (sourceClassId === null) return refused(`Unknown class "${namedAssociation[1]}"`);
+      if (targetClassId === null) return refused(`Unknown class "${namedAssociation[2]}"`);
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        ...deltaBase(currentIr),
+        associationId: crypto.randomUUID(),
+        sourceClassId,
+        targetClassId,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '1',
+        directed: false,
+        name: namedAssociation[3]!,
+        sourceRole: namedAssociation[4] || undefined,
+        targetRole: namedAssociation[5] || undefined,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 8. association between two classes (plain)
     const association = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
@@ -204,6 +230,77 @@ export class FakeLlm implements LlmPort {
         sourceMultiplicity: '1',
         targetMultiplicity: '1',
         directed: false,
+        aggregation: 'none',
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 9. composition: "X is composed of Y" or "X composes Y" — X is the whole (container), Y is the part
+    const composition = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:composed\s+of|composes|compone)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (composition) {
+      const sourceClassId = classIdByName(currentIr, composition[1]!); // whole/container
+      const targetClassId = classIdByName(currentIr, composition[2]!); // part
+      if (sourceClassId === null) return refused(`Unknown class "${composition[1]}"`);
+      if (targetClassId === null) return refused(`Unknown class "${composition[2]}"`);
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        ...deltaBase(currentIr),
+        associationId: crypto.randomUUID(),
+        sourceClassId,
+        targetClassId,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '0..*',
+        directed: false,
+        aggregation: 'composite',
+        aggregationEnd: 'source', // whole is at source end
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 9b. reversed composition phrasing: "X is part of Y" or "X belongs to Y" — Y is the whole, X is the part
+    const partOf = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:part\s+of|belongs\s+to)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (partOf) {
+      const partClassId = classIdByName(currentIr, partOf[1]!); // part
+      const wholeClassId = classIdByName(currentIr, partOf[2]!); // whole/container
+      if (partClassId === null) return refused(`Unknown class "${partOf[1]}"`);
+      if (wholeClassId === null) return refused(`Unknown class "${partOf[2]}"`);
+      // Determine which end is the whole and set aggregationEnd accordingly
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        ...deltaBase(currentIr),
+        associationId: crypto.randomUUID(),
+        sourceClassId: partClassId,
+        targetClassId: wholeClassId,
+        sourceMultiplicity: '0..*',
+        targetMultiplicity: '1',
+        directed: false,
+        aggregation: 'composite',
+        aggregationEnd: 'target', // whole is at target end
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 10. shared aggregation: "aggregation between X and Y" or "X has a Y" (shared)
+    const sharedAgg = /\b(?:aggregation|shared)\b[\s\S]*?\b(?:between\s+)?([A-Za-z_]\w*)\s+(?:and|with|y)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (sharedAgg) {
+      const sourceClassId = classIdByName(currentIr, sharedAgg[1]!);
+      const targetClassId = classIdByName(currentIr, sharedAgg[2]!);
+      if (sourceClassId === null) return refused(`Unknown class "${sharedAgg[1]}"`);
+      if (targetClassId === null) return refused(`Unknown class "${sharedAgg[2]}"`);
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        ...deltaBase(currentIr),
+        associationId: crypto.randomUUID(),
+        sourceClassId,
+        targetClassId,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '0..*',
+        directed: false,
+        aggregation: 'shared',
+        aggregationEnd: 'source', // default to source for shared
       };
       return { kind: 'delta', value: delta };
     }
@@ -268,15 +365,22 @@ export class OpenAiLlm implements LlmPort {
       'ADD METHOD: {"kind":"member","op":"addMethod", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<methodName>","returnType":"<type>","parameters":[] [, "visibility":"+"|"-"|"#"|"~"] [, "isStatic":true]}',
       'EDIT METHOD: {"kind":"member","op":"editMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>","name":"<newName>","returnType":"<newReturnType>","parameters":[] [, visibility/isStatic]}',
       'DELETE METHOD: {"kind":"member","op":"deleteMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>"}',
-      'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false}',
-      'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*"}',
+'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
+      'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*" [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
       'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
-      'BATCH (multi-change command): {"kind":"batch","id":"<uuid>","diagramId":"<currentIr.id>","timestamp":"<RFC3339>","deltas":[<inner1>,<inner2>,...]} — each inner item ALSO carries its own base fields.',
+      '',
+      'AGGREGATION END GUIDANCE:',
+      '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',
+      '- It is INDEPENDENT of drawing direction (source/target class order) and multiplicities.',
+      '- When the user names the WHOLE/OWNER class ("Order is composed of OrderLines", "Order aggregates OrderLine", "OrderLine is part of Order", "OrderLine belongs to Order"), set `aggregationEnd` to the END THAT HOLDS THE WHOLE CLASS.',
+      '- Example: "Order is composed of OrderLine" → whole=Order. If Order is sourceClassId, set aggregationEnd="source". If Order is targetClassId, set aggregationEnd="target".',
+      '- Example: "OrderLine is part of Order" → whole=Order. Set aggregationEnd to the end where Order resides.',
+      '- Default is "source" if omitted (backward compat).',
       '',
       'HARD RULES:',
       '- Every uuid you output MUST be hex-only (0-9a-f) UUID v4.',
       '- diagramId is copied EXACTLY from currentIr.id.',
-      '- Valid multiplicities are ONLY: 1, 0..1, 1..*, 0..*.',
+      '- Valid multiplicities: *, 0, integers, m..n, m..* (UML 2.5.1).',
       '- For a class you CREATE inside this response, do NOT invent a real uuid: use a PLACEHOLDER like NEW_CLASS_1 (NEW_CLASS_2 for the second, etc.) in the create AND in every other delta that references it (attributes, methods, associations). The system assigns real ids consistently.',
       '- Classes that ALREADY exist in the current diagram must be referenced by their EXACT uuid from the IR.',
       '- Never invent fields outside the shapes. Never nest class arrays.',

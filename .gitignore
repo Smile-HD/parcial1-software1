@@ -30,3 +30,6 @@ Thumbs.db
 
 # CodeGraph index (only if one is ever created)
 .codegraph/
+
+# Private report documentation (user-owned, goes to Word manually)
+docs/informe/

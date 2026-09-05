@@ -629,4 +629,78 @@ describe('API: Corrupt blob handling (editor:R5)', () => {
     expect(assoc.sourceMultiplicity).toBe('3..7');
     expect(assoc.targetMultiplicity).toBe('*');
   });
+
+  it('10.6 aggregation kind/name/roles round-trip through POST/GET (editor:R5)', async () => {
+    const classA = { id: uuidv7(), name: 'ClassA', position: { x: 0, y: 0 }, attributes: [], methods: [] };
+    const classB = { id: uuidv7(), name: 'ClassB', position: { x: 100, y: 0 }, attributes: [], methods: [] };
+    const classC = { id: uuidv7(), name: 'ClassC', position: { x: 200, y: 0 }, attributes: [], methods: [] };
+
+    const diagram = DiagramSchema.parse({
+      id: uuidv7(),
+      name: 'Aggregation Round-trip',
+      classes: [classA, classB, classC],
+      associations: [
+        {
+          id: uuidv7(),
+          sourceClassId: classA.id,
+          targetClassId: classB.id,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '1..*',
+          directed: false,
+          aggregation: 'composite',
+          name: 'contains',
+          targetRole: 'lines',
+        },
+        {
+          id: uuidv7(),
+          sourceClassId: classB.id,
+          targetClassId: classC.id,
+          sourceMultiplicity: '0..*',
+          targetMultiplicity: '1',
+          directed: false,
+          aggregation: 'shared',
+          sourceRole: 'grouped',
+        },
+      ],
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Aggregation Round-trip', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: `/diagrams/${diagram.id}`,
+    });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+
+    const associations = body.diagram.associations;
+    expect(associations).toHaveLength(2);
+
+    // Find composite association (ClassA -> ClassB)
+    const composite = associations.find((a: any) => a.aggregation === 'composite');
+    expect(composite).toBeDefined();
+    expect(composite.name).toBe('contains');
+    expect(composite.targetRole).toBe('lines');
+    expect(composite.sourceRole).toBeUndefined();
+    expect(composite.sourceMultiplicity).toBe('1');
+    expect(composite.targetMultiplicity).toBe('1..*');
+
+    // Find shared association (ClassB -> ClassC)
+    const shared = associations.find((a: any) => a.aggregation === 'shared');
+    expect(shared).toBeDefined();
+    expect(shared.sourceRole).toBe('grouped');
+    expect(shared.targetRole).toBeUndefined();
+    expect(shared.name).toBeUndefined();
+    expect(shared.sourceMultiplicity).toBe('0..*');
+    expect(shared.targetMultiplicity).toBe('1');
+
+    // Plain association fields absent stay undefined
+    const plain = associations.find((a: any) => a.aggregation === 'none');
+    expect(plain).toBeUndefined();
+  });
 });

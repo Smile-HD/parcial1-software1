@@ -481,6 +481,39 @@ describe('applyDelta — Basic Operations (task 3.2)', () => {
     expect(state.associations).toHaveLength(1);
   });
 
+  it('UPDATES association meta (aggregation/name/roles) via updateMultiplicity (unit 10.4)', () => {
+    const customerId = uuidv4();
+    const orderId = uuidv4();
+    const customer = createClass({ id: customerId, name: 'Customer', position: { x: 100, y: 100 } });
+    const order = createClass({ id: orderId, name: 'Order', position: { x: 300, y: 200 } });
+    const association = createAssociation(customerId, orderId);
+    const state = createDiagram({ classes: [customer, order], associations: [association] });
+
+    const metaDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: association.id,
+      aggregation: 'composite' as const,
+      name: 'contains',
+      sourceRole: 'owner',
+      targetRole: 'part',
+    };
+
+    const result = applyDelta(state, metaDelta);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const assoc = result.value.associations[0]!;
+      expect(assoc.aggregation).toBe('composite');
+      expect(assoc.name).toBe('contains');
+      expect(assoc.sourceRole).toBe('owner');
+      expect(assoc.targetRole).toBe('part');
+    }
+  });
+
   it('ADDS an attribute successfully', () => {
     const existingClassId = uuidv4();
     const existingClass = createClass({ id: existingClassId, name: 'Customer', position: { x: 100, y: 100 } });
@@ -569,5 +602,135 @@ describe('recursive (self) associations', () => {
     }
     // Original unchanged
     expect(state.associations).toHaveLength(0);
+  });
+});
+
+describe('applyDelta — Association aggregationEnd (UML 2.5.1 explicit end ownership)', () => {
+  it('creates association with explicit aggregationEnd "target" and stores it', () => {
+    const customerId = uuidv4();
+    const orderId = uuidv4();
+    const customer = createClass({ id: customerId, name: 'Customer', position: { x: 100, y: 100 } });
+    const order = createClass({ id: orderId, name: 'Order', position: { x: 300, y: 200 } });
+    const state = createDiagram({ classes: [customer, order] });
+
+    const createAssocDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: customerId,
+      targetClassId: orderId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '0..*' as const,
+      directed: false,
+      aggregation: 'composite' as const,
+      aggregationEnd: 'target' as const,
+    };
+
+    const result = applyDelta(state, createAssocDelta);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const assoc = result.value.associations[0];
+      expect(assoc.aggregation).toBe('composite');
+      expect(assoc.aggregationEnd).toBe('target');
+    }
+  });
+
+  it('creates association without aggregationEnd and IR default "source" applies', () => {
+    const customerId = uuidv4();
+    const orderId = uuidv4();
+    const customer = createClass({ id: customerId, name: 'Customer', position: { x: 100, y: 100 } });
+    const order = createClass({ id: orderId, name: 'Order', position: { x: 300, y: 200 } });
+    const state = createDiagram({ classes: [customer, order] });
+
+    const createAssocDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: customerId,
+      targetClassId: orderId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '0..*' as const,
+      directed: false,
+      aggregation: 'composite' as const,
+      // aggregationEnd omitted
+    };
+
+    const result = applyDelta(state, createAssocDelta);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const assoc = result.value.associations[0];
+      expect(assoc.aggregation).toBe('composite');
+      expect(assoc.aggregationEnd).toBe('source'); // IR default
+    }
+  });
+
+  it('updates association aggregationEnd via updateMultiplicity delta', () => {
+    const customerId = uuidv4();
+    const orderId = uuidv4();
+    const customer = createClass({ id: customerId, name: 'Customer', position: { x: 100, y: 100 } });
+    const order = createClass({ id: orderId, name: 'Order', position: { x: 300, y: 200 } });
+    const association = createAssociation(customerId, orderId, { aggregation: 'shared', aggregationEnd: 'source' });
+    const state = createDiagram({ classes: [customer, order], associations: [association] });
+
+    const updateDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: association.id,
+      aggregationEnd: 'target' as const,
+    };
+
+    const result = applyDelta(state, updateDelta);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const assoc = result.value.associations[0];
+      expect(assoc.aggregation).toBe('shared');
+      expect(assoc.aggregationEnd).toBe('target');
+    }
+  });
+
+  it('old deltas without aggregationEnd field still apply with IR default', () => {
+    const customerId = uuidv4();
+    const orderId = uuidv4();
+    const customer = createClass({ id: customerId, name: 'Customer', position: { x: 100, y: 100 } });
+    const order = createClass({ id: orderId, name: 'Order', position: { x: 300, y: 200 } });
+    const state = createDiagram({ classes: [customer, order] });
+
+    // Simulate old delta without aggregationEnd field
+    const oldCreateDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: customerId,
+      targetClassId: orderId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '0..*' as const,
+      directed: false,
+      aggregation: 'shared' as const,
+      // No aggregationEnd field (old delta)
+    };
+
+    const result = applyDelta(state, oldCreateDelta);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const assoc = result.value.associations[0];
+      expect(assoc.aggregation).toBe('shared');
+      expect(assoc.aggregationEnd).toBe('source'); // IR default applied
+    }
   });
 });
