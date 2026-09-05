@@ -153,3 +153,86 @@
   color: #555;
   white-space: nowrap;
 }
+
+/* unit 11.4 — class context menu ("make subclass of") */
+.uml-class {
+  position: relative;
+}
+
+.uml-class__context-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+}
+
+.uml-class__context-menu button {
+  font-family: inherit;
+  font-size: 11px;
+  text-align: left;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #1a1a2e;
+  cursor: pointer;
+}
+
+.uml-class__context-menu button:hover {
+  background: #eef0f7;
+}
+
+.uml-class__context-empty {
+  font-size: 11px;
+  color: #777;
+  padding: 4px 8px;
+}
+
+/* unit 11.4 — per-class generalization list in the editor panel */
+.diagram-canvas__generalizations {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.diagram-canvas__generalizations-title {
+  font-weight: 700;
+}
+
+.diagram-canvas__generalizations-empty {
+  color: #777;
+}
+
+.diagram-canvas__generalization-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagram-canvas__delete-generalization {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+  background: #fff;
+  color: #b00020;
+  cursor: pointer;
+}

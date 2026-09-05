@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { type Diagram, type Class, type Association, DiagramSchema, ClassSchema, AssociationSchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Generalization, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema } from './ir.js';
 import { z } from 'zod';
 
 /**
@@ -8,6 +8,7 @@ import { z } from 'zod';
 const Y_DOC_TYPES = {
   classes: 'classes',
   associations: 'associations',
+  generalizations: 'generalizations',
   meta: 'meta',
 } as const;
 
@@ -22,6 +23,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
   const doc = new Y.Doc();
   const yClasses = doc.getMap(Y_DOC_TYPES.classes);
   const yAssociations = doc.getMap(Y_DOC_TYPES.associations);
+  const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   // Set diagram metadata
@@ -96,6 +98,15 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yAssociations.set(assoc.id, yAssoc);
   }
 
+  // Add generalizations (unit 11 — blob-preserving, same shape as associations)
+  for (const gen of diagram.generalizations ?? []) {
+    const yGen = new Y.Map();
+    yGen.set('id', gen.id);
+    yGen.set('subClassId', gen.subClassId);
+    yGen.set('superClassId', gen.superClassId);
+    yGeneralizations.set(gen.id, yGen);
+  }
+
   return doc;
 }
 
@@ -106,6 +117,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
 export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   const yClasses = doc.getMap(Y_DOC_TYPES.classes);
   const yAssociations = doc.getMap(Y_DOC_TYPES.associations);
+  const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   const id = yMeta.get('id') as string;
@@ -204,11 +216,23 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     }));
   });
 
+  const generalizations: Generalization[] = [];
+  yGeneralizations.forEach((yGen) => {
+    if (!(yGen instanceof Y.Map)) return;
+
+    generalizations.push(GeneralizationSchema.parse({
+      id: yGen.get('id') as string,
+      subClassId: yGen.get('subClassId') as string,
+      superClassId: yGen.get('superClassId') as string,
+    }));
+  });
+
   return DiagramSchema.parse({
     id,
     name,
     classes,
     associations,
+    generalizations,
   });
 }
 

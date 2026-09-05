@@ -1,5 +1,5 @@
-import { type Diagram, type Class, type Association, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
-import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type BatchDelta, DeltaSchema } from './delta.js';
+import { type Diagram, type Class, type Association, type Generalization, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
+import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type BatchDelta, DeltaSchema } from './delta.js';
 import { z } from 'zod';
 
 /**
@@ -14,6 +14,9 @@ export type ApplyError =
   | { kind: 'InvalidOperationError'; reason: string }
   | { kind: 'MemberNotFoundError'; memberId: string; classId: string }
   | { kind: 'DuplicateMemberError'; memberName: string; classId: string }
+  | { kind: 'DuplicateGeneralizationError'; subClassId: string; superClassId: string }
+  | { kind: 'GeneralizationNotFoundError'; generalizationId: string }
+  | { kind: 'GeneralizationCycleError'; subClassId: string; superClassId: string }
   | { kind: 'BatchError'; error: ApplyError; failedDeltaIndex: number };
 
 /**
@@ -111,6 +114,49 @@ function cascadeDeleteAssociations(diagram: Diagram, classId: string): Diagram {
 }
 
 /**
+ * Removes all generalization edges connected to a class, in either the
+ * subClass or the superClass role (cascade delete, editor:R Generalization).
+ */
+function cascadeDeleteGeneralizations(diagram: Diagram, classId: string): Diagram {
+  return {
+    ...diagram,
+    generalizations: diagram.generalizations.filter(
+      g => g.subClassId !== classId && g.superClassId !== classId
+    ),
+  };
+}
+
+/**
+ * Cycle check for generalization edges (the highest-risk invariant, unit 11.2).
+ *
+ * Edges point subClass → superClass. Adding `sub → super` closes a cycle iff
+ * `sub` is reachable from `super` by walking existing sub→super edges
+ * (i.e. super is already a descendant of sub), or sub === super (self-loop).
+ * Ancestor traversal covers multiple inheritance (diamond DAGs stay valid).
+ */
+function wouldCreateGeneralizationCycle(
+  diagram: Diagram,
+  subClassId: string,
+  superClassId: string,
+): boolean {
+  if (subClassId === superClassId) return true;
+  const visited = new Set<string>();
+  const stack: string[] = [superClassId];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (current === subClassId) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const gen of diagram.generalizations) {
+      if (gen.subClassId === current) {
+        stack.push(gen.superClassId);
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Applies a single class delta.
  */
 function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagram> {
@@ -168,9 +214,10 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
       }
       // Remove the class
       const updatedClasses = diagram.classes.filter(c => c.id !== delta.classId);
-      // Cascade delete associations
+      // Cascade delete associations and generalization edges
       let updatedDiagram = { ...diagram, classes: updatedClasses };
       updatedDiagram = cascadeDeleteAssociations(updatedDiagram, delta.classId);
+      updatedDiagram = cascadeDeleteGeneralizations(updatedDiagram, delta.classId);
       return ok(updatedDiagram);
     }
 
@@ -405,6 +452,54 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
 }
 
 /**
+ * Applies a single generalization delta (unit 11.2 invariants):
+ * - create: both classes must exist; no duplicate edge (same sub+super);
+ *   no cycles (self-loop, 2-cycle, or transitive via ancestor traversal).
+ * - delete: the edge must exist.
+ */
+function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta): ApplyResult<Diagram> {
+  switch (delta.op) {
+    case 'create': {
+      if (!delta.subClassId || !delta.superClassId) {
+        return err({ kind: 'InvalidOperationError', reason: 'Generalization create requires subClassId and superClassId' });
+      }
+      if (!findClass(diagram, delta.subClassId)) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.subClassId });
+      }
+      if (!findClass(diagram, delta.superClassId)) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.superClassId });
+      }
+      if (diagram.generalizations.some(g => g.subClassId === delta.subClassId && g.superClassId === delta.superClassId)) {
+        return err({ kind: 'DuplicateGeneralizationError', subClassId: delta.subClassId, superClassId: delta.superClassId });
+      }
+      if (wouldCreateGeneralizationCycle(diagram, delta.subClassId, delta.superClassId)) {
+        return err({ kind: 'GeneralizationCycleError', subClassId: delta.subClassId, superClassId: delta.superClassId });
+      }
+      const newGeneralization = GeneralizationSchema.parse({
+        id: delta.generalizationId,
+        subClassId: delta.subClassId,
+        superClassId: delta.superClassId,
+      });
+      return ok({ ...diagram, generalizations: [...diagram.generalizations, newGeneralization] });
+    }
+
+    case 'delete': {
+      const genIndex = diagram.generalizations.findIndex(g => g.id === delta.generalizationId);
+      if (genIndex === -1) {
+        return err({ kind: 'GeneralizationNotFoundError', generalizationId: delta.generalizationId });
+      }
+      const updatedGeneralizations = diagram.generalizations.filter(g => g.id !== delta.generalizationId);
+      return ok({ ...diagram, generalizations: updatedGeneralizations });
+    }
+
+    default: {
+      const _exhaustive: never = delta.op;
+      return err({ kind: 'InvalidOperationError', reason: `Unknown generalization op: ${_exhaustive}` });
+    }
+  }
+}
+
+/**
  * Applies a batch delta atomically (all-or-nothing).
  * Validates all deltas first, then applies them sequentially on a cloned state.
  * If any delta fails, the original state is returned unchanged.
@@ -427,6 +522,9 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
         break;
       case 'association':
         result = applyAssociationDelta(workingDiagram, delta);
+        break;
+      case 'generalization':
+        result = applyGeneralizationDelta(workingDiagram, delta);
         break;
       default: {
         const _exhaustive: never = delta.kind;
@@ -481,6 +579,8 @@ export function applyDelta(state: Diagram, delta: Delta): ApplyResult<Diagram> {
       return applyMemberDelta(clonedState, validatedDelta);
     case 'association':
       return applyAssociationDelta(clonedState, validatedDelta);
+    case 'generalization':
+      return applyGeneralizationDelta(clonedState, validatedDelta);
     case 'batch':
       return applyBatchDelta(clonedState, validatedDelta);
     default: {

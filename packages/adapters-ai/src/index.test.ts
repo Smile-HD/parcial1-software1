@@ -24,6 +24,7 @@ function makeDiagram(): Diagram {
       },
     ],
     associations: [],
+    generalizations: [],
   };
 }
 
@@ -390,6 +391,173 @@ describe('FakeLlm aggregation/composition + association names/roles (unit 10.5)'
     if (result.kind === 'delta') {
       const delta = result.value as { aggregationEnd?: string };
       expect(delta.aggregationEnd).toBe('target');
+    }
+  });
+});
+
+describe('FakeLlm generalization commands (unit 11.5)', () => {
+  function makeInheritanceDiagram(): Diagram {
+    const itemId = crypto.randomUUID();
+    const productId = crypto.randomUUID();
+    return {
+      id: crypto.randomUUID(),
+      name: 'Shop',
+      classes: [
+        { id: itemId, name: 'Item', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: productId, name: 'Product', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [
+        { id: crypto.randomUUID(), subClassId: productId, superClassId: itemId },
+      ],
+    };
+  }
+
+  it('interprets "Product is a kind of Item" as a generalization create (sub=Product, super=Item)', async () => {
+    const llm = new FakeLlm();
+    const diagram: Diagram = { ...makeInheritanceDiagram(), generalizations: [] };
+    const result = await llm.interpret('Product is a kind of Item', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; subClassId?: string; superClassId?: string };
+      expect(delta.kind).toBe('generalization');
+      expect(delta.op).toBe('create');
+      expect(delta.subClassId).toBe(diagram.classes[1]!.id); // Product
+      expect(delta.superClassId).toBe(diagram.classes[0]!.id); // Item
+    }
+  });
+
+  it('interprets "Item inherits from X" as a generalization create (sub=Item)', async () => {
+    const llm = new FakeLlm();
+    const diagram: Diagram = { ...makeInheritanceDiagram(), generalizations: [] };
+    const result = await llm.interpret('Item inherits from Product', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; subClassId?: string; superClassId?: string };
+      expect(delta.kind).toBe('generalization');
+      expect(delta.op).toBe('create');
+      expect(delta.subClassId).toBe(diagram.classes[0]!.id); // Item is the sub
+      expect(delta.superClassId).toBe(diagram.classes[1]!.id); // Product is the super
+    }
+  });
+
+  it('interprets "X is a subclass of Y" as a generalization create', async () => {
+    const llm = new FakeLlm();
+    const diagram: Diagram = { ...makeInheritanceDiagram(), generalizations: [] };
+    const result = await llm.interpret('Product is a subclass of Item', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; subClassId?: string };
+      expect(delta.kind).toBe('generalization');
+      expect(delta.subClassId).toBe(diagram.classes[1]!.id);
+    }
+  });
+
+  it('refuses a generalization naming an unknown class', async () => {
+    const llm = new FakeLlm();
+    const diagram: Diagram = { ...makeInheritanceDiagram(), generalizations: [] };
+    const result = await llm.interpret('Ghost is a kind of Item', {}, diagram);
+    expect(result.kind).toBe('refused');
+  });
+
+  it('interprets "remove inheritance from Product" as a generalization delete of the existing edge', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeInheritanceDiagram();
+    const existing = diagram.generalizations[0]!;
+    const result = await llm.interpret('remove inheritance from Product', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; generalizationId?: string };
+      expect(delta.kind).toBe('generalization');
+      expect(delta.op).toBe('delete');
+      expect(delta.generalizationId).toBe(existing.id);
+    }
+  });
+
+  it('interprets "Product does not inherit from Item" as a generalization delete', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeInheritanceDiagram();
+    const result = await llm.interpret('Product does not inherit from Item', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; generalizationId?: string };
+      expect(delta.kind).toBe('generalization');
+      expect(delta.op).toBe('delete');
+      expect(delta.generalizationId).toBe(diagram.generalizations[0]!.id);
+    }
+  });
+
+  it('refuses "remove inheritance" when no such edge exists', async () => {
+    const llm = new FakeLlm();
+    const diagram: Diagram = { ...makeInheritanceDiagram(), generalizations: [] };
+    const result = await llm.interpret('remove inheritance from Product', {}, diagram);
+    expect(result.kind).toBe('refused');
+  });
+});
+
+describe('OpenAiLlm generalization prompt + repair (unit 11.5)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('system prompt documents the generalization create/delete shapes', async () => {
+    const captured: { system?: string } = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init: { body: string }) => {
+        const body = JSON.parse(init.body) as { messages: { role: string; content: string }[] };
+        captured.system = body.messages.find((m) => m.role === 'system')?.content;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ action: 'refuse', reason: 'noop' }) } }],
+          }),
+        });
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    await llm.interpret('Product is a kind of Item', {}, makeDiagram());
+
+    expect(captured.system).toBeDefined();
+    expect(captured.system).toContain('GENERALIZATION CREATE');
+    expect(captured.system).toContain('GENERALIZATION DELETE');
+    expect(captured.system).toContain('subClassId');
+    expect(captured.system).toContain('superClassId');
+  });
+
+  it('repairs placeholder subClassId/superClassId coherently across a batch', async () => {
+    const diagram = makeDiagram();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ action: 'apply', delta: {
+            kind: 'batch',
+            id: crypto.randomUUID(),
+            diagramId: diagram.id,
+            timestamp: new Date().toISOString(),
+            deltas: [
+              { kind: 'class', op: 'create', id: crypto.randomUUID(), diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', name: 'Product', position: { x: 0, y: 0 } },
+              { kind: 'generalization', op: 'create', id: crypto.randomUUID(), diagramId: diagram.id, timestamp: new Date().toISOString(), generalizationId: 'gen-1-placeholder', subClassId: 'NEW_CLASS_1', superClassId: diagram.classes[0]!.id },
+            ],
+          } }) } }],
+        }),
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    const result = await llm.interpret('create class Product that is a kind of Customer', {}, diagram);
+
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const batch = result.value as { kind: string; deltas: Array<{ classId?: string; subClassId?: string }> };
+      expect(batch.kind).toBe('batch');
+      const [created, gen] = batch.deltas;
+      expect(gen!.subClassId).toMatch(/^[0-9a-f-]{36}$/i);
+      // The SAME placeholder maps to the SAME uuid as the created class.
+      expect(gen!.subClassId).toBe(created!.classId);
     }
   });
 });

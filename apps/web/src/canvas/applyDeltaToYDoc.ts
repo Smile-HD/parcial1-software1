@@ -18,11 +18,13 @@ import {
   type Class,
   type Delta,
   type Diagram,
+  type Generalization,
 } from '@app/core';
 
 // ── Y.Doc key constants (mirrors core's Y_DOC_TYPES) ──────────────────────
 const Y_CLASSES = 'classes';
 const Y_ASSOCIATIONS = 'associations';
+const Y_GENERALIZATIONS = 'generalizations';
 const Y_META = 'meta';
 
 /**
@@ -48,10 +50,12 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
   doc.transact(() => {
     const yClasses = doc.getMap(Y_CLASSES);
     const yAssociations = doc.getMap(Y_ASSOCIATIONS);
+    const yGeneralizations = doc.getMap(Y_GENERALIZATIONS);
     const yMeta = doc.getMap(Y_META);
 
     yClasses.clear();
     yAssociations.clear();
+    yGeneralizations.clear();
 
     yMeta.set('id', diagram.id);
     yMeta.set('name', diagram.name);
@@ -62,6 +66,10 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
 
     for (const assoc of diagram.associations) {
       yAssociations.set(assoc.id, buildYAssociation(assoc));
+    }
+
+    for (const gen of diagram.generalizations ?? []) {
+      yGeneralizations.set(gen.id, buildYGeneralization(gen));
     }
   });
 }
@@ -132,4 +140,12 @@ function buildYAssociation(assoc: Association): Y.Map<unknown> {
   if (assoc.sourceRole !== undefined) yAssoc.set('sourceRole', assoc.sourceRole);
   if (assoc.targetRole !== undefined) yAssoc.set('targetRole', assoc.targetRole);
   return yAssoc;
+}
+
+function buildYGeneralization(gen: Generalization): Y.Map<unknown> {
+  const yGen = new Y.Map<unknown>();
+  yGen.set('id', gen.id);
+  yGen.set('subClassId', gen.subClassId);
+  yGen.set('superClassId', gen.superClassId);
+  return yGen;
 }

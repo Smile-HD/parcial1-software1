@@ -21,6 +21,8 @@ export {
   type Class,
   AssociationSchema,
   type Association,
+  GeneralizationSchema,
+  type Generalization,
   DiagramSchema,
   type Diagram,
 } from './ir.js';
@@ -35,6 +37,8 @@ export {
   type MemberDelta,
   AssociationDeltaSchema,
   type AssociationDelta,
+  GeneralizationDeltaSchema,
+  type GeneralizationDelta,
   BatchDeltaSchema,
   type BatchDelta,
   deltaJsonSchema,

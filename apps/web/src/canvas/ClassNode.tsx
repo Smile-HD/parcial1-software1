@@ -22,6 +22,8 @@ export type ClassNodeData = Record<string, unknown> & {
   name: string;
   attributes: readonly Attribute[];
   methods: readonly Method[];
+  /** Other classes in the diagram — candidates for "make subclass of" (unit 11.4). */
+  otherClasses: readonly { id: string; name: string }[];
   onRename: (newName: string) => void;
   onDelete: () => void;
   onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) => void;
@@ -30,6 +32,10 @@ export type ClassNodeData = Record<string, unknown> & {
   onAddMethod: (name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) => void;
   onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) => void;
   onRemoveMethod: (memberId: string) => void;
+  /** Unit 11.4: emit a generalization create with this class as the subClass. */
+  onMakeSubclass: (superClassId: string) => void;
+  /** Unit 11.4: select this class to show its generalization list in the panel. */
+  onSelect: () => void;
 };
 
 export type ClassFlowNode = import('@xyflow/react').Node<ClassNodeData, 'class'>;
@@ -74,6 +80,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.name);
   const doneRef = useRef(false);
+
+  // Unit 11.4 — class context menu ("make subclass of").
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [attrName, setAttrName] = useState('');
   const [attrType, setAttrType] = useState('');
@@ -237,7 +246,49 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   };
 
   return (
-    <div className="uml-class">
+    <div
+      className="uml-class"
+      onClick={data.onSelect}
+      onContextMenu={(event) => {
+        // editor:R Generalization (unit 11.4) — right-click opens the
+        // "make subclass of" menu; the browser menu is suppressed.
+        event.preventDefault();
+        setMenuOpen(true);
+      }}
+    >
+      {menuOpen && (
+        <div className="uml-class__context-menu" role="menu" data-testid="class-context-menu">
+          {data.otherClasses.length === 0 ? (
+            <span className="uml-class__context-empty">No other classes</span>
+          ) : (
+            data.otherClasses.map((other) => (
+              <button
+                key={other.id}
+                type="button"
+                role="menuitem"
+                aria-label={`Make subclass of ${other.name}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  data.onMakeSubclass(other.id);
+                  setMenuOpen(false);
+                }}
+              >
+                Make subclass of {other.name}
+              </button>
+            ))
+          )}
+          <button
+            type="button"
+            aria-label="Close context menu"
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOpen(false);
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
       {editing ? (
         <input
           className="uml-class__title-input"

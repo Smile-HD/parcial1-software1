@@ -211,6 +211,8 @@ describe('text interpreter API (PR 7)', () => {
     const body = res.json() as { status: string; supportedCategories: string[] };
     expect(body.status).toBe('refused');
     expect(body.supportedCategories).toContain('add/rename/delete class');
+    // Unit 11.5 — generalization is part of the bounded vocabulary.
+    expect(body.supportedCategories).toContain('create/remove generalization (inheritance)');
   });
 
   it('returns 404 when interpreting a diagram that does not exist', async () => {

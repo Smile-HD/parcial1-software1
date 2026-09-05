@@ -31,6 +31,7 @@ function makeDiagram(): Diagram {
       },
     ],
     associations: [],
+    generalizations: [],
   };
 }
 

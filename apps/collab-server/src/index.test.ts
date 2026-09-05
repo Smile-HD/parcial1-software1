@@ -407,6 +407,39 @@ describe('collab-server transport (PR 5)', () => {
     expect(bobAssoc.get('sourceMultiplicity')).toBe('3..7');
   }, 15_000);
 
+  it('11.6 generalization edges survive collab and converge schema-valid (realtime:R3, editor:R5)', async () => {
+    const diagram = makeDiagram();
+    await insertDiagramRow(diagram);
+    const alice = connectClient(diagram.id, 'Alice');
+    const bob = connectClient(diagram.id, 'Bob');
+    await alice.synced;
+    await bob.synced;
+
+    // Alice adds a generalization edge (Product role: Order → User) to her doc.
+    const genId = uuidv7();
+    const yGen = new Y.Map();
+    yGen.set('id', genId);
+    yGen.set('subClassId', diagram.classes[1]!.id);
+    yGen.set('superClassId', diagram.classes[0]!.id);
+    alice.ydoc.getMap('generalizations').set(genId, yGen);
+
+    await waitFor(
+      () => JSON.stringify(diagramOf(alice)) === JSON.stringify(diagramOf(bob)),
+      'generalization converges',
+    );
+    const parsed = DiagramSchema.safeParse(diagramOf(alice));
+    expect(parsed.success).toBe(true);
+
+    // Bob sees the edge with both endpoints intact.
+    const bobGens = diagramOf(bob).generalizations;
+    expect(bobGens).toHaveLength(1);
+    expect(bobGens[0]).toMatchObject({
+      id: genId,
+      subClassId: diagram.classes[1]!.id,
+      superClassId: diagram.classes[0]!.id,
+    });
+  }, 15_000);
+
   it('API PUT and collab debounce do not corrupt each other (5.2, two writers)', async () => {
     const diagram = makeDiagram();
     await insertDiagramRow(diagram);

@@ -76,6 +76,28 @@ export const AssociationDeltaSchema = DeltaBase.extend({
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 
 /**
+ * Generalization-level operations: create (subclass → superclass) and delete.
+ * A `create` must carry both ends (schema gate); engine invariants (both
+ * classes exist, no duplicates, no cycles) are enforced by applyDelta — unit 11.2.
+ */
+export const GeneralizationDeltaSchema = DeltaBase.extend({
+  kind: z.literal('generalization'),
+  op: z.enum(['create', 'delete']),
+  generalizationId: z.string().uuid(),
+  // For create: both ends required (enforced by the refinement below)
+  subClassId: z.string().uuid().optional(),
+  superClassId: z.string().uuid().optional(),
+}).strict().superRefine((delta, ctx) => {
+  if (delta.op === 'create' && (!delta.subClassId || !delta.superClassId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Generalization create requires subClassId and superClassId',
+    });
+  }
+});
+export type GeneralizationDelta = z.infer<typeof GeneralizationDeltaSchema>;
+
+/**
  * Batch delta: atomic application of multiple deltas (all or nothing).
  */
 export const BatchDeltaSchema = DeltaBase.extend({
@@ -84,6 +106,7 @@ export const BatchDeltaSchema = DeltaBase.extend({
     ClassDeltaSchema,
     MemberDeltaSchema,
     AssociationDeltaSchema,
+    GeneralizationDeltaSchema,
   ])),
 }).strict();
 export type BatchDelta = z.infer<typeof BatchDeltaSchema>;
@@ -96,6 +119,7 @@ export const DeltaSchema = z.discriminatedUnion('kind', [
   ClassDeltaSchema,
   MemberDeltaSchema,
   AssociationDeltaSchema,
+  GeneralizationDeltaSchema,
   BatchDeltaSchema,
 ]);
 export type Delta = z.infer<typeof DeltaSchema>;

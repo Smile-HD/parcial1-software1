@@ -10,15 +10,16 @@ import { ReactFlow, type Edge, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Diagram, type MemberDelta, type Parameter } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type Parameter } from '@app/core';
 
 import './canvas.css';
 import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 import { AssociationEdge } from './AssociationEdge';
+import { GeneralizationEdge } from './GeneralizationEdge';
 
 const nodeTypes = { class: ClassNode };
-const edgeTypes = { association: AssociationEdge };
+const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge };
 
 export interface DiagramCanvasProps {
   doc: Y.Doc;
@@ -172,6 +173,51 @@ export function handleDeleteAssociation(
 }
 
 /**
+ * editor:R Generalization (unit 11.4) — emit a generalization `create` delta
+ * (subClass → superClass). Engine invariants (existence, duplicates, cycles)
+ * are enforced by applyDelta; a rejected delta leaves the Y.Doc unchanged.
+ */
+export function handleCreateGeneralization(
+  doc: Y.Doc,
+  diagramId: string,
+  link: { subClassId: string; superClassId: string },
+): void {
+  if (link.subClassId === '' || link.superClassId === '') {
+    return;
+  }
+  const delta: GeneralizationDelta = {
+    kind: 'generalization',
+    op: 'create',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    generalizationId: crypto.randomUUID(),
+    subClassId: link.subClassId,
+    superClassId: link.superClassId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * editor:R Generalization (unit 11.4) — emit a generalization `delete` delta.
+ */
+export function handleDeleteGeneralization(
+  doc: Y.Doc,
+  diagramId: string,
+  generalizationId: string,
+): void {
+  const delta: GeneralizationDelta = {
+    kind: 'generalization',
+    op: 'delete',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    generalizationId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
  * First free auto-name: Class1, Class2, ... skipping any existing name.
  */
 function nextFreeClassName(existing: readonly string[]): string {
@@ -190,6 +236,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [linkSource, setLinkSource] = useState<string | null>(null);
   const [linkDirected, setLinkDirected] = useState(false);
   const [selectedAssociationId, setSelectedAssociationId] = useState<string | null>(null);
+  // Unit 11.4 — the class whose generalization list is shown in the panel.
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = (): void => {
@@ -378,6 +426,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           name: cls.name,
           attributes: cls.attributes,
           methods: cls.methods,
+          otherClasses: diagram.classes
+            .filter((other) => other.id !== cls.id)
+            .map((other) => ({ id: other.id, name: other.name })),
           onRename: (newName: string) => handleRename(cls.id, newName),
           onDelete: () => handleDeleteClass(cls.id),
           onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) =>
@@ -390,26 +441,56 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
             handleEditMethod(cls.id, memberId, name, returnType, parameters, adornments),
           onRemoveMethod: (memberId: string) => handleRemoveMethod(cls.id, memberId),
+          onMakeSubclass: (superClassId: string) =>
+            handleCreateGeneralization(doc, diagram.id, { subClassId: cls.id, superClassId }),
+          onSelect: () => setSelectedClassId(cls.id),
         } satisfies ClassNodeData,
       })),
     [diagram],
   );
 
   const edges = useMemo<Edge[]>(
-    () =>
-      diagram.associations.map((assoc) => ({
+    () => [
+      ...diagram.associations.map((assoc) => ({
         id: assoc.id,
         source: assoc.sourceClassId,
         target: assoc.targetClassId,
         type: 'association' as const,
         data: { association: assoc },
       })),
+      // Unit 11.3 — generalization edges: source = subClass, target = superClass
+      // so the hollow triangle marker renders on the superclass end.
+      ...diagram.generalizations.map((gen) => ({
+        id: gen.id,
+        source: gen.subClassId,
+        target: gen.superClassId,
+        type: 'generalization' as const,
+        data: { generalization: gen },
+      })),
+    ],
     [diagram],
   );
 
   const selectedAssociation = useMemo(
     () => diagram.associations.find((assoc) => assoc.id === selectedAssociationId) ?? null,
     [diagram, selectedAssociationId],
+  );
+
+  // Unit 11.4 — generalization list for the selected class (both roles).
+  const selectedClass = useMemo(
+    () => diagram.classes.find((cls) => cls.id === selectedClassId) ?? null,
+    [diagram, selectedClassId],
+  );
+  const classNameById = (id: string): string =>
+    diagram.classes.find((cls) => cls.id === id)?.name ?? '?';
+  const selectedClassGeneralizations = useMemo(
+    () =>
+      selectedClass === null
+        ? []
+        : diagram.generalizations.filter(
+            (gen) => gen.subClassId === selectedClass.id || gen.superClassId === selectedClass.id,
+          ),
+    [diagram, selectedClass],
   );
 
   return (
@@ -554,6 +635,33 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           >
             Delete association
           </button>
+        </div>
+      )}
+      {selectedClass && (
+        <div className="diagram-canvas__generalizations" data-testid="generalization-panel">
+          <span className="diagram-canvas__generalizations-title">
+            Generalizations for {selectedClass.name}
+          </span>
+          {selectedClassGeneralizations.length === 0 && (
+            <span className="diagram-canvas__generalizations-empty">None</span>
+          )}
+          {selectedClassGeneralizations.map((gen) => (
+            <div key={gen.id} className="diagram-canvas__generalization-row">
+              <span>
+                {gen.subClassId === selectedClass.id
+                  ? `Inherits from ${classNameById(gen.superClassId)}`
+                  : `Inherited by ${classNameById(gen.subClassId)}`}
+              </span>
+              <button
+                type="button"
+                className="diagram-canvas__delete-generalization"
+                aria-label={`Delete generalization ${gen.id}`}
+                onClick={() => handleDeleteGeneralization(doc, diagram.id, gen.id)}
+              >
+                Remove inheritance
+              </button>
+            </div>
+          ))}
         </div>
       )}
       <ReactFlow

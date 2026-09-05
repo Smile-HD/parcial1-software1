@@ -110,12 +110,28 @@ export const AssociationSchema = z.object({
 export type Association = z.infer<typeof AssociationSchema>;
 
 /**
- * Diagram: the top-level IR containing classes and associations.
+ * Generalization (inheritance) edge between two classes: the subClass
+ * inherits from the superClass (UML 2.5.1 generalization, rendered as a
+ * solid line with a hollow triangle on the superclass end).
+ * Cycle and duplicate invariants are enforced by the apply engine.
+ */
+export const GeneralizationSchema = z.object({
+  id: z.string().uuid(),
+  subClassId: z.string().uuid(),
+  superClassId: z.string().uuid(),
+});
+export type Generalization = z.infer<typeof GeneralizationSchema>;
+
+/**
+ * Diagram: the top-level IR containing classes, associations and
+ * generalizations. `generalizations` defaults to [] so pre-unit-11
+ * diagrams stay valid (backward compatibility).
  */
 export const DiagramSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   classes: z.array(ClassSchema),
   associations: z.array(AssociationSchema),
+  generalizations: z.array(GeneralizationSchema).default([]),
 });
 export type Diagram = z.infer<typeof DiagramSchema>;

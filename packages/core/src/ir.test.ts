@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssociationSchema, AttributeSchema, MethodSchema, MultiplicitySchema } from './ir.js';
+import { AssociationSchema, AttributeSchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema } from './ir.js';
 
 describe('IR Schema — Multiplicity Validation (editor:R4)', () => {
   it('accepts valid multiplicities: 1, 0..1, 1..*, 0..*', () => {
@@ -218,5 +218,52 @@ describe('IR Schema — Association aggregationEnd (UML 2.5.1 explicit end owner
       aggregation: 'none',
     });
     expect(parsed.aggregationEnd).toBe('source');
+  });
+});
+
+describe('IR Schema — Generalization collection (unit 11.1)', () => {
+  it('GeneralizationSchema accepts { id, subClassId, superClassId }', () => {
+    const parsed = GeneralizationSchema.parse({
+      id: crypto.randomUUID(),
+      subClassId: crypto.randomUUID(),
+      superClassId: crypto.randomUUID(),
+    });
+    expect(parsed.id).toBeDefined();
+    expect(parsed.subClassId).toBeDefined();
+    expect(parsed.superClassId).toBeDefined();
+  });
+
+  it('GeneralizationSchema rejects non-uuid ids and missing ends', () => {
+    expect(GeneralizationSchema.safeParse({ id: 'nope', subClassId: crypto.randomUUID(), superClassId: crypto.randomUUID() }).success).toBe(false);
+    expect(GeneralizationSchema.safeParse({ id: crypto.randomUUID(), subClassId: crypto.randomUUID() }).success).toBe(false);
+    expect(GeneralizationSchema.safeParse({ id: crypto.randomUUID(), superClassId: crypto.randomUUID() }).success).toBe(false);
+  });
+
+  it('DiagramSchema accepts a generalizations collection', () => {
+    const subId = crypto.randomUUID();
+    const superId = crypto.randomUUID();
+    const genId = crypto.randomUUID();
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Inheritance',
+      classes: [
+        { id: subId, name: 'Product', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: superId, name: 'Item', position: { x: 100, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [{ id: genId, subClassId: subId, superClassId: superId }],
+    });
+    expect(parsed.generalizations).toHaveLength(1);
+    expect(parsed.generalizations[0]).toMatchObject({ id: genId, subClassId: subId, superClassId: superId });
+  });
+
+  it('backward compat: diagrams WITHOUT generalizations still validate and default to []', () => {
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Legacy',
+      classes: [],
+      associations: [],
+    });
+    expect(parsed.generalizations).toEqual([]);
   });
 });
