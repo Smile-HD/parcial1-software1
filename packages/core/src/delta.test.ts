@@ -128,3 +128,89 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('Delta Schema — Association aggregationEnd (UML 2.5.1 explicit end ownership)', () => {
+  it('association create delta accepts optional aggregationEnd', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'composite' as const,
+      aggregationEnd: 'target' as const,
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.aggregationEnd).toBe('target');
+    }
+  });
+
+  it('association create delta has aggregationEnd undefined when absent (IR schema applies default)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'composite' as const,
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Delta schema doesn't default - IR schema applies default 'source' when parsing
+      expect(result.data.aggregationEnd).toBeUndefined();
+    }
+  });
+
+  it('association updateMultiplicity delta accepts optional aggregationEnd', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: crypto.randomUUID(),
+      aggregation: 'shared' as const,
+      aggregationEnd: 'target' as const,
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.aggregationEnd).toBe('target');
+    }
+  });
+
+  it('REJECTS invalid aggregationEnd value in association delta', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: true,
+      aggregation: 'composite' as const,
+      aggregationEnd: 'invalid',
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(false);
+  });
+});

@@ -10,13 +10,15 @@ import { ReactFlow, type Edge, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicitySchema, projectYDocToDiagram, type AssociationDelta, type ClassDelta, type Diagram, type MemberDelta, type Parameter } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Diagram, type MemberDelta, type Parameter } from '@app/core';
 
 import './canvas.css';
 import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
+import { AssociationEdge } from './AssociationEdge';
 
 const nodeTypes = { class: ClassNode };
+const edgeTypes = { association: AssociationEdge };
 
 export interface DiagramCanvasProps {
   doc: Y.Doc;
@@ -110,6 +112,40 @@ export function handleUpdateMultiplicity(
     ...(endpoint === 'source'
       ? { newSourceMultiplicity: multiplicity }
       : { newTargetMultiplicity: multiplicity }),
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * Unit 10 — update association aggregation kind, name, roles, and aggregationEnd.
+ * Invalid aggregation values are rejected (no delta emitted).
+ */
+export function handleUpdateAssociationMeta(
+  doc: Y.Doc,
+  diagramId: string,
+  associationId: string,
+  updates: { aggregation?: 'none' | 'shared' | 'composite'; aggregationEnd?: 'source' | 'target'; name?: string; sourceRole?: string; targetRole?: string },
+): void {
+  // Validate aggregation if provided
+  if (updates.aggregation !== undefined && !['none', 'shared', 'composite'].includes(updates.aggregation)) {
+    return;
+  }
+  // Validate aggregationEnd if provided
+  if (updates.aggregationEnd !== undefined && !['source', 'target'].includes(updates.aggregationEnd)) {
+    return;
+  }
+  const delta: AssociationDelta = {
+    kind: 'association',
+    op: 'updateMultiplicity', // reuse existing op kind for backward compat; fields are optional
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    associationId,
+    ...(updates.aggregation !== undefined ? { aggregation: updates.aggregation } : {}),
+    ...(updates.aggregationEnd !== undefined ? { aggregationEnd: updates.aggregationEnd } : {}),
+    ...(updates.name !== undefined ? { name: updates.name || undefined } : {}),
+    ...(updates.sourceRole !== undefined ? { sourceRole: updates.sourceRole || undefined } : {}),
+    ...(updates.targetRole !== undefined ? { targetRole: updates.targetRole || undefined } : {}),
   };
   applyDeltaToYDoc(doc, delta);
 }
@@ -340,17 +376,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
 
   const edges = useMemo<Edge[]>(
     () =>
-      diagram.associations.map((assoc) => {
-        const base = {
-          id: assoc.id,
-          source: assoc.sourceClassId,
-          target: assoc.targetClassId,
-          label: `${assoc.sourceMultiplicity} · ${assoc.targetMultiplicity}`,
-        };
-        return assoc.directed
-          ? { ...base, markerEnd: { type: MarkerType.ArrowClosed } }
-          : base;
-      }),
+      diagram.associations.map((assoc) => ({
+        id: assoc.id,
+        source: assoc.sourceClassId,
+        target: assoc.targetClassId,
+        type: 'association' as const,
+        data: { association: assoc },
+      })),
     [diagram],
   );
 
@@ -388,6 +420,79 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       {selectedAssociation && (
         <div className="diagram-canvas__multiplicity">
           <label>
+            Association name
+            <input
+              aria-label="Association name"
+              defaultValue={selectedAssociation.name ?? ''}
+              onBlur={(event) =>
+                handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { name: event.target.value.trim() || undefined })
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { name: (event.target as HTMLInputElement).value.trim() || undefined });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Aggregation
+            <select
+              aria-label="Aggregation kind"
+              defaultValue={selectedAssociation.aggregation ?? 'none'}
+              onChange={(event) =>
+                handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { aggregation: event.target.value as 'none' | 'shared' | 'composite' })
+              }
+            >
+              <option value="none">None</option>
+              <option value="shared">Shared (hollow diamond)</option>
+              <option value="composite">Composite (filled diamond)</option>
+            </select>
+          </label>
+          <label>
+            Aggregation end
+            <select
+              aria-label="Aggregation end"
+              defaultValue={selectedAssociation.aggregationEnd ?? 'source'}
+              disabled={selectedAssociation.aggregation === 'none'}
+              onChange={(event) =>
+                handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { aggregationEnd: event.target.value as 'source' | 'target' })
+              }
+            >
+              <option value="source">Source class</option>
+              <option value="target">Target class</option>
+            </select>
+          </label>
+          <label>
+            Source role
+            <input
+              aria-label="Source role"
+              defaultValue={selectedAssociation.sourceRole ?? ''}
+              onBlur={(event) =>
+                handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { sourceRole: event.target.value.trim() || undefined })
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { sourceRole: (event.target as HTMLInputElement).value.trim() || undefined });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Target role
+            <input
+              aria-label="Target role"
+              defaultValue={selectedAssociation.targetRole ?? ''}
+              onBlur={(event) =>
+                handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { targetRole: event.target.value.trim() || undefined })
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleUpdateAssociationMeta(doc, diagram.id, selectedAssociation.id, { targetRole: (event.target as HTMLInputElement).value.trim() || undefined });
+                }
+              }}
+            />
+          </label>
+          <label>
             Source multiplicity
             <input
               aria-label="Source multiplicity"
@@ -423,6 +528,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         nodesConnectable={false}
         onNodesChange={() => {}}
         onNodeClick={(_event, node) => handleNodeClick(node)}

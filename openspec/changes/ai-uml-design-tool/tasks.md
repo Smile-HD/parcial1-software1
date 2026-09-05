@@ -26,6 +26,10 @@ Deployment possibility (explicitly OUT of scope for PRs 1–19): Docker image an
 
 UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13 add the missing standard elements BEFORE codegen (which consumes the enriched IR): member adornments (visibility/static/derived/attribute multiplicity), arbitrary association multiplicities, aggregation/composition kinds with association names/roles, generalization, interfaces/abstract/realization/dependency, and n-ary associations. Editor:R4 is intentionally MODIFIED (`3..7` becomes valid UML); codegen (unit 14) and XMI import (unit 15) gain mapping requirements for the new elements.
 
+### Scope amendment (2026-09-05 — maintainer decision)
+
+The exam requirements explicitly require BOTH importing AND exporting to Enterprise Architect. Unit 15b adds an XMI 2.1 exporter, landing as its own PR between PR 15 and PR 16, consuming the enriched IR from units 9–13. Export must be lossless for the supported subset, proven by automated round-trip (export → re-import → identical model).
+
 ### Suggested Work Units
 
 | Unit | Goal | PR | Focused test command | Runtime harness | Rollback boundary |
@@ -47,6 +51,7 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 | 13 | N-ary associations (diamond node, ≥3 member ends) | 13 | `pnpm --filter @app/core test && pnpm --filter @app/web test` | jsdom render checks | drop n-ary collection |
 | 14 | Codegen core + golden check (consumes IR v2) | 14 | `pnpm --filter @app/codegen test` | `node tools/golden-check.mjs` (mvnw build+run) | drop `packages/codegen`, `templates/`, `tools/` |
 | 15 | XMI importer (maps full UML subset) | 15 | `pnpm --filter @app/adapters-import test` | bundled real EA sample | drop `xmi21.ts` + route |
+| 15b | XMI 2.1 exporter (EA-compatible export; lossless round-trip with importer) | 15b | `pnpm --filter @app/adapters-import test` | export→import round-trip in-memory | drop `xmi21-export.ts` + export route |
 | 16 | Photo importer | 16 | `pnpm --filter @app/api test` | fake vision + golden photo | drop photo route/UI |
 | 17 | System B offline verification | 17 | `node tools/golden-check.mjs` | offline run, restart survival | revert golden-check extensions |
 | 18 | Offline assistant (System B) | 18 | `node tools/golden-check.mjs` | assistant CRUD offline | revert assistant templates |
@@ -122,12 +127,13 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 
 ### Unit 10: Aggregation/composition + association names & roles (PR 10)
 
-- [ ] 10.1 RED: `AssociationSchema` accepts `aggregation` enum `none|shared|composite` (default `none`), optional `name`, `sourceRole`, `targetRole` strings.
-- [ ] 10.2 RED: memberEnd ownership stays per multiplicity convention (composite diamond renders on the WHOLE end); invalid aggregation value rejected.
-- [ ] 10.3 Renderer: hollow diamond (shared) / filled diamond (composite) SVG marker on the container end; association name label centered on the edge; role labels at ends.
-- [ ] 10.4 Editor UI: aggregation kind select + name/role inputs in the association editor (6.4 panel).
-- [ ] 10.5 Interpreter: "Order is composed of OrderLines", "aggregation between X and Y", role/named association commands; delete-class cascade unchanged (composition does NOT add auto-delete — codegen concern only).
-- [ ] 10.6 Verify: round-trip + collab convergence with diamonds rendering at the correct end.
+- [x] 10.1 RED: `AssociationSchema` accepts `aggregation` enum `none|shared|composite` (default `none`), optional `name`, `sourceRole`, `targetRole` strings.
+- [x] 10.2 RED: invalid aggregation value rejected; diamond end initially inferred by multiplicity convention (superseded by 10.7 — explicit end ownership).
+- [x] 10.3 Renderer: hollow diamond (shared) / filled diamond (composite) SVG marker on the container end; association name label centered on the edge; role labels at ends.
+- [x] 10.4 Editor UI: aggregation kind select + name/role inputs in the association editor (6.4 panel).
+- [x] 10.5 Interpreter: "Order is composed of OrderLines", "aggregation between X and Y", role/named association commands; FakeLlm AND OpenAiLlm prompt coverage; `supportedCategories` updated.
+- [x] 10.6 Verify: round-trip + collab convergence with diamonds rendering at the correct end.
+- [x] 10.7 UML 2.5.1 correction: explicit `aggregationEnd: 'source'|'target'` on AssociationSchema (default 'source', backward compatible); multiplicity heuristic removed from renderer; "Aggregation end" select in editor panel; interpreter prompt + FakeLlm reversed-phrasing coverage ("OrderLine is part of Order" → diamond at Order end).
 
 ### Unit 11: Generalization (PR 11)
 
@@ -173,6 +179,14 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 - [ ] 15.5 Grid auto-layout — every imported class positioned, no overlap; diamond nodes at centroid (xmi:R3); bundle real EA XMI 2.1 sample fixture including one generalization + one composition.
 - [ ] 15.6 `POST /diagrams/:id/import/xmi` + review-then-apply gate; commit as ONE atomic delta batch (xmi:R4; realtime cross-cutting).
 - [ ] 15.7 Verify: real sample imports — all classes/members/associations/multiplicities + at least one generalization and composition round-trip (xmi acceptance).
+
+### Unit 15b: XMI 2.1 exporter (PR 15b — scope amendment 2026-09-05)
+
+- [ ] 15b.1 RED: exported XMI parses back through the importer into the SAME model — lossless round-trip for the full supported subset (classes, members with visibility/static/derived/attribute-multiplicity, associations with kinds/names/roles/multiplicities, generalizations, interfaces/abstract/realization/dependency, n-ary).
+- [ ] 15b.2 Create `packages/adapters-import/src/xmi21-export.ts` — IR → standard UML 2.x XMI 2.1 document that EA can import (visibility prefixes `+|-|#|~`, derived `/`, static, multiplicity ranges, aggregation kinds on memberEnd, generalization/realization/dependency elements, n-ary membership); no EA-proprietary extensions required for round-trip.
+- [ ] 15b.3 Export preserves layout: canvas positions serialized in an XMI layout extension; importer falls back to grid auto-layout when absent.
+- [ ] 15b.4 `GET /diagrams/:id/export/xmi` streams the `.xmi` file as attachment; export is strictly read-only — idempotent, no mutation, no confirm gate.
+- [ ] 15b.5 Verify: golden diagram exercising the full supported subset round-trips (export → import → identical model) and works offline with zero network calls.
 - [ ] 16.1 [P] RED: PDF renamed `.png` and oversized image rejected locally with ZERO API calls (photo:R4, threat row 3).
 - [ ] 16.2 Create `VisionPort` + multimodal adapter + fake; extraction JSON schema validated; prose response rejected (photo:R1).
 - [ ] 16.3 `POST /diagrams/:id/photo` as job; review proposal UI — edit/drop individual elements before approval (photo:R2).

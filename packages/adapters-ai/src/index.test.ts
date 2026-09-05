@@ -262,3 +262,134 @@ describe('FakeLlm member adornments (unit 9.5)', () => {
     }
   });
 });
+
+describe('FakeLlm aggregation/composition + association names/roles (unit 10.5)', () => {
+  function makeDiagramWithOrderLines(): Diagram {
+    const orderId = crypto.randomUUID();
+    const orderLineId = crypto.randomUUID();
+    const customerId = crypto.randomUUID();
+    return {
+      id: crypto.randomUUID(),
+      name: 'Shop',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: orderLineId, name: 'OrderLine', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: customerId, name: 'Customer', position: { x: 150, y: 200 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+    };
+  }
+
+  it('interprets "X is composed of Y" as composite aggregation (Order is composed of OrderLine)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('Order is composed of OrderLine', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; aggregation?: string; sourceMultiplicity?: string; targetMultiplicity?: string };
+      expect(delta.kind).toBe('association');
+      expect(delta.aggregation).toBe('composite');
+      expect(delta.sourceMultiplicity).toBe('1');
+      expect(delta.targetMultiplicity).toBe('0..*');
+    }
+  });
+
+  it('interprets "X composes Y" as composite aggregation', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('Order composes OrderLine', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { aggregation?: string };
+      expect(delta.aggregation).toBe('composite');
+    }
+  });
+
+  it('interprets "aggregation between X and Y" as shared aggregation', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('aggregation between Customer and Order', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { aggregation?: string };
+      expect(delta.aggregation).toBe('shared');
+    }
+  });
+
+  it('interprets "shared aggregation between X and Y" as shared aggregation', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('shared aggregation between Customer and Order', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { aggregation?: string };
+      expect(delta.aggregation).toBe('shared');
+    }
+  });
+
+  it('interprets named association with roles', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('association Customer Order named places role buyer role order', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { name?: string; sourceRole?: string; targetRole?: string };
+      expect(delta.name).toBe('places');
+      expect(delta.sourceRole).toBe('buyer');
+      expect(delta.targetRole).toBe('order');
+    }
+  });
+
+  it('interprets named association without roles', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('association Customer Order named places', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { name?: string; sourceRole?: string; targetRole?: string };
+      expect(delta.name).toBe('places');
+      expect(delta.sourceRole).toBeUndefined();
+      expect(delta.targetRole).toBeUndefined();
+    }
+  });
+
+  it('rejects unknown classes in composition command', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('Ghost is composed of OrderLine', {}, diagram);
+    expect(result.kind).toBe('refused');
+  });
+
+  it('rejects unknown classes in aggregation command', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('aggregation between Ghost and Order', {}, diagram);
+    expect(result.kind).toBe('refused');
+  });
+
+  it('interprets "X is part of Y" as composite with aggregationEnd pointing to whole (OrderLine is part of Order)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('OrderLine is part of Order', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; aggregation?: string; aggregationEnd?: string; sourceMultiplicity?: string; targetMultiplicity?: string };
+      expect(delta.kind).toBe('association');
+      expect(delta.aggregation).toBe('composite');
+      expect(delta.aggregationEnd).toBe('target'); // whole (Order) is at target end
+      expect(delta.sourceMultiplicity).toBe('0..*'); // part end
+      expect(delta.targetMultiplicity).toBe('1');   // whole end
+    }
+  });
+
+  it('interprets "X belongs to Y" as composite with aggregationEnd pointing to whole', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('OrderLine belongs to Order', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { aggregationEnd?: string };
+      expect(delta.aggregationEnd).toBe('target');
+    }
+  });
+});

@@ -88,6 +88,11 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
     yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
     yAssoc.set('directed', assoc.directed);
+    yAssoc.set('aggregation', assoc.aggregation);
+    yAssoc.set('aggregationEnd', assoc.aggregationEnd);
+    if (assoc.name !== undefined) yAssoc.set('name', assoc.name);
+    if (assoc.sourceRole !== undefined) yAssoc.set('sourceRole', assoc.sourceRole);
+    if (assoc.targetRole !== undefined) yAssoc.set('targetRole', assoc.targetRole);
     yAssociations.set(assoc.id, yAssoc);
   }
 
@@ -178,6 +183,12 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   yAssociations.forEach((yAssoc) => {
     if (!(yAssoc instanceof Y.Map)) return;
 
+    const aggregation = yAssoc.get('aggregation') as Association['aggregation'] | undefined;
+    const aggregationEnd = yAssoc.get('aggregationEnd') as Association['aggregationEnd'] | undefined;
+    const name = yAssoc.get('name') as string | undefined;
+    const sourceRole = yAssoc.get('sourceRole') as string | undefined;
+    const targetRole = yAssoc.get('targetRole') as string | undefined;
+
     associations.push(AssociationSchema.parse({
       id: yAssoc.get('id') as string,
       sourceClassId: yAssoc.get('sourceClassId') as string,
@@ -185,6 +196,11 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
       sourceMultiplicity: yAssoc.get('sourceMultiplicity') as Association['sourceMultiplicity'],
       targetMultiplicity: yAssoc.get('targetMultiplicity') as Association['targetMultiplicity'],
       directed: yAssoc.get('directed') as boolean,
+      aggregation,
+      aggregationEnd,
+      ...(name !== undefined ? { name } : {}),
+      ...(sourceRole !== undefined ? { sourceRole } : {}),
+      ...(targetRole !== undefined ? { targetRole } : {}),
     }));
   });
 

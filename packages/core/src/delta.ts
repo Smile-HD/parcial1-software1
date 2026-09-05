@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MultiplicitySchema } from './ir.js';
+import { MultiplicitySchema, AggregationKindSchema } from './ir.js';
 
 /**
  * Base delta fields shared by all delta types.
@@ -51,6 +51,7 @@ export type MemberDelta = z.infer<typeof MemberDeltaSchema>;
 
 /**
  * Association-level operations: create, update multiplicities, delete.
+ * Aggregation, name, roles, and aggregationEnd are optional so legacy deltas stay valid.
  */
 export const AssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('association'),
@@ -62,6 +63,12 @@ export const AssociationDeltaSchema = DeltaBase.extend({
   sourceMultiplicity: MultiplicitySchema.optional(),
   targetMultiplicity: MultiplicitySchema.optional(),
   directed: z.boolean().optional(),
+  // Unit 10: optional aggregation, name, roles on create
+  aggregation: AggregationKindSchema.optional(),
+  aggregationEnd: z.enum(['source', 'target']).optional(),
+  name: z.string().optional(),
+  sourceRole: z.string().optional(),
+  targetRole: z.string().optional(),
   // For updateMultiplicity
   newSourceMultiplicity: MultiplicitySchema.optional(),
   newTargetMultiplicity: MultiplicitySchema.optional(),

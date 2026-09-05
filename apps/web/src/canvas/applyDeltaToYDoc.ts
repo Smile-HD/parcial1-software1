@@ -125,5 +125,11 @@ function buildYAssociation(assoc: Association): Y.Map<unknown> {
   yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
   yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
   yAssoc.set('directed', assoc.directed);
+  // Unit 10: aggregation/name/roles must round-trip through the Y.Doc bridge
+  yAssoc.set('aggregation', assoc.aggregation ?? 'none');
+  yAssoc.set('aggregationEnd', assoc.aggregationEnd ?? 'source');
+  if (assoc.name !== undefined) yAssoc.set('name', assoc.name);
+  if (assoc.sourceRole !== undefined) yAssoc.set('sourceRole', assoc.sourceRole);
+  if (assoc.targetRole !== undefined) yAssoc.set('targetRole', assoc.targetRole);
   return yAssoc;
 }

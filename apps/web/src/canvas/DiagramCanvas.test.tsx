@@ -633,3 +633,200 @@ describe('unit 9 — editor wiring: adornments flow from controls to the model',
     expect(screen.getByTestId('method-count').className).toContain('uml-member--static');
   });
 });
+
+describe('aggregation/composition render (unit 10.3)', () => {
+  function assocFixture(fields: Partial<Diagram['associations'][number]>): Diagram {
+    const diagram = makeFixture();
+    diagram.associations = [
+      {
+        id: crypto.randomUUID(),
+        sourceClassId: diagram.classes[0]!.id,
+        targetClassId: diagram.classes[1]!.id,
+        sourceMultiplicity: '0..1',
+        targetMultiplicity: '1..*',
+        directed: false,
+        ...fields,
+      },
+    ];
+    return diagram;
+  }
+
+  async function edgeContent(container: HTMLElement): Promise<SVGSVGElement | HTMLElement> {
+    return await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return (el!.querySelector('svg') ?? el!) as SVGSVGElement | HTMLElement;
+    });
+  }
+
+  function baseEdgePath(svg: SVGSVGElement | HTMLElement): SVGPathElement {
+    const path = Array.from(svg.querySelectorAll('path')).find((p) => !p.closest('marker'));
+    expect(path).toBeDefined();
+    return path as SVGPathElement;
+  }
+
+  it('composite renders a filled diamond marker on the WHOLE (single) end', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({ aggregation: 'composite' }));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    // Composite => a filled diamond def exists (sized in user space, dark fill).
+    const compositeMarker = Array.from(svg.querySelectorAll('marker')).find((m) =>
+      (m.getAttribute('id') ?? '').includes('composite-diamond'),
+    );
+    const filled = compositeMarker?.querySelector('path');
+    expect(filled).toBeDefined();
+    expect(filled.getAttribute('fill')).toBe('#1a1a2e');
+    expect(compositeMarker.getAttribute('markerUnits')).toBe('userSpaceOnUse');
+    expect(compositeMarker.getAttribute('markerWidth')).toBe('18');
+
+    // Whole end: source '0..1' is the single side => diamond at marker-start.
+    const base = baseEdgePath(svg);
+    expect(base.getAttribute('marker-start') ?? '').toContain('composite');
+  });
+
+  it('shared renders a hollow diamond marker on the WHOLE (single) end', async () => {
+    const doc = buildYDocFromDiagram(
+      assocFixture({ aggregation: 'shared', sourceMultiplicity: '0..*', targetMultiplicity: '1', aggregationEnd: 'target' }),
+    );
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    // Shared => a hollow diamond def exists: white fill (line must not show
+    // through) with a dark stroke, sized in user space.
+    const sharedMarker = Array.from(svg.querySelectorAll('marker')).find((m) =>
+      (m.getAttribute('id') ?? '').includes('shared-diamond'),
+    );
+    const hollow = sharedMarker?.querySelector('path');
+    expect(hollow).toBeDefined();
+    expect(hollow.getAttribute('fill')).toBe('#ffffff');
+    expect(hollow.getAttribute('stroke')).toBe('#1a1a2e');
+    expect((hollow.getAttribute('d') ?? '').includes('L')).toBe(true);
+    expect(sharedMarker.getAttribute('markerUnits')).toBe('userSpaceOnUse');
+    expect(sharedMarker.getAttribute('markerWidth')).toBe('18');
+
+    // Diamond end is now explicitly declared via aggregationEnd='target'
+    const base = baseEdgePath(svg);
+    expect(base.getAttribute('marker-end') ?? '').toContain('shared');
+  });
+
+  it('renders association name centered and role labels at the ends', async () => {
+    const doc = buildYDocFromDiagram(
+      assocFixture({ aggregation: 'none', name: 'places', sourceRole: 'shop', targetRole: 'items' }),
+    );
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    const texts = Array.from(svg.querySelectorAll('text')).map((t) => t.textContent ?? '');
+    expect(texts.some((t) => t.includes('places'))).toBe(true);
+    expect(texts.some((t) => t.includes('shop'))).toBe(true);
+    expect(texts.some((t) => t.includes('items'))).toBe(true);
+  });
+
+  it('directed association renders an arrow marker (regression: pre-10 edge markerEnd)', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({ directed: true }));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    const base = baseEdgePath(svg);
+    const markers = `${base.getAttribute('marker-start') ?? ''} ${base.getAttribute('marker-end') ?? ''}`;
+    expect(markers).toContain('arrow');
+  });
+
+  it('plain association (aggregation none, undirected) renders no diamond marker', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({}));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    const base = baseEdgePath(svg);
+    const markers = `${base.getAttribute('marker-start') ?? ''} ${base.getAttribute('marker-end') ?? ''}`;
+    expect(markers).not.toContain('diamond');
+  });
+
+  it('base edge path has valid geometry (regression: getBezierPath tuple passed as d)', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({}));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    const base = baseEdgePath(svg);
+    const d = base.getAttribute('d') ?? '';
+    // Valid path data: exactly one move command with real geometry.
+    // (Regression: BaseEdge ignores `d`; the path string must arrive via the `path` prop.)
+    expect(d.startsWith('M')).toBe(true);
+    expect((d.match(/M/g) ?? []).length).toBe(1);
+    expect(d.length).toBeGreaterThan(10);
+  });
+
+  it('editing aggregation/name/roles in the panel updates the Y.Doc (unit 10.4 E2E)', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({ directed: false }));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.click(edge);
+
+    // Aggregation applies on change
+    const aggSelect = screen.getByLabelText('Aggregation kind') as HTMLSelectElement;
+    fireEvent.change(aggSelect, { target: { value: 'composite' } });
+    expect(projectYDocToDiagram(doc).associations[0]!.aggregation).toBe('composite');
+
+    // Name/roles apply on blur
+    const nameInput = screen.getByLabelText('Association name') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'contains' } });
+    fireEvent.blur(nameInput);
+    expect(projectYDocToDiagram(doc).associations[0]!.name).toBe('contains');
+
+    const roleInput = screen.getByLabelText('Target role') as HTMLInputElement;
+    fireEvent.change(roleInput, { target: { value: 'lines' } });
+    fireEvent.blur(roleInput);
+    expect(projectYDocToDiagram(doc).associations[0]!.targetRole).toBe('lines');
+  });
+
+  it('multiplicity heuristic is GONE: aggregationEnd="source" puts diamond at marker-start regardless of multiplicities', async () => {
+    // Source '1' (single), target '1..*' (many) — old heuristic would put diamond at source.
+    // But with aggregationEnd='source' explicitly, diamond goes to marker-start (source).
+    const doc = buildYDocFromDiagram(
+      assocFixture({ aggregation: 'composite', sourceMultiplicity: '1', targetMultiplicity: '1..*', aggregationEnd: 'source' }),
+    );
+    const { container } = render(<DiagramCanvas doc={doc} />);
+    const svg = await edgeContent(container);
+
+    const compositeMarker = Array.from(svg.querySelectorAll('marker')).find((m) =>
+      (m.getAttribute('id') ?? '').includes('composite-diamond'),
+    );
+    expect(compositeMarker).toBeDefined();
+
+    const base = baseEdgePath(svg);
+    // Diamond at source end (marker-start) because aggregationEnd='source' explicitly
+    expect(base.getAttribute('marker-start') ?? '').toContain('composite');
+    expect(base.getAttribute('marker-end') ?? '').not.toContain('composite');
+  });
+
+  it('panel "Aggregation end" select updates aggregationEnd via delta', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({ aggregation: 'composite', directed: false }));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.click(edge);
+
+    // Initially aggregationEnd defaults to 'source'
+    let assoc = projectYDocToDiagram(doc).associations[0]!;
+    expect(assoc.aggregationEnd).toBe('source');
+
+    // Find and change the Aggregation end select
+    const endSelect = screen.getByLabelText('Aggregation end') as HTMLSelectElement;
+    expect(endSelect).not.toBeNull();
+    fireEvent.change(endSelect, { target: { value: 'target' } });
+
+    // Model should update
+    assoc = projectYDocToDiagram(doc).associations[0]!;
+    expect(assoc.aggregationEnd).toBe('target');
+  });
+});

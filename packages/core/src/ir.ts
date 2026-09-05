@@ -82,7 +82,17 @@ export const ClassSchema = z.object({
 export type Class = z.infer<typeof ClassSchema>;
 
 /**
+ * Aggregation kind per UML 2.5.1: none (plain), shared (hollow diamond),
+ * composite (filled diamond). Defaults to 'none' for backward compat.
+ */
+export const AggregationKindSchema = z.enum(['none', 'shared', 'composite']);
+export type AggregationKind = z.infer<typeof AggregationKindSchema>;
+
+/**
  * Association between two classes with multiplicities at each endpoint.
+ * Aggregation/composition and association names/roles are optional (backward compat).
+ * aggregationEnd explicitly declares which end owns the aggregation diamond ('source' or 'target'),
+ * independent of drawing direction. Defaults to 'source' for backward compat with old diagrams.
  */
 export const AssociationSchema = z.object({
   id: z.string().uuid(),
@@ -91,6 +101,11 @@ export const AssociationSchema = z.object({
   sourceMultiplicity: MultiplicitySchema,
   targetMultiplicity: MultiplicitySchema,
   directed: z.boolean(),
+  aggregation: AggregationKindSchema.default('none'),
+  aggregationEnd: z.enum(['source', 'target']).default('source'),
+  name: z.string().optional(),
+  sourceRole: z.string().optional(),
+  targetRole: z.string().optional(),
 });
 export type Association = z.infer<typeof AssociationSchema>;
 

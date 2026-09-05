@@ -1,4 +1,4 @@
-import { type Diagram, type Class, type Association, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, AttributeSchema, MethodSchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
 import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type BatchDelta, DeltaSchema } from './delta.js';
 import { z } from 'zod';
 
@@ -349,13 +349,26 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         sourceMultiplicity: delta.sourceMultiplicity,
         targetMultiplicity: delta.targetMultiplicity,
         directed: delta.directed,
+        aggregation: delta.aggregation,
+        aggregationEnd: delta.aggregationEnd,
+        name: delta.name,
+        sourceRole: delta.sourceRole,
+        targetRole: delta.targetRole,
       });
       return ok({ ...diagram, associations: [...diagram.associations, newAssociation] });
     }
 
     case 'updateMultiplicity': {
-      if (!delta.newSourceMultiplicity && !delta.newTargetMultiplicity) {
-        return err({ kind: 'InvalidOperationError', reason: 'Update multiplicity requires at least one new multiplicity' });
+      if (
+        !delta.newSourceMultiplicity &&
+        !delta.newTargetMultiplicity &&
+        delta.aggregation === undefined &&
+        delta.aggregationEnd === undefined &&
+        delta.name === undefined &&
+        delta.sourceRole === undefined &&
+        delta.targetRole === undefined
+      ) {
+        return err({ kind: 'InvalidOperationError', reason: 'Update requires at least one new multiplicity or meta field' });
       }
       const assocIndex = diagram.associations.findIndex(a => a.id === delta.associationId);
       if (assocIndex === -1) {
@@ -366,6 +379,11 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         ...updatedAssociations[assocIndex],
         sourceMultiplicity: delta.newSourceMultiplicity ?? updatedAssociations[assocIndex].sourceMultiplicity,
         targetMultiplicity: delta.newTargetMultiplicity ?? updatedAssociations[assocIndex].targetMultiplicity,
+        ...(delta.aggregation !== undefined ? { aggregation: delta.aggregation } : {}),
+        ...(delta.aggregationEnd !== undefined ? { aggregationEnd: delta.aggregationEnd } : {}),
+        ...(delta.name !== undefined ? { name: delta.name || undefined } : {}),
+        ...(delta.sourceRole !== undefined ? { sourceRole: delta.sourceRole || undefined } : {}),
+        ...(delta.targetRole !== undefined ? { targetRole: delta.targetRole || undefined } : {}),
       };
       return ok({ ...diagram, associations: updatedAssociations });
     }
