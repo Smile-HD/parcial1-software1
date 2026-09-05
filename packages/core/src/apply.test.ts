@@ -17,6 +17,7 @@ function createDiagram(overrides: Partial<Diagram> = {}): Diagram {
     name: 'Test Diagram',
     classes: [],
     associations: [],
+    generalizations: [],
   };
   return DiagramSchema.parse({ ...base, ...overrides });
 }
@@ -732,5 +733,307 @@ describe('applyDelta — Association aggregationEnd (UML 2.5.1 explicit end owne
       expect(assoc.aggregation).toBe('shared');
       expect(assoc.aggregationEnd).toBe('source'); // IR default applied
     }
+  });
+});
+
+describe('applyDelta — Generalization invariants (unit 11.2, editor:R Generalization)', () => {
+  function genDelta(state: Diagram, subClassId: string, superClassId: string, generalizationId = uuidv4()) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'generalization' as const,
+      op: 'create' as const,
+      generalizationId,
+      subClassId,
+      superClassId,
+    };
+  }
+
+  function deleteGenDelta(state: Diagram, generalizationId: string) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'generalization' as const,
+      op: 'delete' as const,
+      generalizationId,
+    };
+  }
+
+  it('CREATES a generalization edge between two existing classes', () => {
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const item = createClass({ id: itemId, name: 'Item' });
+    const product = createClass({ id: productId, name: 'Product' });
+    const state = createDiagram({ classes: [item, product] });
+
+    const result = applyDelta(state, genDelta(state, productId, itemId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.generalizations).toHaveLength(1);
+      expect(result.value.generalizations[0]).toMatchObject({ subClassId: productId, superClassId: itemId });
+    }
+    // Input state untouched (immutability)
+    expect(state.generalizations).toHaveLength(0);
+  });
+
+  it('REJECTS create when the subClass does not exist; model unchanged', () => {
+    const itemId = uuidv4();
+    const item = createClass({ id: itemId, name: 'Item' });
+    const state = createDiagram({ classes: [item] });
+
+    const result = applyDelta(state, genDelta(state, uuidv4(), itemId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.generalizations).toHaveLength(0);
+  });
+
+  it('REJECTS create when the superClass does not exist; model unchanged', () => {
+    const productId = uuidv4();
+    const product = createClass({ id: productId, name: 'Product' });
+    const state = createDiagram({ classes: [product] });
+
+    const result = applyDelta(state, genDelta(state, productId, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.generalizations).toHaveLength(0);
+  });
+
+  it('REJECTS a duplicate edge (same subClassId + superClassId) even with a different id', () => {
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const item = createClass({ id: itemId, name: 'Item' });
+    const product = createClass({ id: productId, name: 'Product' });
+    const existing = { id: uuidv4(), subClassId: productId, superClassId: itemId };
+    const state = createDiagram({ classes: [item, product], generalizations: [existing] });
+
+    const result = applyDelta(state, genDelta(state, productId, itemId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('DuplicateGeneralizationError');
+    expect(state.generalizations).toHaveLength(1);
+  });
+
+  it('allows the same pair in REVERSED direction as a distinct edge is NOT a duplicate (different sub/super)', () => {
+    // Triangulation for the duplicate rule: (sub=A, super=B) vs (sub=B, super=A)
+    // are different pairs — the second is rejected as a CYCLE, not as a duplicate.
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const item = createClass({ id: itemId, name: 'Item' });
+    const product = createClass({ id: productId, name: 'Product' });
+    const existing = { id: uuidv4(), subClassId: productId, superClassId: itemId };
+    const state = createDiagram({ classes: [item, product], generalizations: [existing] });
+
+    const result = applyDelta(state, genDelta(state, itemId, productId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('GeneralizationCycleError');
+  });
+
+  it('REJECTS a direct self-loop (A → A) as a cycle', () => {
+    const aId = uuidv4();
+    const a = createClass({ id: aId, name: 'A' });
+    const state = createDiagram({ classes: [a] });
+
+    const result = applyDelta(state, genDelta(state, aId, aId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('GeneralizationCycleError');
+    expect(state.generalizations).toHaveLength(0);
+  });
+
+  it('REJECTS a 2-cycle: given Product→Item, Item→Product is refused (editor:R Cycle scenario)', () => {
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const item = createClass({ id: itemId, name: 'Item' });
+    const product = createClass({ id: productId, name: 'Product' });
+    const existing = { id: uuidv4(), subClassId: productId, superClassId: itemId };
+    const state = createDiagram({ classes: [item, product], generalizations: [existing] });
+
+    const result = applyDelta(state, genDelta(state, itemId, productId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('GeneralizationCycleError');
+    // Model unchanged
+    expect(state.generalizations).toHaveLength(1);
+    expect(state.generalizations[0]).toEqual(existing);
+  });
+
+  it('REJECTS a transitive 3-cycle: A→B, B→C, then C→A closes the loop', () => {
+    const aId = uuidv4();
+    const bId = uuidv4();
+    const cId = uuidv4();
+    const a = createClass({ id: aId, name: 'A' });
+    const b = createClass({ id: bId, name: 'B' });
+    const c = createClass({ id: cId, name: 'C' });
+    const state = createDiagram({
+      classes: [a, b, c],
+      generalizations: [
+        { id: uuidv4(), subClassId: aId, superClassId: bId },
+        { id: uuidv4(), subClassId: bId, superClassId: cId },
+      ],
+    });
+
+    const result = applyDelta(state, genDelta(state, cId, aId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('GeneralizationCycleError');
+    expect(state.generalizations).toHaveLength(2);
+  });
+
+  it('REJECTS a transitive 4-cycle (depth beyond 3): A→B→C→D, then D→A', () => {
+    const aId = uuidv4();
+    const bId = uuidv4();
+    const cId = uuidv4();
+    const dId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: aId, name: 'A' }),
+        createClass({ id: bId, name: 'B' }),
+        createClass({ id: cId, name: 'C' }),
+        createClass({ id: dId, name: 'D' }),
+      ],
+      generalizations: [
+        { id: uuidv4(), subClassId: aId, superClassId: bId },
+        { id: uuidv4(), subClassId: bId, superClassId: cId },
+        { id: uuidv4(), subClassId: cId, superClassId: dId },
+      ],
+    });
+
+    const result = applyDelta(state, genDelta(state, dId, aId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('GeneralizationCycleError');
+    expect(state.generalizations).toHaveLength(3);
+  });
+
+  it('ALLOWS a diamond DAG (multiple inheritance without a cycle)', () => {
+    const aId = uuidv4();
+    const bId = uuidv4();
+    const cId = uuidv4();
+    const dId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: aId, name: 'A' }),
+        createClass({ id: bId, name: 'B' }),
+        createClass({ id: cId, name: 'C' }),
+        createClass({ id: dId, name: 'D' }),
+      ],
+      generalizations: [
+        { id: uuidv4(), subClassId: aId, superClassId: bId },
+        { id: uuidv4(), subClassId: aId, superClassId: cId },
+        { id: uuidv4(), subClassId: bId, superClassId: dId },
+      ],
+    });
+
+    // C→D completes the diamond — no cycle, must be accepted.
+    const result = applyDelta(state, genDelta(state, cId, dId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.generalizations).toHaveLength(4);
+  });
+
+  it('DELETES a generalization edge by id', () => {
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const genId = uuidv4();
+    const state = createDiagram({
+      classes: [createClass({ id: itemId, name: 'Item' }), createClass({ id: productId, name: 'Product' })],
+      generalizations: [{ id: genId, subClassId: productId, superClassId: itemId }],
+    });
+
+    const result = applyDelta(state, deleteGenDelta(state, genId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.generalizations).toHaveLength(0);
+  });
+
+  it('REJECTS delete of an unknown generalization', () => {
+    const state = createDiagram({ classes: [createClass({ name: 'Item' })] });
+
+    const result = applyDelta(state, deleteGenDelta(state, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('GeneralizationNotFoundError');
+  });
+
+  it('delete-class CASCADES: removes edges where the class is the subClass AND the superClass', () => {
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const specialId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: itemId, name: 'Item' }),
+        createClass({ id: productId, name: 'Product' }),
+        createClass({ id: specialId, name: 'SpecialProduct' }),
+      ],
+      generalizations: [
+        { id: uuidv4(), subClassId: productId, superClassId: itemId },   // Product → Item (super side)
+        { id: uuidv4(), subClassId: specialId, superClassId: productId }, // Special → Product (sub side)
+        { id: uuidv4(), subClassId: specialId, superClassId: itemId },    // untouched
+      ],
+    });
+
+    const deleteProduct = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: productId,
+    };
+
+    const result = applyDelta(state, deleteProduct);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Both edges touching Product are gone; the unrelated edge survives.
+      expect(result.value.generalizations).toHaveLength(1);
+      expect(result.value.generalizations[0]).toMatchObject({ subClassId: specialId, superClassId: itemId });
+      // No dangling endpoint references remain
+      const remainingClassIds = result.value.classes.map((c) => c.id);
+      for (const gen of result.value.generalizations) {
+        expect(remainingClassIds).toContain(gen.subClassId);
+        expect(remainingClassIds).toContain(gen.superClassId);
+      }
+    }
+  });
+
+  it('batch: a cyclic generalization inside a batch rejects the WHOLE batch (atomicity)', () => {
+    const itemId = uuidv4();
+    const productId = uuidv4();
+    const ghostId = uuidv4();
+    const state = createDiagram({
+      classes: [createClass({ id: itemId, name: 'Item' }), createClass({ id: productId, name: 'Product' })],
+      generalizations: [{ id: uuidv4(), subClassId: productId, superClassId: itemId }],
+    });
+
+    const batch = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        genDelta(state, ghostId, itemId, uuidv4()), // valid-looking create... but ghost class missing
+        genDelta(state, itemId, productId),          // would also be a cycle
+      ],
+    };
+
+    const result = applyDelta(state, batch);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('BatchError');
+      if (result.error.kind === 'BatchError') {
+        expect(result.error.failedDeltaIndex).toBe(0);
+        expect(result.error.error.kind).toBe('ClassNotFoundError');
+      }
+    }
+    // Nothing applied
+    expect(state.generalizations).toHaveLength(1);
   });
 });

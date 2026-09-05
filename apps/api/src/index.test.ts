@@ -704,3 +704,64 @@ describe('API: Corrupt blob handling (editor:R5)', () => {
     expect(plain).toBeUndefined();
   });
 });
+
+describe('API: Generalization round-trip (unit 11.6, editor:R5)', () => {
+  it('11.6 generalizations survive POST→GET losslessly through the blob-authoritative path', async () => {
+    const itemId = uuidv7();
+    const productId = uuidv7();
+    const specialId = uuidv7();
+    const diagram = DiagramSchema.parse({
+      id: uuidv7(),
+      name: 'Inheritance Round-trip',
+      classes: [
+        { id: itemId, name: 'Item', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: productId, name: 'Product', position: { x: 200, y: 0 }, attributes: [], methods: [] },
+        { id: specialId, name: 'SpecialProduct', position: { x: 400, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [
+        { id: uuidv7(), subClassId: productId, superClassId: itemId },
+        { id: uuidv7(), subClassId: specialId, superClassId: productId },
+      ],
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Inheritance Round-trip', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({ method: 'GET', url: `/diagrams/${diagram.id}` });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+
+    expect(body.diagram.generalizations).toHaveLength(2);
+    const pairs = body.diagram.generalizations
+      .map((g: any) => `${g.subClassId}->${g.superClassId}`)
+      .sort();
+    expect(pairs).toEqual(
+      [`${productId}->${itemId}`, `${specialId}->${productId}`].sort(),
+    );
+    // Ids survive too (no re-generation on projection).
+    for (const gen of body.diagram.generalizations) {
+      expect(diagram.generalizations.some((g) => g.id === gen.id)).toBe(true);
+    }
+  });
+
+  it('11.6 backward compat: a diagram without generalizations still round-trips with an empty collection', async () => {
+    const diagram = createCompleteTestDiagram(); // no generalizations passed in
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Legacy', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({ method: 'GET', url: `/diagrams/${diagram.id}` });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+    expect(body.diagram.generalizations).toEqual([]);
+  });
+});

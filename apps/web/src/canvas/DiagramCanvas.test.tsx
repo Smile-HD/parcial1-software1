@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 
 import { buildYDocFromDiagram, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
 
-import { DiagramCanvas, handleCreateAssociation, handleNodeDragStop, handleUpdateMultiplicity } from './DiagramCanvas';
+import { DiagramCanvas, handleCreateAssociation, handleCreateGeneralization, handleDeleteGeneralization, handleNodeDragStop, handleUpdateMultiplicity } from './DiagramCanvas';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
 /**
@@ -853,5 +853,191 @@ describe('aggregation/composition render (unit 10.3)', () => {
     expect(projected.associations).toHaveLength(0);
     expect(projected.classes).toHaveLength(2);
     expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(0);
+  });
+});
+
+describe('unit 11 — generalization render (11.3)', () => {
+  function genFixture(): { diagram: Diagram; itemId: string; productId: string; genId: string } {
+    const diagram = makeFixture(); // Customer, Order
+    const itemId = diagram.classes[1]!.id;   // Item role: Order
+    const productId = diagram.classes[0]!.id; // Product role: Customer
+    const genId = crypto.randomUUID();
+    diagram.generalizations = [{ id: genId, subClassId: productId, superClassId: itemId }];
+    return { diagram, itemId, productId, genId };
+  }
+
+  async function edgeContent(container: HTMLElement): Promise<SVGSVGElement | HTMLElement> {
+    return await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return (el!.querySelector('svg') ?? el!) as SVGSVGElement | HTMLElement;
+    });
+  }
+
+  it('renders a generalization edge with a hollow triangle marker at the SUPERCLASS end', async () => {
+    const { diagram } = genFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const svg = await edgeContent(container);
+
+    // Hollow triangle def exists: white fill (line must not show through)
+    // with a dark stroke — the UML generalization arrowhead.
+    const triangleMarker = Array.from(svg.querySelectorAll('marker')).find((m) =>
+      (m.getAttribute('id') ?? '').includes('generalization-triangle'),
+    );
+    expect(triangleMarker).toBeDefined();
+    const trianglePath = triangleMarker!.querySelector('path');
+    expect(trianglePath).toBeDefined();
+    expect(trianglePath!.getAttribute('fill')).toBe('#ffffff');
+    expect(trianglePath!.getAttribute('stroke')).toBe('#1a1a2e');
+
+    // The triangle sits on the target (superClass) end: marker-end references it.
+    const basePath = Array.from(svg.querySelectorAll('path')).find((p) => !p.closest('marker'));
+    expect(basePath).toBeDefined();
+    expect(basePath!.getAttribute('marker-end') ?? '').toContain('generalization-triangle');
+  });
+
+  it('generalization edges render alongside associations (separate edge type)', async () => {
+    const diagram = makeFixture();
+    diagram.associations = [{
+      id: crypto.randomUUID(),
+      sourceClassId: diagram.classes[0]!.id,
+      targetClassId: diagram.classes[1]!.id,
+      sourceMultiplicity: '1',
+      targetMultiplicity: '1',
+      directed: false,
+    }];
+    diagram.generalizations = [{
+      id: crypto.randomUUID(),
+      subClassId: diagram.classes[0]!.id,
+      superClassId: diagram.classes[1]!.id,
+    }];
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(2);
+    });
+  });
+
+  it('handleCreateGeneralization writes the edge through applyDeltaToYDoc (bridge round-trip)', () => {
+    const { diagram, itemId, productId } = genFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    // Start clean: no generalizations yet.
+    diagram.generalizations = [];
+    const cleanDoc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateGeneralization(cleanDoc, diagram.id, { subClassId: productId, superClassId: itemId });
+    });
+
+    const projected = projectYDocToDiagram(cleanDoc);
+    expect(projected.generalizations).toHaveLength(1);
+    expect(projected.generalizations[0]).toMatchObject({ subClassId: productId, superClassId: itemId });
+    // doc (the fixture-built one) is untouched
+    expect(projectYDocToDiagram(doc).generalizations).toHaveLength(1);
+  });
+
+  it('handleCreateGeneralization rejects a cyclic request leaving the model unchanged', () => {
+    const { diagram, itemId, productId, genId } = genFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      // itemId → productId would close the 2-cycle with the existing productId → itemId edge.
+      handleCreateGeneralization(doc, diagram.id, { subClassId: itemId, superClassId: productId });
+    });
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.generalizations).toHaveLength(1);
+    expect(projected.generalizations[0]!.id).toBe(genId);
+  });
+
+  it('handleDeleteGeneralization removes the edge from the Y.Doc', () => {
+    const { diagram, genId } = genFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleDeleteGeneralization(doc, diagram.id, genId);
+    });
+
+    expect(projectYDocToDiagram(doc).generalizations).toHaveLength(0);
+  });
+});
+
+describe('unit 11 — editor UI: context menu + per-class generalization list (11.4)', () => {
+  function genDiagram(): { diagram: Diagram; itemId: string; productId: string; genId: string } {
+    const diagram = makeFixture();
+    const itemId = diagram.classes[1]!.id;   // Order plays the super role
+    const productId = diagram.classes[0]!.id; // Customer plays the sub role
+    const genId = crypto.randomUUID();
+    diagram.generalizations = [{ id: genId, subClassId: productId, superClassId: itemId }];
+    return { diagram, itemId, productId, genId };
+  }
+
+  it('right-clicking a class opens a context menu with "make subclass of" actions for other classes', () => {
+    const { diagram } = genDiagram();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const customerNode = container.querySelector('.react-flow__node');
+    expect(customerNode).not.toBeNull();
+    fireEvent.contextMenu(customerNode!.querySelector('.uml-class')!);
+
+    // The menu offers the OTHER class (Order) as a superclass candidate.
+    const menuItem = container.querySelector('button[aria-label="Make subclass of Order"]');
+    expect(menuItem).not.toBeNull();
+    // It does not offer itself.
+    expect(container.querySelector('button[aria-label="Make subclass of Customer"]')).toBeNull();
+  });
+
+  it('choosing "make subclass of" emits a generalization create delta into the Y.Doc', () => {
+    const diagram = makeFixture(); // no generalizations initially
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const customerNode = container.querySelector('.react-flow__node');
+    fireEvent.contextMenu(customerNode!.querySelector('.uml-class')!);
+    fireEvent.click(container.querySelector('button[aria-label="Make subclass of Order"]')!);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.generalizations).toHaveLength(1);
+    expect(projected.generalizations[0]).toMatchObject({
+      subClassId: diagram.classes[0]!.id,
+      superClassId: diagram.classes[1]!.id,
+    });
+  });
+
+  it('clicking a class shows its generalizations in the editor panel with role labels', () => {
+    const { diagram, genId } = genDiagram();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const customerNode = container.querySelector('.react-flow__node');
+    fireEvent.click(customerNode!.querySelector('.uml-class')!);
+
+    const panel = screen.getByTestId('generalization-panel');
+    expect(panel.textContent).toContain('Inherits from Order');
+
+    // The superclass class node shows the mirrored entry.
+    fireEvent.click(container.querySelectorAll('.react-flow__node')[1]!.querySelector('.uml-class')!);
+    expect(screen.getByTestId('generalization-panel').textContent).toContain('Inherited by Customer');
+  });
+
+  it('deleting a generalization from the panel removes the edge from the model', () => {
+    const { diagram, genId } = genDiagram();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const customerNode = container.querySelector('.react-flow__node');
+    fireEvent.click(customerNode!.querySelector('.uml-class')!);
+
+    const deleteButton = screen.getByTestId('generalization-panel').querySelector<HTMLButtonElement>(
+      `button[aria-label="Delete generalization ${genId}"]`,
+    );
+    expect(deleteButton).not.toBeNull();
+    fireEvent.click(deleteButton!);
+
+    expect(projectYDocToDiagram(doc).generalizations).toHaveLength(0);
   });
 });

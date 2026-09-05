@@ -11,13 +11,13 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     expect(Array.isArray((deltaJsonSchema as Record<string, unknown>).oneOf)).toBe(true);
   });
 
-  it('includes all four delta kinds in the generated schema', () => {
+  it('includes all five delta kinds in the generated schema', () => {
     const schema = deltaJsonSchema as Record<string, unknown>;
     // The discriminated union should produce a oneOf/anyOf with all variants
     const variants = (schema.oneOf ?? schema.anyOf) as Array<Record<string, unknown>>;
     expect(Array.isArray(variants)).toBe(true);
     const kinds = variants.map(v => v.properties?.kind?.const).filter(Boolean);
-    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'member']);
+    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'generalization', 'member']);
   });
 
   it('validates a valid class delta through the union', () => {
@@ -212,5 +212,82 @@ describe('Delta Schema — Association aggregationEnd (UML 2.5.1 explicit end ow
     };
     const result = DeltaSchema.safeParse(delta);
     expect(result.success).toBe(false);
+  });
+});
+
+describe('Delta Schema — Generalization kind (unit 11.1)', () => {
+  it('validates a generalization create delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'generalization' as const,
+      op: 'create' as const,
+      generalizationId: crypto.randomUUID(),
+      subClassId: crypto.randomUUID(),
+      superClassId: crypto.randomUUID(),
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe('generalization');
+      expect(result.data.op).toBe('create');
+    }
+  });
+
+  it('validates a generalization delete delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'generalization' as const,
+      op: 'delete' as const,
+      generalizationId: crypto.randomUUID(),
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+  });
+
+  it('REJECTS unknown ops for generalization deltas (only create|delete)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'generalization' as const,
+      op: 'update',
+      generalizationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS a generalization create missing an end', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'generalization' as const,
+      op: 'create' as const,
+      generalizationId: crypto.randomUUID(),
+      subClassId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('batch delta accepts generalization inner deltas', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+    const batch = {
+      ...base,
+      kind: 'batch' as const,
+      deltas: [
+        { ...base, kind: 'generalization' as const, op: 'create' as const, generalizationId: crypto.randomUUID(), subClassId: crypto.randomUUID(), superClassId: crypto.randomUUID() },
+        { ...base, kind: 'generalization' as const, op: 'delete' as const, generalizationId: crypto.randomUUID() },
+      ],
+    };
+    const result = DeltaSchema.safeParse(batch);
+    expect(result.success).toBe(true);
   });
 });

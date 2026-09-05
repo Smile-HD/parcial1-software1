@@ -137,12 +137,12 @@ The exam requirements explicitly require BOTH importing AND exporting to Enterpr
 
 ### Unit 11: Generalization (PR 11)
 
-- [ ] 11.1 RED: new IR collection `generalizations: [{ id, subClassId, superClassId }]` + delta kind `generalization` ops `create|delete` (DeltaSchema union grows).
-- [ ] 11.2 RED: engine invariants — both classes exist; no duplicate edge (same sub+super); NO cycles (reject A→B→A transitively); delete-class cascades its generalization edges.
-- [ ] 11.3 Renderer: hollow-triangle arrowhead toward superClass; transitive edge layout acceptable (straight lines).
-- [ ] 11.4 Editor UI: "make subclass of" action in class context menu; generalization list per class in the editor panel.
-- [ ] 11.5 Interpreter: "Product is a kind of Item", "Item inherits from X", "remove inheritance" commands.
-- [ ] 11.6 Verify: cycle rejection automated; round-trip + collab convergence.
+- [x] 11.1 RED: new IR collection `generalizations: [{ id, subClassId, superClassId }]` + delta kind `generalization` ops `create|delete` (DeltaSchema union grows).
+- [x] 11.2 RED: engine invariants — both classes exist; no duplicate edge (same sub+super); NO cycles (reject A→B→A transitively); delete-class cascades its generalization edges.
+- [x] 11.3 Renderer: hollow-triangle arrowhead toward superClass; transitive edge layout acceptable (straight lines).
+- [x] 11.4 Editor UI: "make subclass of" action in class context menu; generalization list per class in the editor panel.
+- [x] 11.5 Interpreter: "Product is a kind of Item", "Item inherits from X", "remove inheritance" commands.
+- [x] 11.6 Verify: cycle rejection automated; round-trip + collab convergence.
 
 ### Unit 12: Interfaces, abstract, realization, dependency (PR 12)
 

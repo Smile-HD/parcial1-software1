@@ -14,6 +14,8 @@ import {
   type ClassDelta,
   type Diagram,
   type Delta,
+  type Generalization,
+  type GeneralizationDelta,
   type LlmPort,
   type LlmResult,
   type MemberDelta,
@@ -305,6 +307,55 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
+    // 11. generalization DELETE (checked BEFORE create so negations win):
+    // "X does not inherit from Y", "remove inheritance from X",
+    // "remove inheritance between X and Y".
+    const existingGens: readonly Generalization[] = currentIr.generalizations ?? [];
+    const notInherit = /\b([A-Za-z_]\w*)\s+does\s+not\s+inherit\s+from\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const removeInheritance = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\binheritance\b[\s\S]*?\b(?:from|between|de|entre)\s+([A-Za-z_]\w*)(?:\s+(?:and|y|con)\s+([A-Za-z_]\w*))?/i.exec(utterance);
+    const deleteMatch = notInherit ?? (removeInheritance ? [removeInheritance[0], removeInheritance[1]!, removeInheritance[2]] : null);
+    if (deleteMatch) {
+      const subClassId = classIdByName(currentIr, deleteMatch[1]!);
+      if (subClassId === null) return refused(`Unknown class "${deleteMatch[1]}"`);
+      let edge: Generalization | undefined;
+      if (deleteMatch[2]) {
+        const superClassId = classIdByName(currentIr, deleteMatch[2]);
+        if (superClassId === null) return refused(`Unknown class "${deleteMatch[2]}"`);
+        edge = existingGens.find((g) => g.subClassId === subClassId && g.superClassId === superClassId);
+      } else {
+        edge = existingGens.find((g) => g.subClassId === subClassId);
+      }
+      if (edge === undefined) {
+        return refused(`No inheritance found for class "${deleteMatch[1]}".`);
+      }
+      const delta: GeneralizationDelta = {
+        kind: 'generalization',
+        op: 'delete',
+        ...deltaBase(currentIr),
+        generalizationId: edge.id,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 12. generalization CREATE: "X is a kind of Y", "X inherits from Y",
+    // "X is a subclass of Y" — X is the subClass, Y is the superClass.
+    const generalization = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:a\s+kind\s+of|inherits\s+from|a\s+subclass\s+of)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (generalization) {
+      const subClassId = classIdByName(currentIr, generalization[1]!);
+      const superClassId = classIdByName(currentIr, generalization[2]!);
+      if (subClassId === null) return refused(`Unknown class "${generalization[1]}"`);
+      if (superClassId === null) return refused(`Unknown class "${generalization[2]}"`);
+      const delta: GeneralizationDelta = {
+        kind: 'generalization',
+        op: 'create',
+        ...deltaBase(currentIr),
+        generalizationId: crypto.randomUUID(),
+        subClassId,
+        superClassId,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
     return refused('Unsupported command.');
   }
 }
@@ -366,9 +417,16 @@ export class OpenAiLlm implements LlmPort {
       'EDIT METHOD: {"kind":"member","op":"editMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>","name":"<newName>","returnType":"<newReturnType>","parameters":[] [, visibility/isStatic]}',
       'DELETE METHOD: {"kind":"member","op":"deleteMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>"}',
 'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
-      'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*" [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
-      'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
-      '',
+       'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*" [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
+       'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
+       'GENERALIZATION CREATE: {"kind":"generalization","op":"create", ...base, "generalizationId":"<new uuid>","subClassId":"<existing class uuid — the SUBCLASS>","superClassId":"<existing class uuid — the SUPERCLASS>"}',
+       'GENERALIZATION DELETE: {"kind":"generalization","op":"delete", ...base, "generalizationId":"<existing generalization uuid from the IR>"}',
+       '',
+       'GENERALIZATION GUIDANCE:',
+       '- "X is a kind of Y", "X inherits from Y", "X is a subclass of Y" → X is the subClass, Y is the superClass.',
+       '- The engine rejects cycles (A→B→A transitively), duplicate edges, and references to missing classes. Never emit a generalization that inverts an existing one.',
+       '- "remove inheritance" / "X does not inherit from Y" → generalization delete using the EXACT generalizationId from currentIr.generalizations.',
+       '',
       'AGGREGATION END GUIDANCE:',
       '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',
       '- It is INDEPENDENT of drawing direction (source/target class order) and multiplicities.',
@@ -446,7 +504,7 @@ export class OpenAiLlm implements LlmPort {
 // ── Model-output repair (provider quirk normalization) ─────────────────────
 
 /** UUID fields the MODEL is allowed to invent; malformed values are regenerated. */
-const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'sourceClassId', 'targetClassId']);
+const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
