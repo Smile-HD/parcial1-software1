@@ -829,4 +829,29 @@ describe('aggregation/composition render (unit 10.3)', () => {
     assoc = projectYDocToDiagram(doc).associations[0]!;
     expect(assoc.aggregationEnd).toBe('target');
   });
+
+  it('deletes the association when the panel delete button is clicked (association delete delta)', async () => {
+    const fixture = assocFixture({});
+    const doc = buildYDocFromDiagram(fixture);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    expect(projectYDocToDiagram(doc).associations).toHaveLength(1);
+
+    // Select the edge to open the association panel
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.click(edge);
+
+    const deleteButton = screen.getByRole('button', { name: /delete association/i });
+    fireEvent.click(deleteButton);
+
+    // The association is gone from the model and the canvas; classes survive
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.associations).toHaveLength(0);
+    expect(projected.classes).toHaveLength(2);
+    expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(0);
+  });
 });

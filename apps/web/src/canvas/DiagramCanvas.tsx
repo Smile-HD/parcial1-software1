@@ -151,6 +151,27 @@ export function handleUpdateAssociationMeta(
 }
 
 /**
+ * editor:R4 — delete an association by emitting an association `delete` delta.
+ * The op exists in core since Unit 6; this wires it to the UI so associations
+ * can be removed without deleting a member class.
+ */
+export function handleDeleteAssociation(
+  doc: Y.Doc,
+  diagramId: string,
+  associationId: string,
+): void {
+  const delta: AssociationDelta = {
+    kind: 'association',
+    op: 'delete',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    associationId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
  * First free auto-name: Class1, Class2, ... skipping any existing name.
  */
 function nextFreeClassName(existing: readonly string[]): string {
@@ -522,6 +543,17 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
               }}
             />
           </label>
+          <button
+            type="button"
+            className="diagram-canvas__delete-association"
+            aria-label={`Delete association ${selectedAssociation.id}`}
+            onClick={() => {
+              handleDeleteAssociation(doc, diagram.id, selectedAssociation.id);
+              setSelectedAssociationId(null);
+            }}
+          >
+            Delete association
+          </button>
         </div>
       )}
       <ReactFlow

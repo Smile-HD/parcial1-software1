@@ -125,6 +125,22 @@
   color: #1a1a2e;
   cursor: pointer;
 }
+
+/* unit 10 — association delete button in the multiplicity panel */
+.diagram-canvas__delete-association {
+  margin-left: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 10px;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+  background: #fff;
+  color: #b00020;
+  cursor: pointer;
+  align-self: flex-start;
+}
 /* unit 9.3 — UML member adornments */
 .uml-member--static {
   text-decoration: underline;
