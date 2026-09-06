@@ -569,3 +569,78 @@
 .uml-class__connect-overlay {
   cursor: crosshair;
 }
+
+/* unit 13d — EA-style Quick Linker: the corner arrow on the SELECTED element
+   (top-right, ~14px, distinct from the handle dots). */
+.uml-class__quicklinker {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 30;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 50%;
+  color: #1a1a2e;
+  cursor: crosshair;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.uml-class__quicklinker:hover {
+  background: #eef0f7;
+}
+
+/* unit 13d — the rubber band drawn while the quick-link drag is live.
+   Fixed full-viewport overlay; pointer-events: none so the drop always
+   lands on the canvas, never on the line. */
+.quicklinker-rubberband {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.quicklinker-rubberband line {
+  stroke: #1a1a2e;
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+}
+
+/* unit 13d — the Quick Linker menu (connector / element variants share it):
+   a small positioned list like the class context menu, anchored at the
+   pointer-up screen point. */
+.quicklinker-menu {
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+}
+
+.quicklinker-menu button {
+  font-family: inherit;
+  font-size: 11px;
+  text-align: left;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #1a1a2e;
+  cursor: pointer;
+}
+
+.quicklinker-menu button:hover {
+  background: #eef0f7;
+}

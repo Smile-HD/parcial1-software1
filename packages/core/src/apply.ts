@@ -462,8 +462,11 @@ function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Dia
 function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): ApplyResult<Diagram> {
   switch (delta.op) {
     case 'create': {
-      if (!delta.sourceClassId || !delta.targetClassId || !delta.sourceMultiplicity || !delta.targetMultiplicity || delta.directed === undefined) {
-        return err({ kind: 'InvalidOperationError', reason: 'Association create requires sourceClassId, targetClassId, sourceMultiplicity, targetMultiplicity, and directed' });
+      // Unit 13d fix C: multiplicities are OPTIONAL — an association end may
+      // be unspecified (composition/aggregation start empty). Only the
+      // endpoints and the directedness flag are required.
+      if (!delta.sourceClassId || !delta.targetClassId || delta.directed === undefined) {
+        return err({ kind: 'InvalidOperationError', reason: 'Association create requires sourceClassId, targetClassId, and directed' });
       }
       // Recursive (self) associations (source === target) are VALID UML —
       // e.g. Product is-component-of Product. Both ends must still exist.
@@ -490,9 +493,13 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
     }
 
     case 'updateMultiplicity': {
+      // Unit 13d fix C: the multiplicity carriers are tri-state — undefined
+      // keeps the end, a string sets it, NULL clears it to unspecified. The
+      // at-least-one guard must therefore test `=== undefined`, not falsiness
+      // (a lone `null` clear is a legitimate update).
       if (
-        !delta.newSourceMultiplicity &&
-        !delta.newTargetMultiplicity &&
+        delta.newSourceMultiplicity === undefined &&
+        delta.newTargetMultiplicity === undefined &&
         delta.aggregation === undefined &&
         delta.aggregationEnd === undefined &&
         delta.name === undefined &&
@@ -508,8 +515,8 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
       const updatedAssociations = [...diagram.associations];
       updatedAssociations[assocIndex] = {
         ...updatedAssociations[assocIndex],
-        sourceMultiplicity: delta.newSourceMultiplicity ?? updatedAssociations[assocIndex].sourceMultiplicity,
-        targetMultiplicity: delta.newTargetMultiplicity ?? updatedAssociations[assocIndex].targetMultiplicity,
+        ...(delta.newSourceMultiplicity !== undefined ? { sourceMultiplicity: delta.newSourceMultiplicity ?? undefined } : {}),
+        ...(delta.newTargetMultiplicity !== undefined ? { targetMultiplicity: delta.newTargetMultiplicity ?? undefined } : {}),
         ...(delta.aggregation !== undefined ? { aggregation: delta.aggregation } : {}),
         ...(delta.aggregationEnd !== undefined ? { aggregationEnd: delta.aggregationEnd } : {}),
         ...(delta.name !== undefined ? { name: delta.name || undefined } : {}),
@@ -743,6 +750,11 @@ function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyRe
  *   association; every member class must exist. Lives in its OWN
  *   `naryAssociations` collection — the binary-association path is never
  *   touched (design decision D13).
+ * - update (unit 13d fix A): the association must exist; carries an optional
+ *   `name` and/or optional replacement `memberEnds`. When memberEnds are
+ *   provided the SAME invariants as create are re-validated (existence,
+ *   ≥3 ends, no duplicates) so an edit can never produce a degenerate or
+ *   dangling n-ary. An empty name clears it (mirrors edge label semantics).
  * - delete: the association must exist.
  */
 function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta): ApplyResult<Diagram> {
@@ -772,6 +784,47 @@ function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta
         name: delta.name,
       });
       return ok({ ...diagram, naryAssociations: [...(diagram.naryAssociations ?? []), newNary] });
+    }
+
+    case 'update': {
+      // The schema gate already requires at least one carrier; this engine
+      // guard mirrors it defensively (same pattern as the class update).
+      if (delta.name === undefined && delta.memberEnds === undefined) {
+        return err({ kind: 'InvalidOperationError', reason: 'NaryAssociation update requires name or memberEnds' });
+      }
+      const naryIndex = (diagram.naryAssociations ?? []).findIndex(n => n.id === delta.naryAssociationId);
+      if (naryIndex === -1) {
+        return err({ kind: 'NaryAssociationNotFoundError', naryAssociationId: delta.naryAssociationId });
+      }
+      const existing = (diagram.naryAssociations ?? [])[naryIndex]!;
+      let memberEnds = existing.memberEnds;
+      if (delta.memberEnds !== undefined) {
+        // Re-validate the SAME invariants as create on the replacement ends.
+        if (delta.memberEnds.length < 3) {
+          return err({ kind: 'NaryAssociationMinEndsError', count: delta.memberEnds.length });
+        }
+        const seen = new Set<string>();
+        for (const end of delta.memberEnds) {
+          if (seen.has(end.classId)) {
+            return err({ kind: 'DuplicateNaryMemberError', classId: end.classId });
+          }
+          seen.add(end.classId);
+        }
+        for (const end of delta.memberEnds) {
+          if (!findClass(diagram, end.classId)) {
+            return err({ kind: 'ClassNotFoundError', classId: end.classId });
+          }
+        }
+        memberEnds = delta.memberEnds;
+      }
+      const updatedNary = NaryAssociationSchema.parse({
+        ...existing,
+        memberEnds,
+        ...(delta.name !== undefined ? { name: delta.name || undefined } : {}),
+      });
+      const updatedNaryAssociations = [...(diagram.naryAssociations ?? [])];
+      updatedNaryAssociations[naryIndex] = updatedNary;
+      return ok({ ...diagram, naryAssociations: updatedNaryAssociations });
     }
 
     case 'delete': {

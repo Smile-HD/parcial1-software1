@@ -65,6 +65,9 @@ export type MemberDelta = z.infer<typeof MemberDeltaSchema>;
 /**
  * Association-level operations: create, update multiplicities, delete.
  * Aggregation, name, roles, and aggregationEnd are optional so legacy deltas stay valid.
+ * Unit 13d fix C: create multiplicities are optional (an end may start
+ * unspecified), and the update carriers are NULLABLE — `null` CLEARS an end
+ * back to unspecified, a string sets it, and `undefined` keeps it (tri-state).
  */
 export const AssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('association'),
@@ -82,9 +85,9 @@ export const AssociationDeltaSchema = DeltaBase.extend({
   name: z.string().optional(),
   sourceRole: z.string().optional(),
   targetRole: z.string().optional(),
-  // For updateMultiplicity
-  newSourceMultiplicity: MultiplicitySchema.optional(),
-  newTargetMultiplicity: MultiplicitySchema.optional(),
+  // For updateMultiplicity (null = clear to unspecified)
+  newSourceMultiplicity: MultiplicitySchema.nullable().optional(),
+  newTargetMultiplicity: MultiplicitySchema.nullable().optional(),
 }).strict();
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 
@@ -186,18 +189,21 @@ export const DependencyDeltaSchema = DeltaBase.extend({
 export type DependencyDelta = z.infer<typeof DependencyDeltaSchema>;
 
 /**
- * N-ary association-level operations: create (>=3 member ends) and delete.
- * A `create` must carry memberEnds (schema gate); the engine invariants —
- * every member class exists, >=3 ends, no duplicate classId within one
- * association — are enforced by applyDelta (unit 13.1). The ≥3 floor is
- * deliberately NOT a schema gate so a 2-end create surfaces as a typed
- * engine error (NaryAssociationMinEndsError) instead of a thrown ZodError.
+ * N-ary association-level operations: create (>=3 member ends), update
+ * (name and/or member ends — unit 13d fix A) and delete. A `create` must
+ * carry memberEnds (schema gate); an `update` must carry at least one of
+ * `name` / `memberEnds` (schema gate, mirroring the class-update gate). The
+ * engine invariants — every member class exists, >=3 ends, no duplicate
+ * classId within one association — are enforced by applyDelta for BOTH
+ * create and update (unit 13.1 / 13d). The ≥3 floor is deliberately NOT a
+ * schema gate so a 2-end payload surfaces as a typed engine error
+ * (NaryAssociationMinEndsError) instead of a thrown ZodError.
  */
 export const NaryAssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('naryAssociation'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   naryAssociationId: z.string().uuid(),
-  // For create: member ends required (enforced by the refinement below)
+  // For create (required) and update (optional replacement): member ends.
   memberEnds: z.array(z.object({
     classId: z.string().uuid(),
     multiplicity: MultiplicitySchema,
@@ -209,6 +215,12 @@ export const NaryAssociationDeltaSchema = DeltaBase.extend({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'NaryAssociation create requires memberEnds',
+    });
+  }
+  if (delta.op === 'update' && delta.name === undefined && delta.memberEnds === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'NaryAssociation update requires name or memberEnds',
     });
   }
 });

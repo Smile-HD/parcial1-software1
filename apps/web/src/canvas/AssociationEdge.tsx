@@ -56,10 +56,17 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
     }
   }
 
-  // Label for association name + multiplicities (centered)
+  // Label for association name + multiplicities (centered).
+  // unit 13d fix C — only DEFINED multiplicities are drawn: an unspecified
+  // end renders NO phantom '1'. With both ends set the label is byte-identical
+  // to the previous format; with none set and no name, no center label at all.
+  const multParts = [association.sourceMultiplicity, association.targetMultiplicity].filter(
+    (m): m is string => m !== undefined,
+  );
+  const multLabel = multParts.length > 0 ? multParts.join(' · ') : undefined;
   const centerLabel = association.name
-    ? `${association.name} | ${association.sourceMultiplicity} · ${association.targetMultiplicity}`
-    : `${association.sourceMultiplicity} · ${association.targetMultiplicity}`;
+    ? (multLabel ? `${association.name} | ${multLabel}` : association.name)
+    : multLabel;
 
   // Role labels at ends
   const sourceLabel = association.sourceRole;

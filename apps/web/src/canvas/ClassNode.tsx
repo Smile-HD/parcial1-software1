@@ -54,6 +54,17 @@ export type ClassNodeData = Record<string, unknown> & {
    * armed the overlay does not exist, so node dragging is untouched.
    */
   connectArmed?: boolean;
+  /**
+   * Unit 13d — EA-style Quick Linker: true when this node is the canvas's
+   * selected element. The corner arrow renders ONLY then (hidden otherwise).
+   */
+  selected?: boolean;
+  /**
+   * Unit 13d — pointer-down on the Quick Linker arrow starts the quick-link
+   * drag; the canvas tracks the cursor and resolves the drop (connector menu
+   * over an element, element menu over empty canvas).
+   */
+  onQuickLinkStart?: (clientX: number, clientY: number) => void;
 };
 
 export type ClassFlowNode = import('@xyflow/react').Node<ClassNodeData, 'class'>;
@@ -359,6 +370,36 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
             Close
           </button>
         </div>
+      )}
+      {/* unit 13d — EA-style Quick Linker: the corner arrow at the TOP-RIGHT
+          of the SELECTED element. Pointer-down starts a quick-link drag
+          (connector menu over a target element, element menu over empty
+          canvas). Hidden when the node is not selected; `nodrag` keeps React
+          Flow from turning the gesture into a node move. */}
+      {data.selected === true && (
+        <button
+          type="button"
+          className="uml-class__quicklinker nodrag nopan"
+          data-testid="quicklinker-arrow"
+          aria-label="Quick Linker"
+          title="Drag to another element to link, or to empty canvas to create and link"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            data.onQuickLinkStart?.(event.clientX, event.clientY);
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path
+              d="M 2 12 L 12 2 M 12 2 L 5.5 2 M 12 2 L 12 8.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
       )}
       {editing ? (
         <input

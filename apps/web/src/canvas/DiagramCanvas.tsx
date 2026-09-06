@@ -22,6 +22,16 @@ import { RealizationEdge } from './RealizationEdge';
 import { DependencyEdge } from './DependencyEdge';
 import { NaryEndEdge } from './NaryEndEdge';
 import { Palette, PALETTE_DND_MIME, type PaletteEdgeTool, type PaletteNodeKind } from './Palette';
+import { QuickLinkerMenu } from './QuickLinkerMenu';
+import {
+  CONNECTOR_LABELS,
+  ELEMENT_LABELS,
+  elementMenuOptions,
+  quickLinkerTarget,
+  validConnectorsFor,
+  type QuickConnectorType,
+  type QuickLinkerKind,
+} from './quickLinker';
 
 const nodeTypes = { class: ClassNode, naryDiamond: NaryDiamondNode };
 const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge, dependency: DependencyEdge, naryEnd: NaryEndEdge };
@@ -99,6 +109,11 @@ export function handleCreateAssociation(
   if (link.sourceClassId === '' || link.targetClassId === '') {
     return null;
   }
+  // unit 13d fix C — Aggregation/Composition presets start with UNSPECIFIED
+  // multiplicities (empty ends, per UML convention: a new connector carries
+  // no assumed multiplicity). The plain Association tool keeps its documented
+  // '1'/'1' default; the paths share this function but branch on the preset.
+  const presetAggregation = link.aggregation !== undefined && link.aggregation !== 'none';
   const delta: AssociationDelta = {
     kind: 'association',
     op: 'create',
@@ -108,12 +123,13 @@ export function handleCreateAssociation(
     associationId: crypto.randomUUID(),
     sourceClassId: link.sourceClassId,
     targetClassId: link.targetClassId,
-    sourceMultiplicity: '1',
-    targetMultiplicity: '1',
+    ...(presetAggregation
+      ? {}
+      : { sourceMultiplicity: '1', targetMultiplicity: '1' }),
     directed: link.directed,
     // unit 13c — the palette Aggregation/Composition tools preset the kind;
     // the diamond sits on the source end by default (aggregationEnd='source').
-    ...(link.aggregation !== undefined && link.aggregation !== 'none'
+    ...(presetAggregation
       ? { aggregation: link.aggregation, aggregationEnd: 'source' as const }
       : {}),
   };
@@ -126,6 +142,9 @@ export function handleCreateAssociation(
  * core THROWS on invalid multiplicities, so `3..7` must never reach
  * applyDeltaToYDoc or the app crashes. Invalid input is silently rejected
  * and the previous value is retained (no delta is emitted).
+ * unit 13d fix C — an EMPTY (or whitespace-only) value CLEARS the end to
+ * unspecified via a `null` carrier (the core tri-state: undefined keeps,
+ * string sets, null clears). Garbage is still rejected.
  */
 export function handleUpdateMultiplicity(
   doc: Y.Doc,
@@ -134,9 +153,26 @@ export function handleUpdateMultiplicity(
   endpoint: 'source' | 'target',
   value: string,
 ): void {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    // Clear to unspecified — the editor must allow emptying a multiplicity.
+    const clearDelta: AssociationDelta = {
+      kind: 'association',
+      op: 'updateMultiplicity',
+      id: crypto.randomUUID(),
+      diagramId,
+      timestamp: new Date().toISOString(),
+      associationId,
+      ...(endpoint === 'source'
+        ? { newSourceMultiplicity: null }
+        : { newTargetMultiplicity: null }),
+    };
+    applyDeltaToYDoc(doc, clearDelta);
+    return;
+  }
   // unit 9 — full UML 2.5.1 multiplicity grammar (*, integers, m..n, m..*);
   // garbage is rejected and the previous value is retained (editor:R4).
-  const parsed = MultiplicitySchema.safeParse(value);
+  const parsed = MultiplicitySchema.safeParse(trimmed);
   if (!parsed.success) {
     return;
   }
@@ -482,6 +518,55 @@ export function handleCreateNaryAssociation(
 }
 
 /**
+ * editor:R N-ary (unit 13d fix A) — emit an naryAssociation `update` delta
+ * (the diamond editor's commits). Same pre-emit guards as create: fewer than
+ * three ends or an invalid multiplicity never reach the throwing schema
+ * parse; a rejected input emits NOTHING (previous value retained). `name`
+ * accepts an empty string to CLEAR the label (engine maps '' → undefined).
+ */
+export function handleUpdateNaryAssociation(
+  doc: Y.Doc,
+  diagramId: string,
+  naryAssociationId: string,
+  updates: { name?: string; memberEnds?: NaryMemberEndInput[] },
+): void {
+  if (updates.name === undefined && updates.memberEnds === undefined) {
+    return;
+  }
+  const delta: NaryAssociationDelta = {
+    kind: 'naryAssociation',
+    op: 'update',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    naryAssociationId,
+    ...(updates.name !== undefined ? { name: updates.name } : {}),
+  };
+  if (updates.memberEnds !== undefined) {
+    if (updates.memberEnds.length < 3) {
+      return;
+    }
+    const memberEnds: NaryMemberEnd[] = [];
+    for (const end of updates.memberEnds) {
+      if (end.classId === '') {
+        return;
+      }
+      const parsed = MultiplicitySchema.safeParse(end.multiplicity);
+      if (!parsed.success) {
+        return;
+      }
+      memberEnds.push({
+        classId: end.classId,
+        multiplicity: parsed.data,
+        ...(end.role !== undefined && end.role !== '' ? { role: end.role } : {}),
+      });
+    }
+    delta.memberEnds = memberEnds;
+  }
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
  * editor:R N-ary (unit 13.3) — emit an naryAssociation `delete` delta
  * (the diamond's context-menu action).
  */
@@ -542,26 +627,31 @@ function nextFreeClassName(existing: readonly string[], prefix = 'Class'): strin
  * (interfaces carry classKind), parameterized by drop position + kind, with
  * the next free auto-name. The toolbar handlers delegate here so there is
  * exactly one creation path.
+ * unit 13d — returns the created classId so the Quick Linker's
+ * element+connector gesture can chain the connector delta onto the element
+ * it just created. Existing callers ignore the return value.
  */
 export function handlePaletteDrop(
   doc: Y.Doc,
   diagramId: string,
   input: { kind: PaletteNodeKind; position: { x: number; y: number }; existingNames: readonly string[] },
-): void {
+): string {
   const prefix = input.kind === 'interface' ? 'Interface' : 'Class';
   const name = nextFreeClassName(input.existingNames, prefix);
+  const classId = crypto.randomUUID();
   const delta: ClassDelta = {
     kind: 'class',
     op: 'create',
     id: crypto.randomUUID(),
     diagramId,
     timestamp: new Date().toISOString(),
-    classId: crypto.randomUUID(),
+    classId,
     name,
     position: input.position,
     ...(input.kind === 'interface' ? { classKind: 'interface' as const } : {}),
   };
   applyDeltaToYDoc(doc, delta);
+  return classId;
 }
 
 /** Outcome of a guarded drag-to-connect: ok, or rejected with a user message. */
@@ -639,9 +729,7 @@ export function handleConnectWithTool(
 
   switch (tool) {
     case 'association': {
-      if (source === target) {
-        return { ok: false, message: 'An association needs two distinct classes — drag to a different node.' };
-      }
+      // Self-association is valid UML (e.g., Employee→manages→Employee)
       const result = handleCreateAssociation(doc, diagramId, {
         sourceClassId: source,
         targetClassId: target,
@@ -653,9 +741,7 @@ export function handleConnectWithTool(
     // diamond kind preset (shared = hollow, composite = filled).
     case 'aggregation':
     case 'composition': {
-      if (source === target) {
-        return { ok: false, message: 'An association needs two distinct classes — drag to a different node.' };
-      }
+      // Self-aggregation/composition is valid UML (e.g., TreeNode composed of TreeNode)
       const result = handleCreateAssociation(doc, diagramId, {
         sourceClassId: source,
         targetClassId: target,
@@ -685,9 +771,7 @@ export function handleConnectWithTool(
       return engineGuardResult(result, 'Realization');
     }
     case 'dependency': {
-      if (source === target) {
-        return { ok: false, message: 'A dependency needs two distinct endpoints.' };
-      }
+      // Self-dependency is valid UML
       const result = handleCreateDependency(doc, diagramId, {
         clientClassId: source,
         supplierClassId: target,
@@ -696,6 +780,32 @@ export function handleConnectWithTool(
     }
   }
 }
+
+/**
+ * unit 13d — EA-style Quick Linker: the menu opened when the quick-link drag
+ * ends. 'connector' = dropped on an existing element (menu lists the valid
+ * connectors source→target); 'element' = dropped on empty canvas (menu lists
+ * creatable kinds; picking one creates the element AT the drop point and then
+ * chains into the connector menu — element+connector in one gesture).
+ * `anchor` is the screen point the menu renders at; `dropPosition` is the
+ * flow-coordinate point the new element is created at.
+ */
+type QuickLinkerMenuState =
+  | {
+      mode: 'connector';
+      anchor: { x: number; y: number };
+      sourceId: string;
+      sourceKind: QuickLinkerKind;
+      targetId: string;
+      targetKind: QuickLinkerKind;
+    }
+  | {
+      mode: 'element';
+      anchor: { x: number; y: number };
+      sourceId: string;
+      sourceKind: QuickLinkerKind;
+      dropPosition: { x: number; y: number };
+    };
 
 export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   // Derive state from the Y.Doc — the Y.Doc is the source of truth.
@@ -706,6 +816,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [linkDirected, setLinkDirected] = useState(false);
   // unit 13c — ONE editor for every edge kind: the selected edge's id + type.
   const [selectedEdge, setSelectedEdge] = useState<{ id: string; type: EditorEdgeType } | null>(null);
+  // unit 13d fix A — the n-ary diamond's own editor: the selected n-ary id.
+  // Resolved from the live projection, so deleting the n-ary closes the panel.
+  const [selectedNaryId, setSelectedNaryId] = useState<string | null>(null);
   // Unit 11.4 — the class whose generalization list is shown in the panel.
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   // Unit 13.3 — n-ary association mode: pick >=3 classes, per-end multiplicity.
@@ -720,6 +833,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [edgeMessage, setEdgeMessage] = useState<string | null>(null);
   // React Flow instance (via onInit) — gives screenToFlowPosition for drops.
   const rfRef = useRef<ReactFlowInstance | null>(null);
+  // unit 13d — Quick Linker: live drag endpoints (screen coords, for the
+  // rubber band) and the menu opened when the drag ends.
+  const [quickLinkDrag, setQuickLinkDrag] = useState<{
+    start: { x: number; y: number };
+    cursor: { x: number; y: number };
+  } | null>(null);
+  const [quickLinkMenu, setQuickLinkMenu] = useState<QuickLinkerMenuState | null>(null);
 
   useEffect(() => {
     const sync = (): void => {
@@ -833,6 +953,126 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [doc, diagram, edgeTool],
   );
 
+  /**
+   * unit 13d — EA-style Quick Linker, drop resolution. Given the pointer-up
+   * screen point: convert to flow coordinates (same finite-guard as the
+   * palette drop), hit-test the class nodes (measured size when React Flow
+   * has one — jsdom never measures, so the default box applies), then open
+   * the connector menu over an element or the element menu over empty
+   * canvas. Dropping back onto the source itself opens the connector menu
+   * with self-valid connectors (association/aggregation/composition/dependency;
+   * generalization excluded because self-inheritance is a cycle).
+   */
+  const finishQuickLink = (sourceId: string, cursor: { x: number; y: number }): void => {
+    // The Y.Doc is the source of truth: resolve everything from a FRESH
+    // projection so a collab edit during the drag can never go stale.
+    const live = projectYDocToDiagram(doc);
+    let dropPoint = cursor;
+    if (rfRef.current !== null) {
+      const flow = rfRef.current.screenToFlowPosition(cursor);
+      if (Number.isFinite(flow.x) && Number.isFinite(flow.y)) {
+        dropPoint = flow;
+      }
+    }
+    const measuredById = new Map((rfRef.current?.getNodes() ?? []).map((n) => [n.id, n.measured]));
+    const hitNodes = live.classes.map((cls) => ({
+      id: cls.id,
+      position: cls.position,
+      width: measuredById.get(cls.id)?.width,
+      height: measuredById.get(cls.id)?.height,
+    }));
+    const sourceKind = (live.classes.find((cls) => cls.id === sourceId)?.kind ?? 'class') as QuickLinkerKind;
+    const targetId = quickLinkerTarget(dropPoint, hitNodes);
+    if (targetId === null) {
+      setQuickLinkMenu({ mode: 'element', anchor: cursor, sourceId, sourceKind, dropPosition: dropPoint });
+      return;
+    }
+    if (targetId === sourceId) {
+      // Self-link: open connector menu with self-valid connectors (excludes generalization)
+      const targetKind = sourceKind;
+      setQuickLinkMenu({ mode: 'connector', anchor: cursor, sourceId, sourceKind, targetId, targetKind });
+      return;
+    }
+    const targetKind = (live.classes.find((cls) => cls.id === targetId)?.kind ?? 'class') as QuickLinkerKind;
+    setQuickLinkMenu({ mode: 'connector', anchor: cursor, sourceId, sourceKind, targetId, targetKind });
+  };
+
+  /**
+   * unit 13d — pointer-down on the selected node's corner arrow starts the
+   * quick-link drag: a thin rubber band follows the cursor (window-level
+   * listeners, removed on pointer-up) and the drop is resolved by
+   * `finishQuickLink`. This is the EA fast path; the 13c arm-tool +
+   * body-drag path stays fully intact.
+   */
+  const startQuickLink = (sourceId: string, clientX: number, clientY: number): void => {
+    const start = { x: clientX, y: clientY };
+    setQuickLinkDrag({ start, cursor: start });
+    setQuickLinkMenu(null);
+    const onMove = (event: MouseEvent): void => {
+      setQuickLinkDrag((prev) =>
+        prev === null ? prev : { ...prev, cursor: { x: event.clientX, y: event.clientY } },
+      );
+    };
+    const onUp = (event: MouseEvent): void => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setQuickLinkDrag(null);
+      finishQuickLink(sourceId, { x: event.clientX, y: event.clientY });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  /**
+   * unit 13d — choosing a connector from the Quick Linker menu: delegate to
+   * the SAME guarded dispatcher the drag-to-connect path uses
+   * (`handleConnectWithTool`), so every UI/engine guard (distinct endpoints,
+   * realization-interface, cycles, duplicates) applies verbatim and
+   * rejections surface through the existing message channel.
+   */
+  const pickQuickConnector = (tool: QuickConnectorType): void => {
+    if (quickLinkMenu === null || quickLinkMenu.mode !== 'connector') {
+      return;
+    }
+    const live = projectYDocToDiagram(doc);
+    const result = handleConnectWithTool(
+      doc,
+      live.id,
+      tool,
+      { source: quickLinkMenu.sourceId, target: quickLinkMenu.targetId },
+      live.classes.map((cls) => ({ id: cls.id, kind: cls.kind ?? ('class' as const) })),
+    );
+    setEdgeMessage(result.ok ? null : (result.message ?? null));
+    setQuickLinkMenu(null);
+  };
+
+  /**
+   * unit 13d — choosing Class/Interface from the element menu: create the
+   * element at the drop point (shared `handlePaletteDrop` creation path),
+   * then chain straight into the connector menu for source→new element —
+   * element + connector in one gesture, exactly like EA.
+   */
+  const pickQuickElement = (kind: string): void => {
+    if (quickLinkMenu === null || quickLinkMenu.mode !== 'element') {
+      return;
+    }
+    const nodeKind: PaletteNodeKind = kind === 'interface' ? 'interface' : 'class';
+    const live = projectYDocToDiagram(doc);
+    const newId = handlePaletteDrop(doc, live.id, {
+      kind: nodeKind,
+      position: quickLinkMenu.dropPosition,
+      existingNames: live.classes.map((cls) => cls.name),
+    });
+    setQuickLinkMenu({
+      mode: 'connector',
+      anchor: quickLinkMenu.anchor,
+      sourceId: quickLinkMenu.sourceId,
+      sourceKind: quickLinkMenu.sourceKind,
+      targetId: newId,
+      targetKind: nodeKind,
+    });
+  };
+
   const handleRename = (classId: string, newName: string): void => {
     const delta: ClassDelta = {
       kind: 'class',
@@ -858,7 +1098,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     applyDeltaToYDoc(doc, delta);
   };
 
-  /** editor:R4 - link mode: click source class, then a different class to complete. */
+  /** editor:R4 — link mode: click source class, then a different class to complete. */
   const handleNodeClick = (node: { id: string; type?: string }): void => {
     // Unit 13.3 — n-ary mode: clicking classes accumulates the member
     // selection (click again to drop it). The diamond itself is not a
@@ -870,6 +1110,16 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       );
       return;
     }
+    // unit 13d fix A — clicking the n-ary diamond selects it and opens its
+    // editor (name + per-end multiplicities + delete), like any other
+    // element. The edge editor is exclusive: only one editor at a time.
+    if (node.type === 'naryDiamond') {
+      setSelectedNaryId(node.id);
+      setSelectedEdge(null);
+      return;
+    }
+    // A class click closes the n-ary editor (selection is exclusive).
+    setSelectedNaryId(null);
     if (!linkMode) return;
     if (linkSource === null) {
       setLinkSource(node.id);
@@ -1054,6 +1304,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           // unit 13c — while an edge tool is armed the node body itself
           // becomes a valid connection start (full-node overlay handle).
           connectArmed: edgeTool !== null,
+          // unit 13d — the Quick Linker arrow renders only on the selected
+          // node; pointer-down on it starts the quick-link drag.
+          selected: selectedClassId === cls.id,
+          onQuickLinkStart: (clientX: number, clientY: number) => startQuickLink(cls.id, clientX, clientY),
         } satisfies ClassNodeData,
       })),
       // Unit 13.2 — one diamond node per n-ary association, positioned at the
@@ -1079,8 +1333,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         .filter((node): node is NaryDiamondFlowNode => node !== null),
     ],
     // unit 13c — edgeTool joins the deps: arming/disarming toggles the
-    // node-wide connect overlays.
-    [diagram, edgeTool],
+    // node-wide connect overlays. unit 13d — selectedClassId toggles the
+    // Quick Linker corner arrow.
+    [diagram, edgeTool, selectedClassId],
   );
 
   const edges = useMemo<Edge[]>(
@@ -1163,6 +1418,43 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     },
     [diagram, selectedEdge],
   );
+
+  // unit 13d fix A — the selected n-ary resolved from the live projection.
+  // When the association disappears (deleted from anywhere), this becomes
+  // null and the diamond editor closes itself — no stale panel.
+  const selectedNary = useMemo(
+    () => (diagram.naryAssociations ?? []).find((n) => n.id === selectedNaryId) ?? null,
+    [diagram, selectedNaryId],
+  );
+
+  /**
+   * unit 13d fix A — commit the diamond editor's Name field (empty clears,
+   * mirroring the edge label semantics).
+   */
+  const commitNaryName = (value: string): void => {
+    if (selectedNary === null) {
+      return;
+    }
+    handleUpdateNaryAssociation(doc, diagram.id, selectedNary.id, { name: value.trim() });
+  };
+
+  /**
+   * unit 13d fix A — commit one member end's multiplicity: rebuild the full
+   * memberEnds array (replace semantics of the core update delta) with only
+   * that end changed; roles and the other ends survive. Invalid input is
+   * guarded inside handleUpdateNaryAssociation (no delta emitted).
+   */
+  const commitNaryEndMultiplicity = (classId: string, value: string): void => {
+    if (selectedNary === null) {
+      return;
+    }
+    const memberEnds: NaryMemberEndInput[] = selectedNary.memberEnds.map((end) => ({
+      classId: end.classId,
+      multiplicity: end.classId === classId ? value.trim() : end.multiplicity,
+      ...(end.role !== undefined ? { role: end.role } : {}),
+    }));
+    handleUpdateNaryAssociation(doc, diagram.id, selectedNary.id, { memberEnds });
+  };
 
   // Unit 11.4 — generalization list for the selected class (both roles).
   const selectedClass = useMemo(
@@ -1433,7 +1725,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                 Source multiplicity
                 <input
                   aria-label="Source multiplicity"
-                  defaultValue={selectedEdgeData.edge.sourceMultiplicity}
+                  defaultValue={selectedEdgeData.edge.sourceMultiplicity ?? ''}
                   onBlur={(event) =>
                     handleUpdateMultiplicity(doc, diagram.id, selectedEdgeData.edge.id, 'source', event.target.value)
                   }
@@ -1459,6 +1751,23 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                   }}
                 />
               </label>
+              {/* Flip diamond end control — only for aggregation/composition associations */}
+              {selectedEdgeData.edge.aggregation !== 'none' && selectedEdgeData.edge.aggregationEnd !== undefined && (
+                <div className="diagram-canvas__flip-diamond">
+                  <span>Diamond end: {selectedEdgeData.edge.aggregationEnd === 'source' ? 'Source' : 'Target'}</span>
+                  <button
+                    type="button"
+                    aria-label={`Flip diamond end to ${selectedEdgeData.edge.aggregationEnd === 'source' ? 'target' : 'source'}`}
+                    onClick={() =>
+                      handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, {
+                        aggregationEnd: selectedEdgeData.edge.aggregationEnd === 'source' ? 'target' : 'source',
+                      })
+                    }
+                  >
+                    Flip diamond end
+                  </button>
+                </div>
+              )}
             </>
           )}
           <button
@@ -1474,6 +1783,69 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
             className="diagram-canvas__close-edge-editor"
             aria-label="Close edge editor"
             onClick={() => setSelectedEdge(null)}
+          >
+            Close
+          </button>
+        </div>
+      )}
+      {/* unit 13d fix A — the n-ary diamond's own editor (same pattern as the
+          unified edge editor): editable name, one multiplicity input per
+          member end (labeled by class name), and Delete. Every commit emits
+          the core naryAssociation `update` delta. */}
+      {selectedNary && (
+        <div className="diagram-canvas__edge-editor" data-testid="nary-editor" key={selectedNary.id}>
+          <span className="diagram-canvas__edge-editor-title">
+            N-ary association
+          </span>
+          <label>
+            Name
+            <input
+              aria-label="N-ary name"
+              defaultValue={selectedNary.name ?? ''}
+              onBlur={(event) => commitNaryName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  commitNaryName((event.target as HTMLInputElement).value);
+                }
+              }}
+            />
+          </label>
+          {selectedNary.memberEnds.map((end) => {
+            const cls = diagram.classes.find((candidate) => candidate.id === end.classId);
+            return (
+              <label key={end.classId} className="diagram-canvas__nary-end">
+                {cls?.name ?? '?'}
+                <input
+                  aria-label={`N-ary end multiplicity for ${cls?.name ?? end.classId}`}
+                  defaultValue={end.multiplicity}
+                  onBlur={(event) => commitNaryEndMultiplicity(end.classId, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      commitNaryEndMultiplicity(end.classId, (event.target as HTMLInputElement).value);
+                    }
+                  }}
+                />
+              </label>
+            );
+          })}
+          <button
+            type="button"
+            className="diagram-canvas__delete-edge"
+            aria-label={`Delete n-ary association ${selectedNary.id}`}
+            onClick={() => {
+              handleDeleteNaryAssociation(doc, diagram.id, selectedNary.id);
+              // The projection-driven selectedNary resolution closes the
+              // panel; clearing the id also covers the same-tick case.
+              setSelectedNaryId(null);
+            }}
+          >
+            Delete n-ary association
+          </button>
+          <button
+            type="button"
+            className="diagram-canvas__close-edge-editor"
+            aria-label="Close n-ary editor"
+            onClick={() => setSelectedNaryId(null)}
           >
             Close
           </button>
@@ -1587,11 +1959,57 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         onEdgeClick={(_event, edge) => {
           if (isEditorEdgeType(edge.type)) {
             setSelectedEdge({ id: edge.id, type: edge.type });
+            // Editors are exclusive: opening the edge editor closes the
+            // n-ary diamond editor (unit 13d fix A).
+            setSelectedNaryId(null);
           }
+        }}
+        // unit 13d fix D — clicking empty canvas deselects: clear the
+        // selected class, close the edge/n-ary editors, and disarm any
+        // armed edge tool (the click equivalent of Escape).
+        onPaneClick={() => {
+          setSelectedClassId(null);
+          setSelectedEdge(null);
+          setSelectedNaryId(null);
+          setEdgeTool(null);
+          setEdgeMessage(null);
         }}
         onNodeDragStop={(_event, node) => handleNodeDragStop(doc, diagram.id, node)}
         fitView
       />
+      {/* unit 13d — Quick Linker rubber band: a thin dashed line from the
+          corner arrow to the live cursor while the quick-link drag runs. */}
+      {quickLinkDrag !== null && (
+        <svg className="quicklinker-rubberband" data-testid="quicklinker-rubberband" aria-hidden="true">
+          <line
+            x1={quickLinkDrag.start.x}
+            y1={quickLinkDrag.start.y}
+            x2={quickLinkDrag.cursor.x}
+            y2={quickLinkDrag.cursor.y}
+          />
+        </svg>
+      )}
+      {/* unit 13d — the metamodel-filtered menu: connector options over an
+          existing element, creatable element types over empty canvas.
+          Escape / click-away closes WITHOUT creating anything. */}
+      {quickLinkMenu !== null &&
+        (quickLinkMenu.mode === 'connector' ? (
+          <QuickLinkerMenu
+            position={quickLinkMenu.anchor}
+            items={validConnectorsFor(quickLinkMenu.sourceKind, quickLinkMenu.targetKind, quickLinkMenu.sourceId === quickLinkMenu.targetId).map(
+              (connector) => ({ id: connector, label: CONNECTOR_LABELS[connector] }),
+            )}
+            onSelect={(id) => pickQuickConnector(id as QuickConnectorType)}
+            onClose={() => setQuickLinkMenu(null)}
+          />
+        ) : (
+          <QuickLinkerMenu
+            position={quickLinkMenu.anchor}
+            items={elementMenuOptions().map((kind) => ({ id: kind, label: ELEMENT_LABELS[kind] }))}
+            onSelect={pickQuickElement}
+            onClose={() => setQuickLinkMenu(null)}
+          />
+        ))}
     </div>
   );
 }

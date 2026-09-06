@@ -30,6 +30,10 @@ UML 2.5.1 compliance audit found the IR covers a deliberate subset. Units 9–13
 
 The exam requirements explicitly require BOTH importing AND exporting to Enterprise Architect. Unit 15b adds an XMI 2.1 exporter, landing as its own PR between PR 15 and PR 16, consuming the enriched IR from units 9–13. Export must be lossless for the supported subset, proven by automated round-trip (export → re-import → identical model).
 
+### Scope amendment (2026-09-06 — maintainer decision)
+
+Adds Unit 16b (diagram image export, PNG/JPEG, spec `diagram-image-export`); paired with Unit 16 as the image I/O block (16 imports images into the model, 16b exports the model as image); new use case CU-12 in the report artifact.
+
 ### Suggested Work Units
 
 | Unit | Goal | PR | Focused test command | Runtime harness | Rollback boundary |
@@ -181,6 +185,18 @@ The exam requirements explicitly require BOTH importing AND exporting to Enterpr
 - [x] 13c.7 Node-wide drag-to-connect: while an edge tool is armed, every class node exposes a transparent FULL-NODE source handle (`#connect-body`, rendered only when armed so node drag-to-move is untouched) + `connectionRadius={40}` — a connection can start anywhere on the body, not just the small dots. jsdom tests cover the mechanism (overlay presence/classes per arm/disarm/Escape); real pointer-drag needs a browser re-test.
 - [x] 13c.8 Verify: all 418 pre-existing tests still green (node drag, edge click-select, handle connect, context-menu creation, n-ary pick mode untouched); full `pnpm -r test` green (468 total).
 
+### Unit 13d: EA-style Quick Linker (PR 13d — editor UX, 2026-09-06)
+
+- [x] 13d.1 RED (strict TDD, pure logic first): `apps/web/src/canvas/quickLinker.ts` — `validConnectorsFor(sourceKind, targetKind)` (Association/Aggregation/Composition/Generalization/Dependency always; Realization ONLY when the target is an interface, mirroring `RealizationTargetNotInterfaceError`), `quickLinkerTarget(dropPoint, nodes)` (flow-coordinate rectangle containment, measured size with default-box fallback, topmost-wins on overlap, `null` = empty canvas), `elementMenuOptions()` (Class/Interface). Tests: `quickLinker.test.ts` (15).
+- [x] 13d.2 `QuickLinkerMenu.tsx`: one dumb positioned (`fixed`, at the pointer-up anchor) menu component serving BOTH menus (connector + element); `data-testid="quicklinker-menu"`, `role=menu`/`menuitem`; choosing reports the item id; Escape or capture-phase click-away closes WITHOUT creating anything. Tests: `QuickLinkerMenu.test.tsx` (6, props-driven — no pointer drag needed).
+- [x] 13d.3 Corner arrow: `ClassNode.tsx` renders a ~14px Quick Linker arrow at the TOP-RIGHT of the SELECTED node only (`data-testid="quicklinker-arrow"`, `aria-label="Quick Linker"`, `nodrag`); canvas passes `selected` (from `selectedClassId`) + `onQuickLinkStart`. Hidden otherwise.
+- [x] 13d.4 Drag + menu wiring in `DiagramCanvas.tsx`: pointer-down on the arrow starts a quick-link drag (window pointermove/pointerup listeners, thin dashed rubber-band SVG to the cursor); pointer-up resolves via `finishQuickLink` — screen→flow conversion with the same finite-guard as the palette drop, hit-test against FRESH Y.Doc projection + React Flow measured sizes. Drop on an element → connector menu (`validConnectorsFor`); drop on empty canvas → element menu; drop on the source itself cancels. Picking a connector delegates to the EXISTING `handleConnectWithTool` (every 13b/13c guard + rejection message applies verbatim). The 13c arm-tool + body-drag path is untouched and coexists.
+- [x] 13d.5 Element+connector in one gesture: choosing Class/Interface from the element menu creates the node AT the drop point via the shared `handlePaletteDrop` (now returns the created classId — additive, existing callers ignore it), then chains straight into the connector menu for source→new element (e.g. class → new interface → Realization creates both deltas in one flow).
+- [x] 13d.6 Verify: all 468 pre-existing tests still green (palette 13b, unified edge editor 13c, node-wide connect, context-menu creation, n-ary untouched); full `pnpm -r test` green (504 total: +15 pure logic, +6 menu component, +16 canvas gesture incl. jsdom-testable pointer flow via MouseEvent-typed-as-pointer dispatch + engine-rejection surfacing). Real-browser re-test still advised for the visual drag feel (d3 pan/zoom inert in jsdom).
+- [x] 13d.7 N-ary diamond selectable + editable (fix A): core `NaryAssociationDelta` gains `op: 'update'` carrying optional `name` and/or optional replacement `memberEnds` (schema gate: update requires at least one carrier; engine re-validates the SAME create invariants — every member exists, ≥3 ends, no duplicates; empty name clears). ydoc + bridge round-trip name + per-end multiplicities (verified already lossless). Web: clicking the diamond opens a dedicated editor panel (`data-testid="nary-editor"`, unified-editor pattern) with editable Name, one multiplicity input per member end (labeled by class name, invalid input guarded pre-emit) and Delete (reuses the existing delete delta); new exported `handleUpdateNaryAssociation` emits the update delta through the bridge. RED→GREEN: 8 core apply + 3 delta + 1 ydoc + 7 web.
+- [x] 13d.8 Composition/Aggregation start with EMPTY multiplicities (fix C): core `AssociationSchema.sourceMultiplicity`/`targetMultiplicity` become OPTIONAL (unspecified ≠ '1'; existing diagrams stay valid); association create engine guard drops the multiplicity requirement; `updateMultiplicity` carriers become tri-state NULLABLE (undefined keeps, string sets, null clears) with the at-least-one guard fixed to `=== undefined`. Web: `handleCreateAssociation` defaults '1'/'1' ONLY for the plain Association tool (documented); Aggregation/Composition presets (palette drag, quick-linker, shared path) leave both ends unspecified; `handleUpdateMultiplicity` maps empty input to a null clear; `AssociationEdge` draws only DEFINED multiplicities (no phantom '1', no dangling '·', no center label at all when nothing is set); editor inputs prefill `?? ''` and can be cleared. Generalization/realization/dependency confirmed multiplicity-free. RED→GREEN: 5 core apply + 4 ir + 3 delta + 3 ydoc + 6 web (+2 existing 13c/13d tests updated to the new default).
+- [x] 13d.9 Clicking empty canvas deselects (fix D): `<ReactFlow onPaneClick>` clears the selected class (Quick Linker arrow hidden), closes the edge AND n-ary editors, and disarms any armed edge tool + message — the click equivalent of Escape. RED→GREEN: 4 web (jsdom fires the real React Flow pane onClick on `.react-flow__pane`).
+
 ## Phase 5: Adapters II (PRs 14–16)
 
 - [ ] 14.1 RED: name sanitizer — `../../pom.xml` rejected; `class` rejected; every write asserted inside job output root (codegen threat row 1).
@@ -212,6 +228,14 @@ The exam requirements explicitly require BOTH importing AND exporting to Enterpr
 - [ ] 16.3 `POST /diagrams/:id/photo` as job; review proposal UI — edit/drop individual elements before approval (photo:R2).
 - [ ] 16.4 Unreadable/zero-element result ⇒ explicit warning, NO fabricated classes; document input constraints (photo:R3).
 - [ ] 16.5 Verify: golden clean photo end-to-end with fake; nothing commits without approval (photo acceptance).
+
+### Unit 16b: Diagram image export (PR 16b — scope amendment 2026-09-06; pairs with Unit 16 as image I/O)
+
+- [ ] 16b.1 RED: export never bumps version, emits zero deltas, zero API calls with network blocked (image-export:R3, image-export:R4).
+- [ ] 16b.2 Wire html-to-image (or equivalent) on React Flow viewport + Export PNG / Export JPEG controls; filename from diagram name + id (image-export:R1).
+- [ ] 16b.3 JPEG white-background compositing + fit-to-content bounds at fixed 2x scale (image-export:R2).
+- [ ] 16b.4 Empty-canvas guard: explicit warning, no file produced (image-export:R5).
+- [ ] 16b.5 Verify: golden diagram exports visually match canvas (manual) and web suite stays green (image-export:R1–R5).
 
 ## Phase 6: System B Demo & Hardening (PRs 17–19)
 
