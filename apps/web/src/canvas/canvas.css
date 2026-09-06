@@ -236,3 +236,60 @@
   color: #b00020;
   cursor: pointer;
 }
+
+/* unit 12.1 — UML interface / abstract notation */
+.uml-class--interface {
+  border-style: dashed;
+}
+
+.uml-class__stereotype {
+  font-weight: 400;
+  font-style: italic;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.uml-class__name--italic {
+  font-style: italic;
+}
+
+/* unit 12.4 — per-class realization list in the editor panel */
+.diagram-canvas__realizations {
+  position: absolute;
+  top: 150px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.diagram-canvas__realizations-title {
+  font-weight: 700;
+}
+
+.diagram-canvas__realizations-empty {
+  color: #777;
+}
+
+.diagram-canvas__realization-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagram-canvas__delete-realization {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+  background: #fff;
+  color: #b00020;
+  cursor: pointer;
+}

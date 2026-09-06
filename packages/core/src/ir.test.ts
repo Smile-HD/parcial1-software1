@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssociationSchema, AttributeSchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema } from './ir.js';
+import { AssociationSchema, AttributeSchema, ClassSchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema, RealizationSchema } from './ir.js';
 
 describe('IR Schema — Multiplicity Validation (editor:R4)', () => {
   it('accepts valid multiplicities: 1, 0..1, 1..*, 0..*', () => {
@@ -265,5 +265,105 @@ describe('IR Schema — Generalization collection (unit 11.1)', () => {
       associations: [],
     });
     expect(parsed.generalizations).toEqual([]);
+  });
+});
+
+describe('IR Schema — Class kind + isAbstract (unit 12.1, editor:R Interfaces)', () => {
+  it('classes default to kind "class" and isAbstract false when fields absent (backward compat)', () => {
+    const parsed = ClassSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Order',
+      position: { x: 0, y: 0 },
+      attributes: [],
+      methods: [],
+    });
+    expect(parsed.kind).toBe('class');
+    expect(parsed.isAbstract).toBe(false);
+  });
+
+  it('accepts kind "interface" and explicit isAbstract true', () => {
+    const iface = ClassSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Repository',
+      position: { x: 0, y: 0 },
+      attributes: [],
+      methods: [],
+      kind: 'interface',
+    });
+    expect(iface.kind).toBe('interface');
+
+    const abstractCls = ClassSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Shape',
+      position: { x: 0, y: 0 },
+      attributes: [],
+      methods: [],
+      isAbstract: true,
+    });
+    expect(abstractCls.kind).toBe('class');
+    expect(abstractCls.isAbstract).toBe(true);
+  });
+
+  it('REJECTS invalid kind values (only class|interface)', () => {
+    expect(ClassSchema.safeParse({
+      id: crypto.randomUUID(), name: 'X', position: { x: 0, y: 0 }, attributes: [], methods: [], kind: 'abstract',
+    }).success).toBe(false);
+    expect(ClassSchema.safeParse({
+      id: crypto.randomUUID(), name: 'X', position: { x: 0, y: 0 }, attributes: [], methods: [], kind: 'enum',
+    }).success).toBe(false);
+  });
+
+  it('REJECTS non-boolean isAbstract', () => {
+    expect(ClassSchema.safeParse({
+      id: crypto.randomUUID(), name: 'X', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: 'yes',
+    }).success).toBe(false);
+  });
+});
+
+describe('IR Schema — Realization collection (unit 12.2)', () => {
+  it('RealizationSchema accepts { id, clientClassId, supplierInterfaceId }', () => {
+    const clientId = crypto.randomUUID();
+    const supplierId = crypto.randomUUID();
+    const parsed = RealizationSchema.parse({
+      id: crypto.randomUUID(),
+      clientClassId: clientId,
+      supplierInterfaceId: supplierId,
+    });
+    expect(parsed.clientClassId).toBe(clientId);
+    expect(parsed.supplierInterfaceId).toBe(supplierId);
+  });
+
+  it('RealizationSchema rejects non-uuid ids and missing ends', () => {
+    expect(RealizationSchema.safeParse({ id: 'nope', clientClassId: crypto.randomUUID(), supplierInterfaceId: crypto.randomUUID() }).success).toBe(false);
+    expect(RealizationSchema.safeParse({ id: crypto.randomUUID(), clientClassId: crypto.randomUUID() }).success).toBe(false);
+    expect(RealizationSchema.safeParse({ id: crypto.randomUUID(), supplierInterfaceId: crypto.randomUUID() }).success).toBe(false);
+  });
+
+  it('DiagramSchema accepts a realizations collection', () => {
+    const clientId = crypto.randomUUID();
+    const ifaceId = crypto.randomUUID();
+    const realId = crypto.randomUUID();
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Realization',
+      classes: [
+        { id: clientId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: ifaceId, name: 'Repository', position: { x: 100, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+      realizations: [{ id: realId, clientClassId: clientId, supplierInterfaceId: ifaceId }],
+    });
+    expect(parsed.realizations).toHaveLength(1);
+    expect(parsed.realizations[0]).toMatchObject({ id: realId, clientClassId: clientId, supplierInterfaceId: ifaceId });
+  });
+
+  it('backward compat: diagrams WITHOUT realizations still validate and default to []', () => {
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Legacy',
+      classes: [],
+      associations: [],
+    });
+    expect(parsed.realizations).toEqual([]);
   });
 });

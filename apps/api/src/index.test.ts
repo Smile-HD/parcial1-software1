@@ -765,3 +765,69 @@ describe('API: Generalization round-trip (unit 11.6, editor:R5)', () => {
     expect(body.diagram.generalizations).toEqual([]);
   });
 });
+
+describe('API: Interface/abstract/realization round-trip (unit 12.6 — 12a half, editor:R5)', () => {
+  it('12.6 kind, isAbstract and realizations survive POST→GET losslessly through the blob-authoritative path', async () => {
+    const orderId = uuidv7();
+    const repoId = uuidv7();
+    const shapeId = uuidv7();
+    const realId = uuidv7();
+    const diagram = DiagramSchema.parse({
+      id: uuidv7(),
+      name: 'Interface Round-trip',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: repoId, name: 'Repository', position: { x: 200, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+        { id: shapeId, name: 'Shape', position: { x: 400, y: 0 }, attributes: [], methods: [], isAbstract: true },
+      ],
+      associations: [],
+      realizations: [{ id: realId, clientClassId: orderId, supplierInterfaceId: repoId }],
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Interface Round-trip', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({ method: 'GET', url: `/diagrams/${diagram.id}` });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+
+    const classes = body.diagram.classes as Array<{ id: string; kind: string; isAbstract: boolean }>;
+    expect(classes.find((c) => c.id === repoId)!.kind).toBe('interface');
+    expect(classes.find((c) => c.id === shapeId)!.isAbstract).toBe(true);
+    expect(classes.find((c) => c.id === shapeId)!.kind).toBe('class');
+    expect(classes.find((c) => c.id === orderId)!.kind).toBe('class');
+    expect(classes.find((c) => c.id === orderId)!.isAbstract).toBe(false);
+
+    expect(body.diagram.realizations).toHaveLength(1);
+    expect(body.diagram.realizations[0]).toMatchObject({
+      id: realId,
+      clientClassId: orderId,
+      supplierInterfaceId: repoId,
+    });
+  });
+
+  it('12.6 backward compat: a diagram without kind/isAbstract/realizations still round-trips with IR defaults', async () => {
+    const diagram = createCompleteTestDiagram(); // pre-unit-12 shape
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Legacy 12a', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({ method: 'GET', url: `/diagrams/${diagram.id}` });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+
+    for (const cls of body.diagram.classes) {
+      expect(cls.kind).toBe('class');
+      expect(cls.isAbstract).toBe(false);
+    }
+    expect(body.diagram.realizations).toEqual([]);
+  });
+});

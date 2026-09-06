@@ -10,16 +10,17 @@ import { ReactFlow, type Edge, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type Parameter } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type Parameter, type Realization, type RealizationDelta } from '@app/core';
 
 import './canvas.css';
 import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 import { AssociationEdge } from './AssociationEdge';
 import { GeneralizationEdge } from './GeneralizationEdge';
+import { RealizationEdge } from './RealizationEdge';
 
 const nodeTypes = { class: ClassNode };
-const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge };
+const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge };
 
 export interface DiagramCanvasProps {
   doc: Y.Doc;
@@ -218,14 +219,83 @@ export function handleDeleteGeneralization(
 }
 
 /**
- * First free auto-name: Class1, Class2, ... skipping any existing name.
+ * editor:R Interfaces (unit 12.2/12.4) — emit a realization `create` delta
+ * (client class → supplier interface). Engine invariants (existence,
+ * interface-target, duplicates) are enforced by applyDelta; a rejected
+ * delta leaves the Y.Doc unchanged.
  */
-function nextFreeClassName(existing: readonly string[]): string {
+export function handleCreateRealization(
+  doc: Y.Doc,
+  diagramId: string,
+  link: { clientClassId: string; supplierInterfaceId: string },
+): void {
+  if (link.clientClassId === '' || link.supplierInterfaceId === '') {
+    return;
+  }
+  const delta: RealizationDelta = {
+    kind: 'realization',
+    op: 'create',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    realizationId: crypto.randomUUID(),
+    clientClassId: link.clientClassId,
+    supplierInterfaceId: link.supplierInterfaceId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * editor:R Interfaces (unit 12.4) — emit a realization `delete` delta.
+ */
+export function handleDeleteRealization(
+  doc: Y.Doc,
+  diagramId: string,
+  realizationId: string,
+): void {
+  const delta: RealizationDelta = {
+    kind: 'realization',
+    op: 'delete',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    realizationId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * editor:R Interfaces (unit 12.4) — toggle the abstract marker via a class
+ * `update` delta carrying isAbstract.
+ */
+export function handleSetAbstract(
+  doc: Y.Doc,
+  diagramId: string,
+  classId: string,
+  isAbstract: boolean,
+): void {
+  const delta: ClassDelta = {
+    kind: 'class',
+    op: 'update',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    classId,
+    isAbstract,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * First free auto-name: Class1, Class2, ... (or Interface1, ... with a
+ * custom prefix) skipping any existing name.
+ */
+function nextFreeClassName(existing: readonly string[], prefix = 'Class'): string {
   let n = 1;
-  while (existing.includes(`Class${n}`)) {
+  while (existing.includes(`${prefix}${n}`)) {
     n += 1;
   }
-  return `Class${n}`;
+  return `${prefix}${n}`;
 }
 
 export function DiagramCanvas({ doc }: DiagramCanvasProps) {
@@ -260,6 +330,23 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       classId: crypto.randomUUID(),
       name,
       position: { x: 80 + diagram.classes.length * 40, y: 80 + diagram.classes.length * 40 },
+    };
+    applyDeltaToYDoc(doc, delta);
+  };
+
+  /** editor:R Interfaces (unit 12.4) — toolbar action: create an interface node. */
+  const handleAddInterface = (): void => {
+    const name = nextFreeClassName(diagram.classes.map((cls) => cls.name), 'Interface');
+    const delta: ClassDelta = {
+      kind: 'class',
+      op: 'create',
+      id: crypto.randomUUID(),
+      diagramId: diagram.id,
+      timestamp: new Date().toISOString(),
+      classId: crypto.randomUUID(),
+      name,
+      position: { x: 80 + diagram.classes.length * 40, y: 80 + diagram.classes.length * 40 },
+      classKind: 'interface',
     };
     applyDeltaToYDoc(doc, delta);
   };
@@ -426,8 +513,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           name: cls.name,
           attributes: cls.attributes,
           methods: cls.methods,
+          kind: cls.kind ?? 'class',
+          isAbstract: cls.isAbstract ?? false,
           otherClasses: diagram.classes
             .filter((other) => other.id !== cls.id)
+            .map((other) => ({ id: other.id, name: other.name })),
+          otherInterfaces: diagram.classes
+            .filter((other) => other.id !== cls.id && (other.kind ?? 'class') === 'interface')
             .map((other) => ({ id: other.id, name: other.name })),
           onRename: (newName: string) => handleRename(cls.id, newName),
           onDelete: () => handleDeleteClass(cls.id),
@@ -443,6 +535,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           onRemoveMethod: (memberId: string) => handleRemoveMethod(cls.id, memberId),
           onMakeSubclass: (superClassId: string) =>
             handleCreateGeneralization(doc, diagram.id, { subClassId: cls.id, superClassId }),
+          onToggleAbstract: (isAbstract: boolean) => handleSetAbstract(doc, diagram.id, cls.id, isAbstract),
+          onRealize: (supplierInterfaceId: string) =>
+            handleCreateRealization(doc, diagram.id, { clientClassId: cls.id, supplierInterfaceId }),
           onSelect: () => setSelectedClassId(cls.id),
         } satisfies ClassNodeData,
       })),
@@ -466,6 +561,15 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         target: gen.superClassId,
         type: 'generalization' as const,
         data: { generalization: gen },
+      })),
+      // Unit 12.3 — realization edges: source = client class, target = supplier
+      // interface, so the dashed line + hollow triangle renders on the interface end.
+      ...(diagram.realizations ?? []).map((real) => ({
+        id: real.id,
+        source: real.clientClassId,
+        target: real.supplierInterfaceId,
+        type: 'realization' as const,
+        data: { realization: real },
       })),
     ],
     [diagram],
@@ -493,11 +597,25 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram, selectedClass],
   );
 
+  // Unit 12.4 — realization list for the selected class (both roles).
+  const selectedClassRealizations = useMemo(
+    () =>
+      selectedClass === null
+        ? []
+        : (diagram.realizations ?? []).filter(
+            (real) => real.clientClassId === selectedClass.id || real.supplierInterfaceId === selectedClass.id,
+          ),
+    [diagram, selectedClass],
+  );
+
   return (
     <div className="diagram-canvas" style={{ width: '100%', height: '100%' }}>
       <div className="diagram-canvas__toolbar">
         <button type="button" onClick={handleAddClass}>
           Add class
+        </button>
+        <button type="button" onClick={handleAddInterface}>
+          Add interface
         </button>
         <button
           type="button"
@@ -659,6 +777,33 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                 onClick={() => handleDeleteGeneralization(doc, diagram.id, gen.id)}
               >
                 Remove inheritance
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {selectedClass && (
+        <div className="diagram-canvas__realizations" data-testid="realization-panel">
+          <span className="diagram-canvas__realizations-title">
+            Realizations for {selectedClass.name}
+          </span>
+          {selectedClassRealizations.length === 0 && (
+            <span className="diagram-canvas__realizations-empty">None</span>
+          )}
+          {selectedClassRealizations.map((real) => (
+            <div key={real.id} className="diagram-canvas__realization-row">
+              <span>
+                {real.clientClassId === selectedClass.id
+                  ? `Realizes ${classNameById(real.supplierInterfaceId)}`
+                  : `Realized by ${classNameById(real.clientClassId)}`}
+              </span>
+              <button
+                type="button"
+                className="diagram-canvas__delete-realization"
+                aria-label={`Delete realization ${real.id}`}
+                onClick={() => handleDeleteRealization(doc, diagram.id, real.id)}
+              >
+                Remove realization
               </button>
             </div>
           ))}

@@ -16,9 +16,10 @@ import {
   type Delta,
   type Generalization,
   type GeneralizationDelta,
+  type MemberDelta,
+  type RealizationDelta,
   type LlmPort,
   type LlmResult,
-  type MemberDelta,
   AggregationKindSchema,
 } from '@app/core';
 
@@ -98,6 +99,24 @@ export class FakeLlm implements LlmPort {
         name: addAttribute[1]!,
         type: addAttribute[2]!,
         ...adornments,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 0 (evaluated FIRST among creates). create interface: "create interface X"
+    // — an interface is a class with kind 'interface' (unit 12.5, 12a half).
+    const createInterface = /\b(?:create|add|make|new)\b[\s\S]*?\b(?:interface|interfaz)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (createInterface) {
+      const name = createInterface[1]!;
+      const position = nextPosition(currentIr);
+      const delta: ClassDelta = {
+        kind: 'class',
+        op: 'create',
+        ...deltaBase(currentIr),
+        classId: crypto.randomUUID(),
+        name,
+        position,
+        classKind: 'interface',
       };
       return { kind: 'delta', value: delta };
     }
@@ -356,6 +375,42 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
+    // 13. realization CREATE (unit 12.5, 12a half): "X realizes Y" /
+    // "X implements Y" — X is the client class, Y the supplier interface.
+    // The engine enforces the interface-target invariant at apply time.
+    const realization = /\b([A-Za-z_]\w*)\s+(?:realizes|realiza|implements|implementa)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (realization) {
+      const clientClassId = classIdByName(currentIr, realization[1]!);
+      const supplierInterfaceId = classIdByName(currentIr, realization[2]!);
+      if (clientClassId === null) return refused(`Unknown class "${realization[1]}"`);
+      if (supplierInterfaceId === null) return refused(`Unknown class "${realization[2]}"`);
+      const delta: RealizationDelta = {
+        kind: 'realization',
+        op: 'create',
+        ...deltaBase(currentIr),
+        realizationId: crypto.randomUUID(),
+        clientClassId,
+        supplierInterfaceId,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 14. abstract marking (unit 12.5, 12a half): "make X abstract" /
+    // "mark X abstract" — class update delta carrying isAbstract.
+    const makeAbstract = /\b(?:make|mark)\s+(?:the\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+abstract/i.exec(utterance);
+    if (makeAbstract) {
+      const classId = classIdByName(currentIr, makeAbstract[1]!);
+      if (classId === null) return refused(`Unknown class "${makeAbstract[1]}"`);
+      const delta: ClassDelta = {
+        kind: 'class',
+        op: 'update',
+        ...deltaBase(currentIr),
+        classId,
+        isAbstract: true,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
     return refused('Unsupported command.');
   }
 }
@@ -406,10 +461,11 @@ export class OpenAiLlm implements LlmPort {
       'BASE FIELDS (required on EVERY delta and on EVERY inner batch item): "id":"<new uuid>","diagramId":"<currentIr.id>","timestamp":"<RFC3339 UTC like 2026-08-31T12:00:00.000Z>"',
       '',
       'Shapes (use EXACTLY these field names; pick by command):',
-      'CLASS CREATE: {"kind":"class","op":"create", ...base, "classId":"<new uuid or placeholder>","name":"<ClassName>","position":{"x":120,"y":80}}',
-      'CLASS RENAME: {"kind":"class","op":"rename", ...base, "classId":"<existing class uuid>","newName":"<NewName>"}',
-      'CLASS REPOSITION: {"kind":"class","op":"reposition", ...base, "classId":"<existing class uuid>","newPosition":{"x":<number>,"y":<number>}}',
-      'CLASS DELETE: {"kind":"class","op":"delete", ...base, "classId":"<existing class uuid>"}',
+       'CLASS CREATE: {"kind":"class","op":"create", ...base, "classId":"<new uuid or placeholder>","name":"<ClassName>","position":{"x":120,"y":80} [, "classKind":"class"|"interface"]}',
+       'CLASS RENAME: {"kind":"class","op":"rename", ...base, "classId":"<existing class uuid>","newName":"<NewName>"}',
+       'CLASS REPOSITION: {"kind":"class","op":"reposition", ...base, "classId":"<existing class uuid>","newPosition":{"x":<number>,"y":<number>}}',
+       'CLASS DELETE: {"kind":"class","op":"delete", ...base, "classId":"<existing class uuid>"}',
+       'CLASS UPDATE: {"kind":"class","op":"update", ...base, "classId":"<existing class uuid>" [, "classKind":"class"|"interface"] [, "isAbstract":true|false]} — at least one of classKind/isAbstract required',
       'ADD ATTRIBUTE: {"kind":"member","op":"addAttribute", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<attrName>","type":"<attrType>" [, "visibility":"+"|"-"|"#"|"~"] [, "isStatic":true] [, "isDerived":true] [, "multiplicity":"0..*"]}',
       'EDIT ATTRIBUTE: {"kind":"member","op":"editAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>","name":"<newName>","type":"<newType>" [, visibility/isStatic/isDerived/multiplicity]}',
       'DELETE ATTRIBUTE: {"kind":"member","op":"deleteAttribute", ...base, "classId":"<existing class uuid>","memberId":"<existing attribute uuid>"}',
@@ -419,14 +475,23 @@ export class OpenAiLlm implements LlmPort {
 'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
        'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*" [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
        'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
-       'GENERALIZATION CREATE: {"kind":"generalization","op":"create", ...base, "generalizationId":"<new uuid>","subClassId":"<existing class uuid — the SUBCLASS>","superClassId":"<existing class uuid — the SUPERCLASS>"}',
-       'GENERALIZATION DELETE: {"kind":"generalization","op":"delete", ...base, "generalizationId":"<existing generalization uuid from the IR>"}',
-       '',
-       'GENERALIZATION GUIDANCE:',
-       '- "X is a kind of Y", "X inherits from Y", "X is a subclass of Y" → X is the subClass, Y is the superClass.',
-       '- The engine rejects cycles (A→B→A transitively), duplicate edges, and references to missing classes. Never emit a generalization that inverts an existing one.',
-       '- "remove inheritance" / "X does not inherit from Y" → generalization delete using the EXACT generalizationId from currentIr.generalizations.',
-       '',
+        'GENERALIZATION CREATE: {"kind":"generalization","op":"create", ...base, "generalizationId":"<new uuid>","subClassId":"<existing class uuid — the SUBCLASS>","superClassId":"<existing class uuid — the SUPERCLASS>"}',
+        'GENERALIZATION DELETE: {"kind":"generalization","op":"delete", ...base, "generalizationId":"<existing generalization uuid from the IR>"}',
+        'REALIZATION CREATE: {"kind":"realization","op":"create", ...base, "realizationId":"<new uuid>","clientClassId":"<existing class uuid — the REALIZING class>","supplierInterfaceId":"<existing INTERFACE uuid — kind must be interface>"}',
+        'REALIZATION DELETE: {"kind":"realization","op":"delete", ...base, "realizationId":"<existing realization uuid from the IR>"}',
+        '',
+        'GENERALIZATION GUIDANCE:',
+        '- "X is a kind of Y", "X inherits from Y", "X is a subclass of Y" → X is the subClass, Y is the superClass.',
+        '- The engine rejects cycles (A→B→A transitively), duplicate edges, and references to missing classes. Never emit a generalization that inverts an existing one.',
+        '- "remove inheritance" / "X does not inherit from Y" → generalization delete using the EXACT generalizationId from currentIr.generalizations.',
+        '',
+        'INTERFACE / ABSTRACT / REALIZATION GUIDANCE (unit 12a):',
+        '- "create interface X" → class create with "classKind":"interface". Interfaces are classifiers with kind === "interface" in the IR.',
+        '- "make X abstract" / "mark X abstract" → class update with "isAbstract":true.',
+        '- "X realizes Y" / "X implements Y" → realization create: X is clientClassId, Y is supplierInterfaceId.',
+        '- The engine REJECTS a realization whose supplier is not kind === "interface" (abstract classes are not interfaces). Check currentIr.classes[].kind before emitting a realization.',
+        '- Duplicate realizations (same client + supplier) are rejected.',
+        '',
       'AGGREGATION END GUIDANCE:',
       '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',
       '- It is INDEPENDENT of drawing direction (source/target class order) and multiplicities.',
@@ -504,7 +569,7 @@ export class OpenAiLlm implements LlmPort {
 // ── Model-output repair (provider quirk normalization) ─────────────────────
 
 /** UUID fields the MODEL is allowed to invent; malformed values are regenerated. */
-const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId']);
+const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 

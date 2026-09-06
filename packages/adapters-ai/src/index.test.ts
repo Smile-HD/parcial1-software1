@@ -561,3 +561,121 @@ describe('OpenAiLlm generalization prompt + repair (unit 11.5)', () => {
     }
   });
 });
+
+describe('FakeLlm interface/abstract/realization commands (unit 12.5 — 12a half)', () => {
+  function makeInterfaceDiagram(): Diagram {
+    const orderId = crypto.randomUUID();
+    const repoId = crypto.randomUUID();
+    return {
+      id: crypto.randomUUID(),
+      name: 'Shop',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: repoId, name: 'Repository', position: { x: 300, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+    };
+  }
+
+  it('interprets "create interface Repository" as a class create with classKind interface', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('create interface Serializer', {}, makeInterfaceDiagram());
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; name?: string; classKind?: string };
+      expect(delta.kind).toBe('class');
+      expect(delta.op).toBe('create');
+      expect(delta.name).toBe('Serializer');
+      expect(delta.classKind).toBe('interface');
+    }
+  });
+
+  it('interprets "Order realizes Repository" as a realization create (client=Order, supplier=Repository)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeInterfaceDiagram();
+    const result = await llm.interpret('Order realizes Repository', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; clientClassId?: string; supplierInterfaceId?: string };
+      expect(delta.kind).toBe('realization');
+      expect(delta.op).toBe('create');
+      expect(delta.clientClassId).toBe(diagram.classes[0]!.id); // Order
+      expect(delta.supplierInterfaceId).toBe(diagram.classes[1]!.id); // Repository
+    }
+  });
+
+  it('interprets "X implements Y" as a realization create too (synonym phrasing)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeInterfaceDiagram();
+    const result = await llm.interpret('Order implements Repository', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; clientClassId?: string };
+      expect(delta.kind).toBe('realization');
+      expect(delta.clientClassId).toBe(diagram.classes[0]!.id);
+    }
+  });
+
+  it('refuses a realization naming an unknown class', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('Ghost realizes Repository', {}, makeInterfaceDiagram());
+    expect(result.kind).toBe('refused');
+  });
+
+  it('interprets "make Order abstract" as a class update with isAbstract true', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeInterfaceDiagram();
+    const result = await llm.interpret('make Order abstract', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; classId?: string; isAbstract?: boolean };
+      expect(delta.kind).toBe('class');
+      expect(delta.op).toBe('update');
+      expect(delta.classId).toBe(diagram.classes[0]!.id);
+      expect(delta.isAbstract).toBe(true);
+    }
+  });
+
+  it('refuses "make Ghost abstract" for an unknown class', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('make Ghost abstract', {}, makeInterfaceDiagram());
+    expect(result.kind).toBe('refused');
+  });
+});
+
+describe('OpenAiLlm interface/realization prompt (unit 12.5 — 12a half)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('system prompt documents the interface create, class update and realization shapes', async () => {
+    const captured: { system?: string } = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init: { body: string }) => {
+        const body = JSON.parse(init.body) as { messages: { role: string; content: string }[] };
+        captured.system = body.messages.find((m) => m.role === 'system')?.content;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ action: 'refuse', reason: 'noop' }) } }],
+          }),
+        });
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    await llm.interpret('Order realizes Repository', {}, makeDiagram());
+
+    expect(captured.system).toBeDefined();
+    expect(captured.system).toContain('REALIZATION CREATE');
+    expect(captured.system).toContain('clientClassId');
+    expect(captured.system).toContain('supplierInterfaceId');
+    expect(captured.system).toContain('classKind');
+    expect(captured.system).toContain('isAbstract');
+    // The interface-target invariant is documented for the model.
+    expect(captured.system).toMatch(/interface/i);
+  });
+});

@@ -18,6 +18,7 @@ function createDiagram(overrides: Partial<Diagram> = {}): Diagram {
     classes: [],
     associations: [],
     generalizations: [],
+    realizations: [],
   };
   return DiagramSchema.parse({ ...base, ...overrides });
 }
@@ -1035,5 +1036,346 @@ describe('applyDelta — Generalization invariants (unit 11.2, editor:R Generali
     }
     // Nothing applied
     expect(state.generalizations).toHaveLength(1);
+  });
+});
+
+describe('applyDelta — Realization invariants (unit 12.2, editor:R Interfaces)', () => {
+  function realizationDelta(state: Diagram, clientClassId: string, supplierInterfaceId: string, realizationId = uuidv4()) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'create' as const,
+      realizationId,
+      clientClassId,
+      supplierInterfaceId,
+    };
+  }
+
+  function deleteRealizationDelta(state: Diagram, realizationId: string) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'delete' as const,
+      realizationId,
+    };
+  }
+
+  it('CREATES a realization edge from a class to an interface', () => {
+    const orderId = uuidv4();
+    const repoId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+    });
+
+    const result = applyDelta(state, realizationDelta(state, orderId, repoId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.realizations).toHaveLength(1);
+      expect(result.value.realizations[0]).toMatchObject({ clientClassId: orderId, supplierInterfaceId: repoId });
+    }
+    // Input state untouched (immutability)
+    expect(state.realizations).toHaveLength(0);
+  });
+
+  it('REJECTS create when the client class does not exist; model unchanged', () => {
+    const repoId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: repoId, name: 'Repository', kind: 'interface' })] });
+
+    const result = applyDelta(state, realizationDelta(state, uuidv4(), repoId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.realizations).toHaveLength(0);
+  });
+
+  it('REJECTS create when the supplier interface does not exist; model unchanged', () => {
+    const orderId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: orderId, name: 'Order' })] });
+
+    const result = applyDelta(state, realizationDelta(state, orderId, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.realizations).toHaveLength(0);
+  });
+
+  it('REJECTS a realization whose supplier is a PLAIN CLASS (interface-target invariant, editor:R scenario)', () => {
+    const aId = uuidv4();
+    const bId = uuidv4();
+    const state = createDiagram({
+      classes: [createClass({ id: aId, name: 'A' }), createClass({ id: bId, name: 'B' })],
+    });
+
+    const result = applyDelta(state, realizationDelta(state, aId, bId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('RealizationTargetNotInterfaceError');
+    // Model unchanged
+    expect(state.realizations).toHaveLength(0);
+  });
+
+  it('REJECTS a realization whose supplier is an ABSTRACT CLASS (abstract ≠ interface)', () => {
+    const clientId = uuidv4();
+    const abstractId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: clientId, name: 'Order' }),
+        createClass({ id: abstractId, name: 'Shape', isAbstract: true }),
+      ],
+    });
+
+    const result = applyDelta(state, realizationDelta(state, clientId, abstractId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('RealizationTargetNotInterfaceError');
+  });
+
+  it('REJECTS a duplicate realization (same client + supplier) even with a different id', () => {
+    const orderId = uuidv4();
+    const repoId = uuidv4();
+    const existing = { id: uuidv4(), clientClassId: orderId, supplierInterfaceId: repoId };
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+      realizations: [existing],
+    });
+
+    const result = applyDelta(state, realizationDelta(state, orderId, repoId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('DuplicateRealizationError');
+    expect(state.realizations).toHaveLength(1);
+  });
+
+  it('ALLOWS two different clients realizing the SAME interface (triangulates the duplicate rule)', () => {
+    const repoId = uuidv4();
+    const order1 = uuidv4();
+    const order2 = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: order1, name: 'Order' }),
+        createClass({ id: order2, name: 'Customer' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+      realizations: [{ id: uuidv4(), clientClassId: order1, supplierInterfaceId: repoId }],
+    });
+
+    const result = applyDelta(state, realizationDelta(state, order2, repoId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.realizations).toHaveLength(2);
+  });
+
+  it('DELETES a realization edge by id', () => {
+    const orderId = uuidv4();
+    const repoId = uuidv4();
+    const realId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+      realizations: [{ id: realId, clientClassId: orderId, supplierInterfaceId: repoId }],
+    });
+
+    const result = applyDelta(state, deleteRealizationDelta(state, realId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.realizations).toHaveLength(0);
+  });
+
+  it('REJECTS delete of an unknown realization', () => {
+    const state = createDiagram({ classes: [createClass({ name: 'Item' })] });
+
+    const result = applyDelta(state, deleteRealizationDelta(state, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('RealizationNotFoundError');
+  });
+
+  it('delete-class CASCADES: removes realizations where the class is client AND where the interface is supplier', () => {
+    const orderId = uuidv4();
+    const customerId = uuidv4();
+    const repoId = uuidv4();
+    // Edges are seeded directly through the IR (not the engine) so the cascade
+    // can be proven for BOTH roles, including a class sitting in the supplier
+    // seat (a shape the engine itself would never create).
+    const validState = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: customerId, name: 'Customer' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+      realizations: [
+        { id: uuidv4(), clientClassId: orderId, supplierInterfaceId: repoId },      // Order is client
+        { id: uuidv4(), clientClassId: customerId, supplierInterfaceId: repoId },   // unrelated to Order
+        { id: uuidv4(), clientClassId: customerId, supplierInterfaceId: orderId },  // Order as supplier (legacy-shaped, cascade must still clean)
+      ],
+    });
+
+    const deleteOrder = {
+      id: uuidv4(),
+      diagramId: validState.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: orderId,
+    };
+
+    const result = applyDelta(validState, deleteOrder);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Only the edge not touching Order survives.
+      expect(result.value.realizations).toHaveLength(1);
+      expect(result.value.realizations[0]).toMatchObject({ clientClassId: customerId, supplierInterfaceId: repoId });
+      // No dangling endpoint references remain
+      const remainingClassIds = result.value.classes.map((c) => c.id);
+      for (const real of result.value.realizations) {
+        expect(remainingClassIds).toContain(real.clientClassId);
+        expect(remainingClassIds).toContain(real.supplierInterfaceId);
+      }
+    }
+  });
+
+  it('batch: a realization to a non-interface inside a batch rejects the WHOLE batch (atomicity)', () => {
+    const orderId = uuidv4();
+    const plainId = uuidv4();
+    const state = createDiagram({
+      classes: [createClass({ id: orderId, name: 'Order' }), createClass({ id: plainId, name: 'NotAnInterface' })],
+    });
+
+    const batch = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        realizationDelta(state, orderId, plainId), // supplier is a plain class → invalid
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'rename' as const,
+          classId: orderId,
+          newName: 'RenamedOrder',
+        },
+      ],
+    };
+
+    const result = applyDelta(state, batch);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('BatchError');
+      if (result.error.kind === 'BatchError') {
+        expect(result.error.failedDeltaIndex).toBe(0);
+        expect(result.error.error.kind).toBe('RealizationTargetNotInterfaceError');
+      }
+    }
+    // Nothing applied — rename did not leak
+    expect(state.realizations).toHaveLength(0);
+    expect(state.classes[0]!.name).toBe('Order');
+  });
+});
+
+describe('applyDelta — Class update op: kind + isAbstract (unit 12.1/12.4)', () => {
+  function updateDelta(state: Diagram, classId: string, fields: { classKind?: 'class' | 'interface'; isAbstract?: boolean }) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'update' as const,
+      classId,
+      ...fields,
+    };
+  }
+
+  it('update sets isAbstract true on an existing class', () => {
+    const shapeId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: shapeId, name: 'Shape' })] });
+
+    const result = applyDelta(state, updateDelta(state, shapeId, { isAbstract: true }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.classes[0]!.isAbstract).toBe(true);
+      expect(result.value.classes[0]!.kind).toBe('class');
+    }
+  });
+
+  it('update promotes a class to kind interface and back', () => {
+    const repoId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: repoId, name: 'Repository' })] });
+
+    const promoted = applyDelta(state, updateDelta(state, repoId, { classKind: 'interface' }));
+    expect(promoted.ok).toBe(true);
+    if (promoted.ok) expect(promoted.value.classes[0]!.kind).toBe('interface');
+
+    const demoted = applyDelta(promoted.value, updateDelta(promoted.value, repoId, { classKind: 'class' }));
+    expect(demoted.ok).toBe(true);
+    if (demoted.ok) expect(demoted.value.classes[0]!.kind).toBe('class');
+  });
+
+  it('update REJECTS when the class does not exist', () => {
+    const state = createDiagram({ classes: [] });
+
+    const result = applyDelta(state, updateDelta(state, uuidv4(), { isAbstract: true }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+  });
+
+  it('class create delta with classKind "interface" creates an interface node', () => {
+    const state = createDiagram({ classes: [] });
+    const newId = uuidv4();
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'create' as const,
+      classId: newId,
+      name: 'Repository',
+      position: { x: 0, y: 0 },
+      classKind: 'interface' as const,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.classes[0]!.kind).toBe('interface');
+      expect(result.value.classes[0]!.isAbstract).toBe(false);
+    }
+  });
+
+  it('class create delta WITHOUT classKind keeps the backward-compatible default kind "class"', () => {
+    const state = createDiagram({ classes: [] });
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'create' as const,
+      classId: uuidv4(),
+      name: 'Legacy',
+      position: { x: 0, y: 0 },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.classes[0]!.kind).toBe('class');
   });
 });

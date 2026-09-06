@@ -146,12 +146,12 @@ The exam requirements explicitly require BOTH importing AND exporting to Enterpr
 
 ### Unit 12: Interfaces, abstract, realization, dependency (PR 12)
 
-- [ ] 12.1 RED: `ClassSchema` accepts `kind: class|interface` (default class) + `isAbstract` boolean; abstract/interface render italic name, `«interface»` header, dashed border.
-- [ ] 12.2 RED: new delta kinds `realization` (client→interface; invariant: target kind === interface) and `dependency` (dashed client→supplier, no multiplicity) with create/delete + engine checks (existence, duplicates, interface-target validation).
-- [ ] 12.3 Renderer: realization = dashed line + hollow triangle; dependency = dashed line + open arrow.
-- [ ] 12.4 Editor UI: create interface action; mark-abstract toggle; realization/dependency creation from class context menu.
-- [ ] 12.5 Interpreter: "create interface Repository", "Order realizes Repository", "Order depends on Service" commands.
-- [ ] 12.6 Verify: round-trip + collab convergence; abstract/interface visuals match UML notation.
+- [x] 12.1 RED: `ClassSchema` accepts `kind: class|interface` (default class) + `isAbstract` boolean; abstract/interface render italic name, `«interface»` header, dashed border.
+- [ ] 12.2 RED: new delta kinds `realization` (client→interface; invariant: target kind === interface) and `dependency` (dashed client→supplier, no multiplicity) with create/delete + engine checks (existence, duplicates, interface-target validation). (12a: interface+realization done; dependency pending 12b)
+- [ ] 12.3 Renderer: realization = dashed line + hollow triangle; dependency = dashed line + open arrow. (12a: interface+realization done; dependency pending 12b)
+- [ ] 12.4 Editor UI: create interface action; mark-abstract toggle; realization/dependency creation from class context menu. (12a: interface+realization done; dependency pending 12b)
+- [ ] 12.5 Interpreter: "create interface Repository", "Order realizes Repository", "Order depends on Service" commands. (12a: interface+realization done; dependency pending 12b)
+- [ ] 12.6 Verify: round-trip + collab convergence; abstract/interface visuals match UML notation. (12a: interface+realization done; dependency pending 12b)
 
 ### Unit 13: N-ary associations (PR 13)
 

@@ -19,12 +19,14 @@ import {
   type Delta,
   type Diagram,
   type Generalization,
+  type Realization,
 } from '@app/core';
 
 // ── Y.Doc key constants (mirrors core's Y_DOC_TYPES) ──────────────────────
 const Y_CLASSES = 'classes';
 const Y_ASSOCIATIONS = 'associations';
 const Y_GENERALIZATIONS = 'generalizations';
+const Y_REALIZATIONS = 'realizations';
 const Y_META = 'meta';
 
 /**
@@ -51,11 +53,13 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
     const yClasses = doc.getMap(Y_CLASSES);
     const yAssociations = doc.getMap(Y_ASSOCIATIONS);
     const yGeneralizations = doc.getMap(Y_GENERALIZATIONS);
+    const yRealizations = doc.getMap(Y_REALIZATIONS);
     const yMeta = doc.getMap(Y_META);
 
     yClasses.clear();
     yAssociations.clear();
     yGeneralizations.clear();
+    yRealizations.clear();
 
     yMeta.set('id', diagram.id);
     yMeta.set('name', diagram.name);
@@ -71,6 +75,10 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
     for (const gen of diagram.generalizations ?? []) {
       yGeneralizations.set(gen.id, buildYGeneralization(gen));
     }
+
+    for (const real of diagram.realizations ?? []) {
+      yRealizations.set(real.id, buildYRealization(real));
+    }
   });
 }
 
@@ -79,6 +87,9 @@ function buildYClass(cls: Class): Y.Map<unknown> {
 
   yClass.set('id', cls.id);
   yClass.set('name', cls.name);
+  // Unit 12.1: classifier kind + abstract marking round-trip through the bridge.
+  yClass.set('kind', cls.kind ?? 'class');
+  yClass.set('isAbstract', cls.isAbstract ?? false);
 
   const yPos = new Y.Map<number>();
   yPos.set('x', cls.position.x);
@@ -148,4 +159,12 @@ function buildYGeneralization(gen: Generalization): Y.Map<unknown> {
   yGen.set('subClassId', gen.subClassId);
   yGen.set('superClassId', gen.superClassId);
   return yGen;
+}
+
+function buildYRealization(real: Realization): Y.Map<unknown> {
+  const yReal = new Y.Map<unknown>();
+  yReal.set('id', real.id);
+  yReal.set('clientClassId', real.clientClassId);
+  yReal.set('supplierInterfaceId', real.supplierInterfaceId);
+  return yReal;
 }

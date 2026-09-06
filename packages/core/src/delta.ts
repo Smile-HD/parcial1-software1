@@ -11,11 +11,14 @@ const DeltaBase = z.object({
 });
 
 /**
- * Class-level operations: create, rename, reposition, delete.
+ * Class-level operations: create, rename, reposition, delete, update.
+ * `classKind` (not `kind` — that is the delta discriminator) carries the
+ * UML classifier kind on create and update (unit 12.1/12.4); `isAbstract`
+ * toggles abstract marking. The `update` op must carry at least one of them.
  */
 export const ClassDeltaSchema = DeltaBase.extend({
   kind: z.literal('class'),
-  op: z.enum(['create', 'rename', 'reposition', 'delete']),
+  op: z.enum(['create', 'rename', 'reposition', 'delete', 'update']),
   classId: z.string().uuid(),
   // For create: name + position required
   name: z.string().min(1).optional(),
@@ -24,7 +27,17 @@ export const ClassDeltaSchema = DeltaBase.extend({
   newName: z.string().min(1).optional(),
   // For reposition: new position required
   newPosition: z.object({ x: z.number(), y: z.number() }).optional(),
-}).strict();
+  // Unit 12: classifier kind + abstract marking (create/update carriers)
+  classKind: z.enum(['class', 'interface']).optional(),
+  isAbstract: z.boolean().optional(),
+}).strict().superRefine((delta, ctx) => {
+  if (delta.op === 'update' && delta.classKind === undefined && delta.isAbstract === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Class update requires at least one of classKind or isAbstract',
+    });
+  }
+});
 export type ClassDelta = z.infer<typeof ClassDeltaSchema>;
 
 /**
@@ -98,6 +111,29 @@ export const GeneralizationDeltaSchema = DeltaBase.extend({
 export type GeneralizationDelta = z.infer<typeof GeneralizationDeltaSchema>;
 
 /**
+ * Realization-level operations: create (client class → supplier interface)
+ * and delete. A `create` must carry both ends (schema gate); engine
+ * invariants (both exist, supplier is an interface, no duplicates) are
+ * enforced by applyDelta — unit 12.2.
+ */
+export const RealizationDeltaSchema = DeltaBase.extend({
+  kind: z.literal('realization'),
+  op: z.enum(['create', 'delete']),
+  realizationId: z.string().uuid(),
+  // For create: both ends required (enforced by the refinement below)
+  clientClassId: z.string().uuid().optional(),
+  supplierInterfaceId: z.string().uuid().optional(),
+}).strict().superRefine((delta, ctx) => {
+  if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierInterfaceId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Realization create requires clientClassId and supplierInterfaceId',
+    });
+  }
+});
+export type RealizationDelta = z.infer<typeof RealizationDeltaSchema>;
+
+/**
  * Batch delta: atomic application of multiple deltas (all or nothing).
  */
 export const BatchDeltaSchema = DeltaBase.extend({
@@ -107,6 +143,7 @@ export const BatchDeltaSchema = DeltaBase.extend({
     MemberDeltaSchema,
     AssociationDeltaSchema,
     GeneralizationDeltaSchema,
+    RealizationDeltaSchema,
   ])),
 }).strict();
 export type BatchDelta = z.infer<typeof BatchDeltaSchema>;
@@ -120,6 +157,7 @@ export const DeltaSchema = z.discriminatedUnion('kind', [
   MemberDeltaSchema,
   AssociationDeltaSchema,
   GeneralizationDeltaSchema,
+  RealizationDeltaSchema,
   BatchDeltaSchema,
 ]);
 export type Delta = z.infer<typeof DeltaSchema>;

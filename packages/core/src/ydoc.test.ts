@@ -385,3 +385,75 @@ describe('ydoc codec — Generalization round-trip (unit 11.1)', () => {
     expect(projected.generalizations).toEqual([]);
   });
 });
+
+describe('ydoc codec — Class kind/isAbstract + realizations round-trip (unit 12.1/12.6)', () => {
+  function diagramWithInterfaceAndRealization(): Diagram {
+    return DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Interface Test',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Repository', position: { x: 300, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'Shape', position: { x: 600, y: 0 }, attributes: [], methods: [], isAbstract: true },
+      ],
+      associations: [],
+      realizations: [
+        { id: '550e8400-e29b-41d4-a716-446655440004', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierInterfaceId: '550e8400-e29b-41d4-a716-446655440002' },
+      ],
+    });
+  }
+
+  it('buildYDocFromDiagram → projectYDocToDiagram preserves kind, isAbstract and realizations losslessly', () => {
+    const original = diagramWithInterfaceAndRealization();
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    const iface = projected.classes.find((c) => c.name === 'Repository')!;
+    expect(iface.kind).toBe('interface');
+    const abstract = projected.classes.find((c) => c.name === 'Shape')!;
+    expect(abstract.isAbstract).toBe(true);
+    expect(abstract.kind).toBe('class');
+    const plain = projected.classes.find((c) => c.name === 'Order')!;
+    expect(plain.kind).toBe('class');
+    expect(plain.isAbstract).toBe(false);
+
+    expect(projected.realizations).toHaveLength(1);
+    expect(projected.realizations[0]).toEqual(original.realizations[0]);
+  });
+
+  it('round-trip through encode/load preserves kind, isAbstract and realizations (blob-authoritative path)', () => {
+    const original = diagramWithInterfaceAndRealization();
+    const doc = buildYDocFromDiagram(original);
+    const update = encodeYDoc(doc);
+    const loadedDoc = loadYDocFromUpdate(update);
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.realizations).toHaveLength(1);
+    expect(projected.realizations[0]!.clientClassId).toBe('550e8400-e29b-41d4-a716-446655440001');
+    expect(projected.realizations[0]!.supplierInterfaceId).toBe('550e8400-e29b-41d4-a716-446655440002');
+    expect(projected.classes.find((c) => c.name === 'Repository')!.kind).toBe('interface');
+    expect(projected.classes.find((c) => c.name === 'Shape')!.isAbstract).toBe(true);
+  });
+
+  it('backward compat: old Y.Doc without kind/isAbstract fields or realizations map projects IR defaults', () => {
+    // Simulate a pre-unit-12 doc: class maps lack kind/isAbstract, no realizations map.
+    const doc = new Y.Doc();
+    const yClasses = doc.getMap('classes');
+    const yMeta = doc.getMap('meta');
+    yMeta.set('id', '550e8400-e29b-41d4-a716-446655440000');
+    yMeta.set('name', 'Old Diagram');
+    const yClass1 = new Y.Map();
+    yClass1.set('id', '550e8400-e29b-41d4-a716-446655440001');
+    yClass1.set('name', 'Order');
+    yClass1.set('position', new Y.Map([['x', 0], ['y', 0]]));
+    yClass1.set('attributes', new Y.Array());
+    yClass1.set('methods', new Y.Array());
+    // kind / isAbstract deliberately absent (pre-unit-12 writer)
+    yClasses.set('550e8400-e29b-41d4-a716-446655440001', yClass1);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.classes[0]!.kind).toBe('class');
+    expect(projected.classes[0]!.isAbstract).toBe(false);
+    expect(projected.realizations).toEqual([]);
+  });
+});

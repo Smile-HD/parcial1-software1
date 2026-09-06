@@ -19,6 +19,8 @@ export const SUPPORTED_CATEGORIES: readonly string[] = [
   'add/remove method (name: returnType)',
   'add/remove association with multiplicities',
   'create/remove generalization (inheritance)',
+  'create interfaces and abstract classes',
+  'create/remove realization (class realizes interface)',
 ];
 
 export interface PendingDelta {

@@ -70,7 +70,16 @@ export const MethodSchema = z.object({
 export type Method = z.infer<typeof MethodSchema>;
 
 /**
+ * Classifier kind per UML 2.5.1: a plain class or an interface.
+ * Defaults to 'class' so pre-unit-12 diagrams stay valid (backward compat).
+ */
+export const ClassKindSchema = z.enum(['class', 'interface']);
+export type ClassKind = z.infer<typeof ClassKindSchema>;
+
+/**
  * Class in the diagram: name, position, attributes, methods.
+ * `kind` distinguishes classes from interfaces (unit 12.1); `isAbstract`
+ * marks abstract classes. Both default to class/false for backward compat.
  */
 export const ClassSchema = z.object({
   id: z.string().uuid(),
@@ -78,6 +87,8 @@ export const ClassSchema = z.object({
   position: PositionSchema,
   attributes: z.array(AttributeSchema),
   methods: z.array(MethodSchema),
+  kind: ClassKindSchema.default('class'),
+  isAbstract: z.boolean().default(false),
 });
 export type Class = z.infer<typeof ClassSchema>;
 
@@ -123,9 +134,22 @@ export const GeneralizationSchema = z.object({
 export type Generalization = z.infer<typeof GeneralizationSchema>;
 
 /**
- * Diagram: the top-level IR containing classes, associations and
- * generalizations. `generalizations` defaults to [] so pre-unit-11
- * diagrams stay valid (backward compatibility).
+ * Realization edge: a client classifier (class) realizes a supplier
+ * interface (UML 2.5.1 realization, rendered as a dashed line with a
+ * hollow triangle on the interface end). The supplier MUST have
+ * `kind === 'interface'` — enforced by the apply engine (unit 12.2).
+ */
+export const RealizationSchema = z.object({
+  id: z.string().uuid(),
+  clientClassId: z.string().uuid(),
+  supplierInterfaceId: z.string().uuid(),
+});
+export type Realization = z.infer<typeof RealizationSchema>;
+
+/**
+ * Diagram: the top-level IR containing classes, associations,
+ * generalizations and realizations. `generalizations` and `realizations`
+ * default to [] so pre-unit-11/12 diagrams stay valid (backward compat).
  */
 export const DiagramSchema = z.object({
   id: z.string().uuid(),
@@ -133,5 +157,6 @@ export const DiagramSchema = z.object({
   classes: z.array(ClassSchema),
   associations: z.array(AssociationSchema),
   generalizations: z.array(GeneralizationSchema).default([]),
+  realizations: z.array(RealizationSchema).default([]),
 });
 export type Diagram = z.infer<typeof DiagramSchema>;
