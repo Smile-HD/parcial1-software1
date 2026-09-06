@@ -102,7 +102,7 @@ describe('App helpers', () => {
 
   it('creates an empty diagram with the given id', () => {
     const id = crypto.randomUUID();
-    expect(createEmptyDiagram(id)).toEqual({ id, name: 'Untitled', classes: [], associations: [], generalizations: [], realizations: [] });
+    expect(createEmptyDiagram(id)).toEqual({ id, name: 'Untitled', classes: [], associations: [], generalizations: [], realizations: [], dependencies: [] });
   });
 
   it('hydrates a Y.Doc from the stored blob so its projection is structurally equal to the saved diagram', () => {

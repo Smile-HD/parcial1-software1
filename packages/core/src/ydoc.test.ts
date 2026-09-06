@@ -457,3 +457,60 @@ describe('ydoc codec — Class kind/isAbstract + realizations round-trip (unit 1
     expect(projected.realizations).toEqual([]);
   });
 });
+
+describe('ydoc codec — Dependency round-trip (unit 12.2/12.6 — 12b half)', () => {
+  function diagramWithDependency(): Diagram {
+    return DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Dependency Test',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Service', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      dependencies: [
+        { id: '550e8400-e29b-41d4-a716-446655440003', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierClassId: '550e8400-e29b-41d4-a716-446655440002' },
+      ],
+    });
+  }
+
+  it('buildYDocFromDiagram → projectYDocToDiagram preserves dependencies losslessly', () => {
+    const original = diagramWithDependency();
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.dependencies).toHaveLength(1);
+    expect(projected.dependencies[0]).toEqual(original.dependencies[0]);
+  });
+
+  it('round-trip through encode/load preserves dependencies (blob-authoritative path)', () => {
+    const original = diagramWithDependency();
+    const doc = buildYDocFromDiagram(original);
+    const update = encodeYDoc(doc);
+    const loadedDoc = loadYDocFromUpdate(update);
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.dependencies).toHaveLength(1);
+    expect(projected.dependencies[0]!.clientClassId).toBe('550e8400-e29b-41d4-a716-446655440001');
+    expect(projected.dependencies[0]!.supplierClassId).toBe('550e8400-e29b-41d4-a716-446655440002');
+  });
+
+  it('backward compat: old Y.Doc without a dependencies map projects to an empty collection', () => {
+    // Simulate a pre-unit-12b doc: no dependencies map at all.
+    const doc = new Y.Doc();
+    const yClasses = doc.getMap('classes');
+    const yMeta = doc.getMap('meta');
+    yMeta.set('id', '550e8400-e29b-41d4-a716-446655440000');
+    yMeta.set('name', 'Old Diagram');
+    const yClass1 = new Y.Map();
+    yClass1.set('id', '550e8400-e29b-41d4-a716-446655440001');
+    yClass1.set('name', 'Order');
+    yClass1.set('position', new Y.Map([['x', 0], ['y', 0]]));
+    yClass1.set('attributes', new Y.Array());
+    yClass1.set('methods', new Y.Array());
+    yClasses.set('550e8400-e29b-41d4-a716-446655440001', yClass1);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.dependencies).toEqual([]);
+  });
+});

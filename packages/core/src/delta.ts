@@ -134,6 +134,30 @@ export const RealizationDeltaSchema = DeltaBase.extend({
 export type RealizationDelta = z.infer<typeof RealizationDeltaSchema>;
 
 /**
+ * Dependency-level operations: create (client class → supplier class or
+ * interface) and delete. A `create` must carry both ends (schema gate);
+ * engine invariants (both exist, no duplicates) are enforced by
+ * applyDelta — unit 12.2 (12b half). The supplier may be ANY classifier
+ * (no interface requirement) and there is NO multiplicity.
+ */
+export const DependencyDeltaSchema = DeltaBase.extend({
+  kind: z.literal('dependency'),
+  op: z.enum(['create', 'delete']),
+  dependencyId: z.string().uuid(),
+  // For create: both ends required (enforced by the refinement below)
+  clientClassId: z.string().uuid().optional(),
+  supplierClassId: z.string().uuid().optional(),
+}).strict().superRefine((delta, ctx) => {
+  if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierClassId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Dependency create requires clientClassId and supplierClassId',
+    });
+  }
+});
+export type DependencyDelta = z.infer<typeof DependencyDeltaSchema>;
+
+/**
  * Batch delta: atomic application of multiple deltas (all or nothing).
  */
 export const BatchDeltaSchema = DeltaBase.extend({
@@ -144,6 +168,7 @@ export const BatchDeltaSchema = DeltaBase.extend({
     AssociationDeltaSchema,
     GeneralizationDeltaSchema,
     RealizationDeltaSchema,
+    DependencyDeltaSchema,
   ])),
 }).strict();
 export type BatchDelta = z.infer<typeof BatchDeltaSchema>;
@@ -158,6 +183,7 @@ export const DeltaSchema = z.discriminatedUnion('kind', [
   AssociationDeltaSchema,
   GeneralizationDeltaSchema,
   RealizationDeltaSchema,
+  DependencyDeltaSchema,
   BatchDeltaSchema,
 ]);
 export type Delta = z.infer<typeof DeltaSchema>;

@@ -21,6 +21,7 @@ export const SUPPORTED_CATEGORIES: readonly string[] = [
   'create/remove generalization (inheritance)',
   'create interfaces and abstract classes',
   'create/remove realization (class realizes interface)',
+  'create/remove dependency (client depends on supplier)',
 ];
 
 export interface PendingDelta {

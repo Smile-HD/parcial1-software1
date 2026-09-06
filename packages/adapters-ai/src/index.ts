@@ -12,6 +12,8 @@ import {
   DeltaSchema,
   type AssociationDelta,
   type ClassDelta,
+  type Dependency,
+  type DependencyDelta,
   type Diagram,
   type Delta,
   type Generalization,
@@ -395,6 +397,56 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
+    // 13b. dependency DELETE (unit 12.5, 12b half; checked BEFORE create so
+    // negations win, mirroring generalization): "X does not depend on Y",
+    // "remove dependency between X and Y", "remove dependency from X".
+    const existingDeps: readonly Dependency[] = currentIr.dependencies ?? [];
+    const notDepend = /\b([A-Za-z_]\w*)\s+does\s+not\s+depend\s+on\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const removeDependency = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\bdependen(?:cy|cia)\b[\s\S]*?\b(?:between|from|de|entre)\s+([A-Za-z_]\w*)(?:\s+(?:and|y|con)\s+([A-Za-z_]\w*))?/i.exec(utterance);
+    const depDeleteMatch = notDepend ?? (removeDependency ? [removeDependency[0], removeDependency[1]!, removeDependency[2]] : null);
+    if (depDeleteMatch) {
+      const clientClassId = classIdByName(currentIr, depDeleteMatch[1]!);
+      if (clientClassId === null) return refused(`Unknown class "${depDeleteMatch[1]}"`);
+      let edge: Dependency | undefined;
+      if (depDeleteMatch[2]) {
+        const supplierClassId = classIdByName(currentIr, depDeleteMatch[2]);
+        if (supplierClassId === null) return refused(`Unknown class "${depDeleteMatch[2]}"`);
+        edge = existingDeps.find((d) => d.clientClassId === clientClassId && d.supplierClassId === supplierClassId);
+      } else {
+        edge = existingDeps.find((d) => d.clientClassId === clientClassId);
+      }
+      if (edge === undefined) {
+        return refused(`No dependency found for class "${depDeleteMatch[1]}".`);
+      }
+      const delta: DependencyDelta = {
+        kind: 'dependency',
+        op: 'delete',
+        ...deltaBase(currentIr),
+        dependencyId: edge.id,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 13c. dependency CREATE (unit 12.5, 12b half): "X depends on Y" /
+    // "X uses Y" — X is the client, Y the supplier (ANY class or interface;
+    // no interface-target requirement, unlike realization).
+    const dependency = /\b([A-Za-z_]\w*)\s+(?:depends\s+on|depende\s+de|uses|utiliza|usa)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (dependency) {
+      const clientClassId = classIdByName(currentIr, dependency[1]!);
+      const supplierClassId = classIdByName(currentIr, dependency[2]!);
+      if (clientClassId === null) return refused(`Unknown class "${dependency[1]}"`);
+      if (supplierClassId === null) return refused(`Unknown class "${dependency[2]}"`);
+      const delta: DependencyDelta = {
+        kind: 'dependency',
+        op: 'create',
+        ...deltaBase(currentIr),
+        dependencyId: crypto.randomUUID(),
+        clientClassId,
+        supplierClassId,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
     // 14. abstract marking (unit 12.5, 12a half): "make X abstract" /
     // "mark X abstract" — class update delta carrying isAbstract.
     const makeAbstract = /\b(?:make|mark)\s+(?:the\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+abstract/i.exec(utterance);
@@ -477,8 +529,10 @@ export class OpenAiLlm implements LlmPort {
        'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
         'GENERALIZATION CREATE: {"kind":"generalization","op":"create", ...base, "generalizationId":"<new uuid>","subClassId":"<existing class uuid — the SUBCLASS>","superClassId":"<existing class uuid — the SUPERCLASS>"}',
         'GENERALIZATION DELETE: {"kind":"generalization","op":"delete", ...base, "generalizationId":"<existing generalization uuid from the IR>"}',
-        'REALIZATION CREATE: {"kind":"realization","op":"create", ...base, "realizationId":"<new uuid>","clientClassId":"<existing class uuid — the REALIZING class>","supplierInterfaceId":"<existing INTERFACE uuid — kind must be interface>"}',
-        'REALIZATION DELETE: {"kind":"realization","op":"delete", ...base, "realizationId":"<existing realization uuid from the IR>"}',
+         'REALIZATION CREATE: {"kind":"realization","op":"create", ...base, "realizationId":"<new uuid>","clientClassId":"<existing class uuid — the REALIZING class>","supplierInterfaceId":"<existing INTERFACE uuid — kind must be interface>"}',
+         'REALIZATION DELETE: {"kind":"realization","op":"delete", ...base, "realizationId":"<existing realization uuid from the IR>"}',
+         'DEPENDENCY CREATE: {"kind":"dependency","op":"create", ...base, "dependencyId":"<new uuid>","clientClassId":"<existing class uuid — the DEPENDENT client>","supplierClassId":"<existing class uuid — the SUPPLIER (any class or interface)>"}',
+         'DEPENDENCY DELETE: {"kind":"dependency","op":"delete", ...base, "dependencyId":"<existing dependency uuid from the IR>"}',
         '',
         'GENERALIZATION GUIDANCE:',
         '- "X is a kind of Y", "X inherits from Y", "X is a subclass of Y" → X is the subClass, Y is the superClass.',
@@ -491,6 +545,12 @@ export class OpenAiLlm implements LlmPort {
         '- "X realizes Y" / "X implements Y" → realization create: X is clientClassId, Y is supplierInterfaceId.',
         '- The engine REJECTS a realization whose supplier is not kind === "interface" (abstract classes are not interfaces). Check currentIr.classes[].kind before emitting a realization.',
         '- Duplicate realizations (same client + supplier) are rejected.',
+        '',
+        'DEPENDENCY GUIDANCE (unit 12b):',
+        '- "X depends on Y" / "X uses Y" → dependency create: X is clientClassId, Y is supplierClassId.',
+        '- The supplier may be ANY class or interface (unlike realization, there is NO interface-target requirement). Dependencies carry NO multiplicity.',
+        '- "remove dependency between X and Y" / "X does not depend on Y" → dependency delete using the EXACT dependencyId from currentIr.dependencies.',
+        '- Duplicate dependencies (same client + supplier) are rejected.',
         '',
       'AGGREGATION END GUIDANCE:',
       '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',
@@ -569,7 +629,7 @@ export class OpenAiLlm implements LlmPort {
 // ── Model-output repair (provider quirk normalization) ─────────────────────
 
 /** UUID fields the MODEL is allowed to invent; malformed values are regenerated. */
-const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId']);
+const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'dependencyId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId', 'supplierClassId']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 

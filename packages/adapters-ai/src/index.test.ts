@@ -576,6 +576,7 @@ describe('FakeLlm interface/abstract/realization commands (unit 12.5 — 12a hal
       associations: [],
       generalizations: [],
       realizations: [],
+      dependencies: [],
     };
   }
 
@@ -677,5 +678,126 @@ describe('OpenAiLlm interface/realization prompt (unit 12.5 — 12a half)', () =
     expect(captured.system).toContain('isAbstract');
     // The interface-target invariant is documented for the model.
     expect(captured.system).toMatch(/interface/i);
+  });
+});
+
+describe('FakeLlm dependency commands (unit 12.5 — 12b half)', () => {
+  function makeDependencyDiagram(withEdge = false): Diagram {
+    const orderId = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    const diagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Shop',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: serviceId, name: 'Service', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: withEdge
+        ? [{ id: 'd1', clientClassId: orderId, supplierClassId: serviceId }]
+        : [],
+    };
+    return diagram;
+  }
+
+  it('interprets "Order depends on Service" as a dependency create (client=Order, supplier=Service)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDependencyDiagram();
+    const result = await llm.interpret('Order depends on Service', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; clientClassId?: string; supplierClassId?: string };
+      expect(delta.kind).toBe('dependency');
+      expect(delta.op).toBe('create');
+      expect(delta.clientClassId).toBe(diagram.classes[0]!.id); // Order
+      expect(delta.supplierClassId).toBe(diagram.classes[1]!.id); // Service
+    }
+  });
+
+  it('interprets "X uses Y" as a dependency create too (synonym phrasing)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDependencyDiagram();
+    const result = await llm.interpret('Order uses Service', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; clientClassId?: string; supplierClassId?: string };
+      expect(delta.kind).toBe('dependency');
+      expect(delta.clientClassId).toBe(diagram.classes[0]!.id);
+      expect(delta.supplierClassId).toBe(diagram.classes[1]!.id);
+    }
+  });
+
+  it('refuses a dependency naming an unknown class', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('Ghost depends on Service', {}, makeDependencyDiagram());
+    expect(result.kind).toBe('refused');
+  });
+
+  it('interprets "remove dependency between Order and Service" as a dependency delete of the existing edge', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDependencyDiagram(true);
+    const result = await llm.interpret('remove dependency between Order and Service', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; dependencyId?: string };
+      expect(delta.kind).toBe('dependency');
+      expect(delta.op).toBe('delete');
+      expect(delta.dependencyId).toBe('d1');
+    }
+  });
+
+  it('interprets "Order does not depend on Service" as a dependency delete', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDependencyDiagram(true);
+    const result = await llm.interpret('Order does not depend on Service', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; op: string; dependencyId?: string };
+      expect(delta.kind).toBe('dependency');
+      expect(delta.op).toBe('delete');
+      expect(delta.dependencyId).toBe('d1');
+    }
+  });
+
+  it('refuses "remove dependency" when no such edge exists', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('remove dependency between Order and Service', {}, makeDependencyDiagram());
+    expect(result.kind).toBe('refused');
+  });
+});
+
+describe('OpenAiLlm dependency prompt (unit 12.5 — 12b half)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('system prompt documents the dependency create/delete shapes', async () => {
+    const captured: { system?: string } = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init: { body: string }) => {
+        const body = JSON.parse(init.body) as { messages: { role: string; content: string }[] };
+        captured.system = body.messages.find((m) => m.role === 'system')?.content;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ action: 'refuse', reason: 'noop' }) } }],
+          }),
+        });
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    await llm.interpret('Order depends on Service', {}, makeDiagram());
+
+    expect(captured.system).toBeDefined();
+    expect(captured.system).toContain('DEPENDENCY CREATE');
+    expect(captured.system).toContain('DEPENDENCY DELETE');
+    expect(captured.system).toContain('supplierClassId');
+    expect(captured.system).toContain('dependencyId');
+    // The any-supplier rule is documented for the model (unlike realization).
+    expect(captured.system).toMatch(/any class or interface/i);
   });
 });

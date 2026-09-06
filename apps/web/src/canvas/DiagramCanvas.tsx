@@ -10,7 +10,7 @@ import { ReactFlow, type Edge, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type Parameter, type Realization, type RealizationDelta } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Dependency, type DependencyDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type Parameter, type Realization, type RealizationDelta } from '@app/core';
 
 import './canvas.css';
 import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
@@ -18,9 +18,10 @@ import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 import { AssociationEdge } from './AssociationEdge';
 import { GeneralizationEdge } from './GeneralizationEdge';
 import { RealizationEdge } from './RealizationEdge';
+import { DependencyEdge } from './DependencyEdge';
 
 const nodeTypes = { class: ClassNode };
-const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge };
+const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge, dependency: DependencyEdge };
 
 export interface DiagramCanvasProps {
   doc: Y.Doc;
@@ -260,6 +261,52 @@ export function handleDeleteRealization(
     diagramId,
     timestamp: new Date().toISOString(),
     realizationId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * editor:R Interfaces (unit 12.2/12.4 — 12b half) — emit a dependency
+ * `create` delta (client class → supplier class or interface). Engine
+ * invariants (existence, duplicates) are enforced by applyDelta; a
+ * rejected delta leaves the Y.Doc unchanged.
+ */
+export function handleCreateDependency(
+  doc: Y.Doc,
+  diagramId: string,
+  link: { clientClassId: string; supplierClassId: string },
+): void {
+  if (link.clientClassId === '' || link.supplierClassId === '') {
+    return;
+  }
+  const delta: DependencyDelta = {
+    kind: 'dependency',
+    op: 'create',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    dependencyId: crypto.randomUUID(),
+    clientClassId: link.clientClassId,
+    supplierClassId: link.supplierClassId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * editor:R Interfaces (unit 12.4 — 12b half) — emit a dependency `delete` delta.
+ */
+export function handleDeleteDependency(
+  doc: Y.Doc,
+  diagramId: string,
+  dependencyId: string,
+): void {
+  const delta: DependencyDelta = {
+    kind: 'dependency',
+    op: 'delete',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    dependencyId,
   };
   applyDeltaToYDoc(doc, delta);
 }
@@ -538,6 +585,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           onToggleAbstract: (isAbstract: boolean) => handleSetAbstract(doc, diagram.id, cls.id, isAbstract),
           onRealize: (supplierInterfaceId: string) =>
             handleCreateRealization(doc, diagram.id, { clientClassId: cls.id, supplierInterfaceId }),
+          onDependOn: (supplierClassId: string) =>
+            handleCreateDependency(doc, diagram.id, { clientClassId: cls.id, supplierClassId }),
           onSelect: () => setSelectedClassId(cls.id),
         } satisfies ClassNodeData,
       })),
@@ -570,6 +619,15 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         target: real.supplierInterfaceId,
         type: 'realization' as const,
         data: { realization: real },
+      })),
+      // Unit 12.3 (12b) — dependency edges: source = client class, target =
+      // supplier, so the dashed line + open arrow renders on the supplier end.
+      ...(diagram.dependencies ?? []).map((dep) => ({
+        id: dep.id,
+        source: dep.clientClassId,
+        target: dep.supplierClassId,
+        type: 'dependency' as const,
+        data: { dependency: dep },
       })),
     ],
     [diagram],
@@ -604,6 +662,17 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         ? []
         : (diagram.realizations ?? []).filter(
             (real) => real.clientClassId === selectedClass.id || real.supplierInterfaceId === selectedClass.id,
+          ),
+    [diagram, selectedClass],
+  );
+
+  // Unit 12.4 (12b) — dependency list for the selected class (both roles).
+  const selectedClassDependencies = useMemo(
+    () =>
+      selectedClass === null
+        ? []
+        : (diagram.dependencies ?? []).filter(
+            (dep) => dep.clientClassId === selectedClass.id || dep.supplierClassId === selectedClass.id,
           ),
     [diagram, selectedClass],
   );
@@ -804,6 +873,33 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                 onClick={() => handleDeleteRealization(doc, diagram.id, real.id)}
               >
                 Remove realization
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {selectedClass && (
+        <div className="diagram-canvas__dependencies" data-testid="dependency-panel">
+          <span className="diagram-canvas__dependencies-title">
+            Dependencies for {selectedClass.name}
+          </span>
+          {selectedClassDependencies.length === 0 && (
+            <span className="diagram-canvas__dependencies-empty">None</span>
+          )}
+          {selectedClassDependencies.map((dep) => (
+            <div key={dep.id} className="diagram-canvas__dependency-row">
+              <span>
+                {dep.clientClassId === selectedClass.id
+                  ? `Depends on ${classNameById(dep.supplierClassId)}`
+                  : `Dependency from ${classNameById(dep.clientClassId)}`}
+              </span>
+              <button
+                type="button"
+                className="diagram-canvas__delete-dependency"
+                aria-label={`Delete dependency ${dep.id}`}
+                onClick={() => handleDeleteDependency(doc, diagram.id, dep.id)}
+              >
+                Remove dependency
               </button>
             </div>
           ))}

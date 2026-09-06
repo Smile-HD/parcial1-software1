@@ -17,6 +17,7 @@ import {
   type Association,
   type Class,
   type Delta,
+  type Dependency,
   type Diagram,
   type Generalization,
   type Realization,
@@ -27,6 +28,7 @@ const Y_CLASSES = 'classes';
 const Y_ASSOCIATIONS = 'associations';
 const Y_GENERALIZATIONS = 'generalizations';
 const Y_REALIZATIONS = 'realizations';
+const Y_DEPENDENCIES = 'dependencies';
 const Y_META = 'meta';
 
 /**
@@ -54,12 +56,14 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
     const yAssociations = doc.getMap(Y_ASSOCIATIONS);
     const yGeneralizations = doc.getMap(Y_GENERALIZATIONS);
     const yRealizations = doc.getMap(Y_REALIZATIONS);
+    const yDependencies = doc.getMap(Y_DEPENDENCIES);
     const yMeta = doc.getMap(Y_META);
 
     yClasses.clear();
     yAssociations.clear();
     yGeneralizations.clear();
     yRealizations.clear();
+    yDependencies.clear();
 
     yMeta.set('id', diagram.id);
     yMeta.set('name', diagram.name);
@@ -78,6 +82,10 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
 
     for (const real of diagram.realizations ?? []) {
       yRealizations.set(real.id, buildYRealization(real));
+    }
+
+    for (const dep of diagram.dependencies ?? []) {
+      yDependencies.set(dep.id, buildYDependency(dep));
     }
   });
 }
@@ -167,4 +175,12 @@ function buildYRealization(real: Realization): Y.Map<unknown> {
   yReal.set('clientClassId', real.clientClassId);
   yReal.set('supplierInterfaceId', real.supplierInterfaceId);
   return yReal;
+}
+
+function buildYDependency(dep: Dependency): Y.Map<unknown> {
+  const yDep = new Y.Map<unknown>();
+  yDep.set('id', dep.id);
+  yDep.set('clientClassId', dep.clientClassId);
+  yDep.set('supplierClassId', dep.supplierClassId);
+  return yDep;
 }
