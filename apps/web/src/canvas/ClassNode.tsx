@@ -8,7 +8,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 
-import type { Attribute, Method, Parameter, Visibility } from '@app/core';
+import type { Attribute, ClassKind, Method, Parameter, Visibility } from '@app/core';
 
 /** UML adornments carried by member add/edit operations (unit 9). */
 export interface MemberAdornments {
@@ -22,8 +22,13 @@ export type ClassNodeData = Record<string, unknown> & {
   name: string;
   attributes: readonly Attribute[];
   methods: readonly Method[];
+  /** Unit 12.1: classifier kind ('class' | 'interface') and abstract marking. */
+  kind: ClassKind;
+  isAbstract: boolean;
   /** Other classes in the diagram — candidates for "make subclass of" (unit 11.4). */
   otherClasses: readonly { id: string; name: string }[];
+  /** Interfaces in the diagram — candidates for "realize" (unit 12.4). */
+  otherInterfaces: readonly { id: string; name: string }[];
   onRename: (newName: string) => void;
   onDelete: () => void;
   onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) => void;
@@ -34,6 +39,10 @@ export type ClassNodeData = Record<string, unknown> & {
   onRemoveMethod: (memberId: string) => void;
   /** Unit 11.4: emit a generalization create with this class as the subClass. */
   onMakeSubclass: (superClassId: string) => void;
+  /** Unit 12.4: toggle the abstract marker via a class update delta. */
+  onToggleAbstract: (isAbstract: boolean) => void;
+  /** Unit 12.4: emit a realization create with this class as the client. */
+  onRealize: (supplierInterfaceId: string) => void;
   /** Unit 11.4: select this class to show its generalization list in the panel. */
   onSelect: () => void;
 };
@@ -245,13 +254,17 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
     },
   };
 
+  const isInterface = data.kind === 'interface';
+  const isItalicName = isInterface || data.isAbstract;
+
   return (
     <div
-      className="uml-class"
+      className={`uml-class${isInterface ? ' uml-class--interface' : ''}`}
       onClick={data.onSelect}
       onContextMenu={(event) => {
         // editor:R Generalization (unit 11.4) — right-click opens the
         // "make subclass of" menu; the browser menu is suppressed.
+        // Unit 12.4 adds "realize <interface>" and the abstract toggle.
         event.preventDefault();
         setMenuOpen(true);
       }}
@@ -276,6 +289,38 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 Make subclass of {other.name}
               </button>
             ))
+          )}
+          {/* Unit 12.4 — realize an interface (client = this class). Interfaces only:
+              the engine rejects non-interface suppliers anyway. */}
+          {data.otherInterfaces.map((iface) => (
+            <button
+              key={iface.id}
+              type="button"
+              role="menuitem"
+              aria-label={`Realize ${iface.name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onRealize(iface.id);
+                setMenuOpen(false);
+              }}
+            >
+              Realize {iface.name}
+            </button>
+          ))}
+          {/* Unit 12.4 — abstract toggle (interfaces are implicitly abstract; hide it there). */}
+          {!isInterface && (
+            <button
+              type="button"
+              role="menuitem"
+              aria-label={data.isAbstract ? 'Unmark abstract' : 'Mark abstract'}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onToggleAbstract(!data.isAbstract);
+                setMenuOpen(false);
+              }}
+            >
+              {data.isAbstract ? 'Unmark abstract' : 'Mark abstract'}
+            </button>
           )}
           <button
             type="button"
@@ -303,7 +348,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
         />
       ) : (
         <div className="uml-class__title" onDoubleClick={startEditing}>
-          <span className="uml-class__name">{data.name}</span>
+          {/* Unit 12.1 — UML stereotype header for interfaces. */}
+          {isInterface && <div className="uml-class__stereotype">«interface»</div>}
+          <span className={`uml-class__name${isItalicName ? ' uml-class__name--italic' : ''}`}>{data.name}</span>
           <button
             type="button"
             className="uml-class__delete"

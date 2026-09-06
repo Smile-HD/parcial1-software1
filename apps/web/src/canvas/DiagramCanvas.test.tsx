@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import type * as Y from 'yjs';
 
-import { buildYDocFromDiagram, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
+import { buildYDocFromDiagram, DiagramSchema, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
 
-import { DiagramCanvas, handleCreateAssociation, handleCreateGeneralization, handleDeleteGeneralization, handleNodeDragStop, handleUpdateMultiplicity } from './DiagramCanvas';
+import { DiagramCanvas, handleCreateAssociation, handleCreateGeneralization, handleCreateRealization, handleDeleteGeneralization, handleDeleteRealization, handleNodeDragStop, handleSetAbstract, handleUpdateMultiplicity } from './DiagramCanvas';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
 /**
@@ -1039,5 +1039,259 @@ describe('unit 11 — editor UI: context menu + per-class generalization list (1
     fireEvent.click(deleteButton!);
 
     expect(projectYDocToDiagram(doc).generalizations).toHaveLength(0);
+  });
+});
+
+describe('unit 12a — interface/abstract render (12.1)', () => {
+  function kindFixture(): { diagram: Diagram; classId: string; ifaceId: string; abstractId: string } {
+    const classId = crypto.randomUUID();
+    const ifaceId = crypto.randomUUID();
+    const abstractId = crypto.randomUUID();
+    const diagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Kinds',
+      classes: [
+        { id: classId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: ifaceId, name: 'Repository', position: { x: 300, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+        { id: abstractId, name: 'Shape', position: { x: 600, y: 0 }, attributes: [], methods: [], isAbstract: true },
+      ],
+      associations: [],
+    };
+    return { diagram: DiagramSchema.parse(diagram), classId, ifaceId, abstractId };
+  }
+
+  function nodeRootFor(container: HTMLElement, name: string): Element {
+    const nameEl = Array.from(container.querySelectorAll('.uml-class__name')).find((el) => el.textContent === name);
+    expect(nameEl).toBeDefined();
+    return nameEl!.closest('.uml-class')!;
+  }
+
+  it('interface node renders a «interface» stereotype header with italic name and dashed-border modifier', () => {
+    const { diagram } = kindFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    // Stereotype header is real rendered text (UML notation), not a class name.
+    expect(screen.getAllByText('«interface»').length).toBe(1);
+
+    const ifaceRoot = nodeRootFor(container, 'Repository');
+    expect(ifaceRoot.className).toContain('uml-class--interface');
+    const ifaceName = Array.from(container.querySelectorAll('.uml-class__name')).find((el) => el.textContent === 'Repository');
+    expect(ifaceName!.className).toContain('uml-class__name--italic');
+  });
+
+  it('abstract class renders italic name but NO stereotype and NO dashed border', () => {
+    const { diagram } = kindFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const abstractRoot = nodeRootFor(container, 'Shape');
+    expect(abstractRoot.className).not.toContain('uml-class--interface');
+    const abstractName = Array.from(container.querySelectorAll('.uml-class__name')).find((el) => el.textContent === 'Shape');
+    expect(abstractName!.className).toContain('uml-class__name--italic');
+  });
+
+  it('plain class renders solid border, upright name, no stereotype (backward compat)', () => {
+    const { diagram } = kindFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const plainRoot = nodeRootFor(container, 'Order');
+    expect(plainRoot.className).not.toContain('uml-class--interface');
+    const plainName = Array.from(container.querySelectorAll('.uml-class__name')).find((el) => el.textContent === 'Order');
+    expect(plainName!.className).not.toContain('uml-class__name--italic');
+    expect(screen.getAllByText('«interface»')).toHaveLength(1); // only Repository
+  });
+});
+
+describe('unit 12a — realization edge render (12.3)', () => {
+  function realFixture(): { diagram: Diagram; orderId: string; repoId: string; realId: string } {
+    const orderId = crypto.randomUUID();
+    const repoId = crypto.randomUUID();
+    const realId = crypto.randomUUID();
+    const diagram = {
+      id: crypto.randomUUID(),
+      name: 'Realize',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: repoId, name: 'Repository', position: { x: 300, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+      realizations: [{ id: realId, clientClassId: orderId, supplierInterfaceId: repoId }],
+    };
+    return { diagram: DiagramSchema.parse(diagram), orderId, repoId, realId };
+  }
+
+  it('renders a dashed line with a hollow triangle marker at the INTERFACE (target) end', async () => {
+    const { diagram } = realFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const svg = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return (el!.querySelector('svg') ?? el!) as SVGSVGElement | HTMLElement;
+    });
+
+    // Hollow triangle def: white fill, dark stroke (UML realization arrowhead).
+    const triangleMarker = Array.from(svg.querySelectorAll('marker')).find((m) =>
+      (m.getAttribute('id') ?? '').includes('realization-triangle'),
+    );
+    expect(triangleMarker).toBeDefined();
+    const trianglePath = triangleMarker!.querySelector('path');
+    expect(trianglePath).toBeDefined();
+    expect(trianglePath!.getAttribute('fill')).toBe('#ffffff');
+    expect(trianglePath!.getAttribute('stroke')).toBe('#1a1a2e');
+
+    // Dashed line + triangle on the target (interface) end via url(#id) string.
+    const basePath = Array.from(svg.querySelectorAll('path')).find((p) => !p.closest('marker'));
+    expect(basePath).toBeDefined();
+    expect(basePath!.getAttribute('marker-end') ?? '').toContain('realization-triangle');
+    expect(basePath!.getAttribute('stroke-dasharray')).toBeTruthy();
+  });
+
+  it('handleCreateRealization writes the edge through applyDeltaToYDoc (bridge round-trip)', () => {
+    const { diagram, orderId, repoId } = realFixture();
+    diagram.realizations = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateRealization(doc, diagram.id, { clientClassId: orderId, supplierInterfaceId: repoId });
+    });
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.realizations).toHaveLength(1);
+    expect(projected.realizations[0]).toMatchObject({ clientClassId: orderId, supplierInterfaceId: repoId });
+  });
+
+  it('handleCreateRealization REJECTS a non-interface supplier leaving the model unchanged (runtime harness, 12.6 invariant)', () => {
+    const { diagram, orderId } = realFixture();
+    diagram.realizations = [];
+    // Point the supplier at the plain class (Order realizes Order's peer that is NOT an interface).
+    const plainSupplier = diagram.classes.find((c) => c.name === 'Order')!;
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateRealization(doc, diagram.id, { clientClassId: plainSupplier.id, supplierInterfaceId: plainSupplier.id });
+    });
+
+    expect(projectYDocToDiagram(doc).realizations).toHaveLength(0);
+  });
+
+  it('handleDeleteRealization removes the edge from the Y.Doc', () => {
+    const { diagram, realId } = realFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleDeleteRealization(doc, diagram.id, realId);
+    });
+
+    expect(projectYDocToDiagram(doc).realizations).toHaveLength(0);
+  });
+
+  it('handleSetAbstract toggles isAbstract through the class update delta', () => {
+    const { diagram, orderId } = realFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleSetAbstract(doc, diagram.id, orderId, true);
+    });
+
+    const order = projectYDocToDiagram(doc).classes.find((c) => c.id === orderId)!;
+    expect(order.isAbstract).toBe(true);
+    expect(order.kind).toBe('class');
+  });
+});
+
+describe('unit 12a — editor UI: add interface, realize + abstract in context menu, realization panel (12.4)', () => {
+  function uiFixture(): { diagram: Diagram; orderId: string; repoId: string } {
+    const orderId = crypto.randomUUID();
+    const repoId = crypto.randomUUID();
+    const diagram = {
+      id: crypto.randomUUID(),
+      name: 'Ui',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: repoId, name: 'Repository', position: { x: 300, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+    };
+    return { diagram: DiagramSchema.parse(diagram), orderId, repoId };
+  }
+
+  it('toolbar "Add interface" creates a class node with kind "interface"', () => {
+    const { diagram } = uiFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const addButton = Array.from(container.querySelectorAll('.diagram-canvas__toolbar button')).find(
+      (b) => b.textContent === 'Add interface',
+    );
+    expect(addButton).toBeDefined();
+    fireEvent.click(addButton!);
+
+    const created = projectYDocToDiagram(doc).classes.find((c) => c.kind === 'interface' && c.name !== 'Repository');
+    expect(created).toBeDefined();
+    expect(created!.isAbstract).toBe(false);
+  });
+
+  it('context menu offers "Realize <Interface>" only for interfaces and emits the create delta', () => {
+    const { diagram, orderId } = uiFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const orderNode = container.querySelector('.react-flow__node');
+    fireEvent.contextMenu(orderNode!.querySelector('.uml-class')!);
+
+    // Interface candidate present; plain-class candidate (itself) absent.
+    const realizeButton = container.querySelector('button[aria-label="Realize Repository"]');
+    expect(realizeButton).not.toBeNull();
+    fireEvent.click(realizeButton!);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.realizations).toHaveLength(1);
+    expect(projected.realizations[0]).toMatchObject({ clientClassId: orderId, supplierInterfaceId: diagram.classes[1]!.id });
+  });
+
+  it('context menu "Mark abstract" toggle sets isAbstract on the class', () => {
+    const { diagram, orderId } = uiFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const orderNode = container.querySelector('.react-flow__node');
+    fireEvent.contextMenu(orderNode!.querySelector('.uml-class')!);
+
+    const toggle = container.querySelector('button[aria-label="Mark abstract"]');
+    expect(toggle).not.toBeNull();
+    fireEvent.click(toggle!);
+
+    expect(projectYDocToDiagram(doc).classes.find((c) => c.id === orderId)!.isAbstract).toBe(true);
+  });
+
+  it('clicking a class shows its realizations in the panel with role labels and remove works', () => {
+    const { diagram, orderId, repoId } = uiFixture();
+    const realId = crypto.randomUUID();
+    (diagram as { realizations: unknown[] }).realizations = [{ id: realId, clientClassId: orderId, supplierInterfaceId: repoId }];
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    // Client side: Order realizes Repository.
+    const orderNode = container.querySelector('.react-flow__node');
+    fireEvent.click(orderNode!.querySelector('.uml-class')!);
+    const panel = screen.getByTestId('realization-panel');
+    expect(panel.textContent).toContain('Realizes Repository');
+
+    // Supplier side mirrored on the interface.
+    fireEvent.click(container.querySelectorAll('.react-flow__node')[1]!.querySelector('.uml-class')!);
+    expect(screen.getByTestId('realization-panel').textContent).toContain('Realized by Order');
+
+    // Remove from the panel deletes the edge.
+    fireEvent.click(container.querySelector('.react-flow__node')!.querySelector('.uml-class')!);
+    const removeButton = screen.getByTestId('realization-panel').querySelector<HTMLButtonElement>(
+      `button[aria-label="Delete realization ${realId}"]`,
+    );
+    expect(removeButton).not.toBeNull();
+    fireEvent.click(removeButton!);
+    expect(projectYDocToDiagram(doc).realizations).toHaveLength(0);
   });
 });

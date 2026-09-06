@@ -11,13 +11,14 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     expect(Array.isArray((deltaJsonSchema as Record<string, unknown>).oneOf)).toBe(true);
   });
 
-  it('includes all five delta kinds in the generated schema', () => {
+  it('includes all six delta kinds in the generated schema', () => {
     const schema = deltaJsonSchema as Record<string, unknown>;
     // The discriminated union should produce a oneOf/anyOf with all variants
     const variants = (schema.oneOf ?? schema.anyOf) as Array<Record<string, unknown>>;
     expect(Array.isArray(variants)).toBe(true);
     const kinds = variants.map(v => v.properties?.kind?.const).filter(Boolean);
-    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'generalization', 'member']);
+    // Unit 12.2 adds `realization` — expected union growth (12a half; dependency lands in 12b).
+    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'generalization', 'member', 'realization']);
   });
 
   it('validates a valid class delta through the union', () => {
@@ -289,5 +290,150 @@ describe('Delta Schema — Generalization kind (unit 11.1)', () => {
     };
     const result = DeltaSchema.safeParse(batch);
     expect(result.success).toBe(true);
+  });
+});
+
+describe('Delta Schema — Realization kind (unit 12.2)', () => {
+  it('validates a realization create delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'create' as const,
+      realizationId: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+      supplierInterfaceId: crypto.randomUUID(),
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe('realization');
+      expect(result.data.op).toBe('create');
+    }
+  });
+
+  it('validates a realization delete delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'delete' as const,
+      realizationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(true);
+  });
+
+  it('REJECTS unknown ops for realization deltas (only create|delete)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'update',
+      realizationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS a realization create missing an end (schema gate, like generalization)', () => {
+    const missingSupplier = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'create' as const,
+      realizationId: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(missingSupplier).success).toBe(false);
+
+    const missingClient = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'realization' as const,
+      op: 'create' as const,
+      realizationId: crypto.randomUUID(),
+      supplierInterfaceId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(missingClient).success).toBe(false);
+  });
+
+  it('batch delta accepts realization inner deltas', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+    const batch = {
+      ...base,
+      kind: 'batch' as const,
+      deltas: [
+        { ...base, kind: 'realization' as const, op: 'create' as const, realizationId: crypto.randomUUID(), clientClassId: crypto.randomUUID(), supplierInterfaceId: crypto.randomUUID() },
+        { ...base, kind: 'realization' as const, op: 'delete' as const, realizationId: crypto.randomUUID() },
+      ],
+    };
+    expect(DeltaSchema.safeParse(batch).success).toBe(true);
+  });
+});
+
+describe('Delta Schema — Class kind/isAbstract carriers (unit 12.1/12.4)', () => {
+  it('class create delta accepts an optional classKind "interface"', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'create' as const,
+      classId: crypto.randomUUID(),
+      name: 'Repository',
+      position: { x: 0, y: 0 },
+      classKind: 'interface' as const,
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+  });
+
+  it('class create delta REJECTS an invalid classKind', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'create' as const,
+      classId: crypto.randomUUID(),
+      name: 'X',
+      position: { x: 0, y: 0 },
+      classKind: 'enum',
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('class update delta carries isAbstract and/or classKind', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'update' as const,
+      classId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse({ ...base, isAbstract: true }).success).toBe(true);
+    expect(DeltaSchema.safeParse({ ...base, classKind: 'interface' }).success).toBe(true);
+    expect(DeltaSchema.safeParse({ ...base, isAbstract: false, classKind: 'class' }).success).toBe(true);
+  });
+
+  it('class update delta with NO fields to change is REJECTED (schema gate)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'update' as const,
+      classId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
   });
 });

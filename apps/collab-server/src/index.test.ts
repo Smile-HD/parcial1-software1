@@ -440,6 +440,44 @@ describe('collab-server transport (PR 5)', () => {
     });
   }, 15_000);
 
+  it('12.6 kind/isAbstract + realization edges survive collab and converge schema-valid (realtime:R3, editor:R5)', async () => {
+    const diagram = makeDiagram();
+    await insertDiagramRow(diagram);
+    const alice = connectClient(diagram.id, 'Alice');
+    const bob = connectClient(diagram.id, 'Bob');
+    await alice.synced;
+    await bob.synced;
+
+    // Alice promotes Order to interface, marks User abstract, and adds a realization.
+    classMap(alice, diagram.classes[1]!.id).set('kind', 'interface');
+    classMap(alice, diagram.classes[0]!.id).set('isAbstract', true);
+
+    const realId = uuidv7();
+    const yReal = new Y.Map();
+    yReal.set('id', realId);
+    yReal.set('clientClassId', diagram.classes[0]!.id);
+    yReal.set('supplierInterfaceId', diagram.classes[1]!.id);
+    alice.ydoc.getMap('realizations').set(realId, yReal);
+
+    await waitFor(
+      () => JSON.stringify(diagramOf(alice)) === JSON.stringify(diagramOf(bob)),
+      'realization converges',
+    );
+    const parsed = DiagramSchema.safeParse(diagramOf(alice));
+    expect(parsed.success).toBe(true);
+
+    // Bob sees the classifier kind, the abstract flag and the edge.
+    const bobDiagram = diagramOf(bob);
+    expect(bobDiagram.classes.find((c) => c.id === diagram.classes[1]!.id)!.kind).toBe('interface');
+    expect(bobDiagram.classes.find((c) => c.id === diagram.classes[0]!.id)!.isAbstract).toBe(true);
+    expect(bobDiagram.realizations).toHaveLength(1);
+    expect(bobDiagram.realizations[0]).toMatchObject({
+      id: realId,
+      clientClassId: diagram.classes[0]!.id,
+      supplierInterfaceId: diagram.classes[1]!.id,
+    });
+  }, 15_000);
+
   it('API PUT and collab debounce do not corrupt each other (5.2, two writers)', async () => {
     const diagram = makeDiagram();
     await insertDiagramRow(diagram);

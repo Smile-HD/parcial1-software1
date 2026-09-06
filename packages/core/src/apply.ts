@@ -1,5 +1,5 @@
-import { type Diagram, type Class, type Association, type Generalization, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
-import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type BatchDelta, DeltaSchema } from './delta.js';
+import { type Diagram, type Class, type Association, type Generalization, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
+import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type RealizationDelta, type BatchDelta, DeltaSchema } from './delta.js';
 import { z } from 'zod';
 
 /**
@@ -17,6 +17,9 @@ export type ApplyError =
   | { kind: 'DuplicateGeneralizationError'; subClassId: string; superClassId: string }
   | { kind: 'GeneralizationNotFoundError'; generalizationId: string }
   | { kind: 'GeneralizationCycleError'; subClassId: string; superClassId: string }
+  | { kind: 'DuplicateRealizationError'; clientClassId: string; supplierInterfaceId: string }
+  | { kind: 'RealizationNotFoundError'; realizationId: string }
+  | { kind: 'RealizationTargetNotInterfaceError'; supplierClassId: string }
   | { kind: 'BatchError'; error: ApplyError; failedDeltaIndex: number };
 
 /**
@@ -127,6 +130,20 @@ function cascadeDeleteGeneralizations(diagram: Diagram, classId: string): Diagra
 }
 
 /**
+ * Removes all realization edges connected to a class, in either the
+ * client or the supplier-interface role (cascade delete, editor:R
+ * Interfaces — unit 12.2).
+ */
+function cascadeDeleteRealizations(diagram: Diagram, classId: string): Diagram {
+  return {
+    ...diagram,
+    realizations: diagram.realizations.filter(
+      r => r.clientClassId !== classId && r.supplierInterfaceId !== classId
+    ),
+  };
+}
+
+/**
  * Cycle check for generalization edges (the highest-risk invariant, unit 11.2).
  *
  * Edges point subClass → superClass. Adding `sub → super` closes a cycle iff
@@ -174,6 +191,8 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
         position: delta.position,
         attributes: [],
         methods: [],
+        // Unit 12.1: optional classifier kind on create (defaults to 'class').
+        ...(delta.classKind !== undefined ? { kind: delta.classKind } : {}),
       });
       return ok({ ...diagram, classes: [...diagram.classes, newClass] });
     }
@@ -207,6 +226,25 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
       return ok({ ...diagram, classes: updatedClasses });
     }
 
+    case 'update': {
+      // Unit 12.1/12.4 — toggle classifier kind and/or abstract marking.
+      // The schema gate already requires at least one carrier field.
+      if (delta.classKind === undefined && delta.isAbstract === undefined) {
+        return err({ kind: 'InvalidOperationError', reason: 'Class update requires classKind or isAbstract' });
+      }
+      const classIndex = diagram.classes.findIndex(c => c.id === delta.classId);
+      if (classIndex === -1) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.classId });
+      }
+      const updatedClasses = [...diagram.classes];
+      updatedClasses[classIndex] = ClassSchema.parse({
+        ...updatedClasses[classIndex],
+        ...(delta.classKind !== undefined ? { kind: delta.classKind } : {}),
+        ...(delta.isAbstract !== undefined ? { isAbstract: delta.isAbstract } : {}),
+      });
+      return ok({ ...diagram, classes: updatedClasses });
+    }
+
     case 'delete': {
       const classIndex = diagram.classes.findIndex(c => c.id === delta.classId);
       if (classIndex === -1) {
@@ -214,10 +252,11 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
       }
       // Remove the class
       const updatedClasses = diagram.classes.filter(c => c.id !== delta.classId);
-      // Cascade delete associations and generalization edges
+      // Cascade delete associations, generalization and realization edges
       let updatedDiagram = { ...diagram, classes: updatedClasses };
       updatedDiagram = cascadeDeleteAssociations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteGeneralizations(updatedDiagram, delta.classId);
+      updatedDiagram = cascadeDeleteRealizations(updatedDiagram, delta.classId);
       return ok(updatedDiagram);
     }
 
@@ -500,6 +539,58 @@ function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta):
 }
 
 /**
+ * Applies a single realization delta (unit 12.2 invariants):
+ * - create: both ends must exist; the SUPPLIER MUST be an interface
+ *   (`kind === 'interface'` — realizing a plain or abstract class is a
+ *   UML violation); no duplicate edge (same client + supplier).
+ * - delete: the edge must exist.
+ */
+function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): ApplyResult<Diagram> {
+  switch (delta.op) {
+    case 'create': {
+      if (!delta.clientClassId || !delta.supplierInterfaceId) {
+        return err({ kind: 'InvalidOperationError', reason: 'Realization create requires clientClassId and supplierInterfaceId' });
+      }
+      if (!findClass(diagram, delta.clientClassId)) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.clientClassId });
+      }
+      const supplier = findClass(diagram, delta.supplierInterfaceId);
+      if (!supplier) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.supplierInterfaceId });
+      }
+      // Interface-target invariant (editor:R Interfaces, scenario "Realization
+      // to non-interface rejected"): abstract classes are NOT interfaces.
+      if (supplier.kind !== 'interface') {
+        return err({ kind: 'RealizationTargetNotInterfaceError', supplierClassId: supplier.id });
+      }
+      if (diagram.realizations.some(r => r.clientClassId === delta.clientClassId && r.supplierInterfaceId === delta.supplierInterfaceId)) {
+        return err({ kind: 'DuplicateRealizationError', clientClassId: delta.clientClassId, supplierInterfaceId: delta.supplierInterfaceId });
+      }
+      const newRealization = RealizationSchema.parse({
+        id: delta.realizationId,
+        clientClassId: delta.clientClassId,
+        supplierInterfaceId: delta.supplierInterfaceId,
+      });
+      return ok({ ...diagram, realizations: [...diagram.realizations, newRealization] });
+    }
+
+    case 'delete': {
+      const realIndex = diagram.realizations.findIndex(r => r.id === delta.realizationId);
+      if (realIndex === -1) {
+        return err({ kind: 'RealizationNotFoundError', realizationId: delta.realizationId });
+      }
+      const updatedRealizations = diagram.realizations.filter(r => r.id !== delta.realizationId);
+      return ok({ ...diagram, realizations: updatedRealizations });
+    }
+
+    default: {
+      const _exhaustive: never = delta.op;
+      return err({ kind: 'InvalidOperationError', reason: `Unknown realization op: ${_exhaustive}` });
+    }
+  }
+}
+
+/**
  * Applies a batch delta atomically (all-or-nothing).
  * Validates all deltas first, then applies them sequentially on a cloned state.
  * If any delta fails, the original state is returned unchanged.
@@ -525,6 +616,9 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
         break;
       case 'generalization':
         result = applyGeneralizationDelta(workingDiagram, delta);
+        break;
+      case 'realization':
+        result = applyRealizationDelta(workingDiagram, delta);
         break;
       default: {
         const _exhaustive: never = delta.kind;
@@ -581,6 +675,8 @@ export function applyDelta(state: Diagram, delta: Delta): ApplyResult<Diagram> {
       return applyAssociationDelta(clonedState, validatedDelta);
     case 'generalization':
       return applyGeneralizationDelta(clonedState, validatedDelta);
+    case 'realization':
+      return applyRealizationDelta(clonedState, validatedDelta);
     case 'batch':
       return applyBatchDelta(clonedState, validatedDelta);
     default: {

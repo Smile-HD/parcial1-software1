@@ -14,7 +14,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { SttUnavailableError } from '@app/adapters-ai';
 import { buildApp, closePool } from './index.js';
-import type { Diagram, LlmPort, LlmResult, SttPort } from '@app/core';
+import { DiagramSchema, type Diagram, type LlmPort, type LlmResult, type SttPort } from '@app/core';
 
 function makeDiagram(): Diagram {
   const customerId = crypto.randomUUID();
@@ -32,6 +32,7 @@ function makeDiagram(): Diagram {
     ],
     associations: [],
     generalizations: [],
+    realizations: [],
   };
 }
 
@@ -121,7 +122,9 @@ describe('voice API (PR 8, tasks 8.2/8.3)', () => {
 
     // The voice call itself never mutated the model.
     const loaded = await app.inject({ method: 'GET', url: `/diagrams/${id}` });
-    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(diagram);
+    // Model untouched. The canonical projection emits the full IR (defaults
+    // included), so compare against the parsed diagram — same as interpreter.test.ts.
+    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(DiagramSchema.parse(diagram));
   });
 
   it('8.2 refuses a whole-design request via voice exactly as with typed input (voice:R2)', async () => {
@@ -171,7 +174,9 @@ describe('voice API (PR 8, tasks 8.2/8.3)', () => {
 
     // Model untouched.
     const loaded = await app.inject({ method: 'GET', url: `/diagrams/${id}` });
-    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(diagram);
+    // Model untouched. The canonical projection emits the full IR (defaults
+    // included), so compare against the parsed diagram — same as interpreter.test.ts.
+    expect((loaded.json() as { diagram: Diagram }).diagram).toEqual(DiagramSchema.parse(diagram));
   });
 
   it('rejects a voice request without audio with 400', async () => {

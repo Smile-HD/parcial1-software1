@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { type Diagram, type Class, type Association, type Generalization, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Generalization, type Realization, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema } from './ir.js';
 import { z } from 'zod';
 
 /**
@@ -9,6 +9,7 @@ const Y_DOC_TYPES = {
   classes: 'classes',
   associations: 'associations',
   generalizations: 'generalizations',
+  realizations: 'realizations',
   meta: 'meta',
 } as const;
 
@@ -24,6 +25,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
   const yClasses = doc.getMap(Y_DOC_TYPES.classes);
   const yAssociations = doc.getMap(Y_DOC_TYPES.associations);
   const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
+  const yRealizations = doc.getMap(Y_DOC_TYPES.realizations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   // Set diagram metadata
@@ -35,6 +37,9 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     const yClass = new Y.Map();
     yClass.set('id', cls.id);
     yClass.set('name', cls.name);
+    // Unit 12.1: classifier kind + abstract marking round-trip through the blob.
+    yClass.set('kind', cls.kind ?? 'class');
+    yClass.set('isAbstract', cls.isAbstract ?? false);
     yClass.set('position', new Y.Map([
       ['x', cls.position.x],
       ['y', cls.position.y],
@@ -107,6 +112,15 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yGeneralizations.set(gen.id, yGen);
   }
 
+  // Add realizations (unit 12 — blob-preserving, same shape as generalizations)
+  for (const real of diagram.realizations ?? []) {
+    const yReal = new Y.Map();
+    yReal.set('id', real.id);
+    yReal.set('clientClassId', real.clientClassId);
+    yReal.set('supplierInterfaceId', real.supplierInterfaceId);
+    yRealizations.set(real.id, yReal);
+  }
+
   return doc;
 }
 
@@ -118,6 +132,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   const yClasses = doc.getMap(Y_DOC_TYPES.classes);
   const yAssociations = doc.getMap(Y_DOC_TYPES.associations);
   const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
+  const yRealizations = doc.getMap(Y_DOC_TYPES.realizations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   const id = yMeta.get('id') as string;
@@ -129,6 +144,9 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
 
     const classId = yClass.get('id') as string;
     const className = yClass.get('name') as string;
+    // Unit 12.1: absent on pre-unit-12 docs → IR defaults (class/false).
+    const kind = yClass.get('kind') as Class['kind'] | undefined;
+    const isAbstract = yClass.get('isAbstract') as boolean | undefined;
     const yPosition = yClass.get('position') as Y.Map<unknown> | undefined;
     const position = yPosition
       ? { x: (yPosition.get('x') as number) ?? 0, y: (yPosition.get('y') as number) ?? 0 }
@@ -188,6 +206,8 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
       position,
       attributes,
       methods,
+      ...(kind !== undefined ? { kind } : {}),
+      ...(isAbstract !== undefined ? { isAbstract } : {}),
     }));
   });
 
@@ -227,12 +247,24 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     }));
   });
 
+  const realizations: Realization[] = [];
+  yRealizations.forEach((yReal) => {
+    if (!(yReal instanceof Y.Map)) return;
+
+    realizations.push(RealizationSchema.parse({
+      id: yReal.get('id') as string,
+      clientClassId: yReal.get('clientClassId') as string,
+      supplierInterfaceId: yReal.get('supplierInterfaceId') as string,
+    }));
+  });
+
   return DiagramSchema.parse({
     id,
     name,
     classes,
     associations,
     generalizations,
+    realizations,
   });
 }
 
