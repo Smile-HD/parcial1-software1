@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 
 import { buildYDocFromDiagram, DiagramSchema, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
 
-import { DiagramCanvas, handleCreateAssociation, handleCreateDependency, handleCreateGeneralization, handleCreateRealization, handleDeleteDependency, handleDeleteGeneralization, handleDeleteRealization, handleNodeDragStop, handleSetAbstract, handleUpdateMultiplicity } from './DiagramCanvas';
+import { computeNaryCentroid, DiagramCanvas, handleCreateAssociation, handleCreateDependency, handleCreateGeneralization, handleCreateNaryAssociation, handleCreateRealization, handleDeleteDependency, handleDeleteGeneralization, handleDeleteNaryAssociation, handleDeleteRealization, handleNodeDragStop, handleSetAbstract, handleUpdateMultiplicity } from './DiagramCanvas';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
 /**
@@ -1456,5 +1456,305 @@ describe('unit 12b — editor UI: "depends on" in context menu + dependency pane
     expect(removeButton).not.toBeNull();
     fireEvent.click(removeButton!);
     expect(projectYDocToDiagram(doc).dependencies).toHaveLength(0);
+  });
+});
+
+describe('unit 13 — n-ary association render: diamond at centroid + labeled member edges (13.2)', () => {
+  function naryFixture(): { diagram: Diagram; supplierId: string; partId: string; projectIdId: string; naryId: string } {
+    const supplierId = crypto.randomUUID();
+    const partId = crypto.randomUUID();
+    const projectId = crypto.randomUUID();
+    const naryId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Nary',
+      classes: [
+        { id: supplierId, name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: partId, name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: projectId, name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      naryAssociations: [
+        {
+          id: naryId,
+          name: 'supply',
+          memberEnds: [
+            { classId: supplierId, multiplicity: '1', role: 'supplier' },
+            { classId: partId, multiplicity: '0..*' },
+            { classId: projectId, multiplicity: '*' },
+          ],
+        },
+      ],
+    });
+    return { diagram, supplierId, partId, projectIdId: projectId, naryId };
+  }
+
+  it('computeNaryCentroid returns the arithmetic mean of member positions', () => {
+    expect(computeNaryCentroid([
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 150, y: 300 },
+    ])).toEqual({ x: 150, y: 100 });
+    expect(computeNaryCentroid([])).toEqual({ x: 0, y: 0 });
+  });
+
+  it('renders a diamond node positioned at the centroid of its member classes', async () => {
+    const { diagram, naryId } = naryFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const diamond = await waitFor(() => {
+      const el = container.querySelector('.uml-nary-diamond');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(diamond.getAttribute('data-nary-id')).toBe(naryId);
+
+    // The node wrapper carries the centroid translate (0+300+150)/3=150, (0+0+300)/3=100.
+    const wrapper = diamond.closest('.react-flow__node') as HTMLElement;
+    expect(wrapper).not.toBeNull();
+    expect(wrapper.getAttribute('style') ?? '').toContain('translate(150px,100px)');
+  });
+
+  it('renders one edge per member end, each labeled with that end multiplicity', async () => {
+    const { diagram, supplierId, partId, projectIdId } = naryFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(3);
+    });
+
+    const labels = Array.from(container.querySelectorAll('[data-testid^="nary-end-label"]'));
+    expect(labels).toHaveLength(3);
+    const byClass = new Map(labels.map((el) => [(el.getAttribute('data-testid') ?? ''), (el.textContent ?? '')]));
+    expect(byClass.get(`nary-end-label-${supplierId}`)).toBe('1');
+    expect(byClass.get(`nary-end-label-${partId}`)).toBe('0..*');
+    expect(byClass.get(`nary-end-label-${projectIdId}`)).toBe('*');
+  });
+
+  it('handleCreateNaryAssociation writes the n-ary through applyDeltaToYDoc (bridge round-trip)', () => {
+    const { diagram, supplierId, partId, projectIdId } = naryFixture();
+    diagram.naryAssociations = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateNaryAssociation(doc, diagram.id, {
+        memberEnds: [
+          { classId: supplierId, multiplicity: '1' },
+          { classId: partId, multiplicity: '0..*' },
+          { classId: projectIdId, multiplicity: '*' },
+        ],
+        name: 'supply',
+      });
+    });
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.naryAssociations).toHaveLength(1);
+    expect(projected.naryAssociations[0]!.memberEnds).toHaveLength(3);
+    expect(projected.naryAssociations[0]!.name).toBe('supply');
+  });
+
+  it('handleCreateNaryAssociation guards <3 ends and invalid multiplicity: no delta, model unchanged', () => {
+    const { diagram, supplierId, partId, projectIdId } = naryFixture();
+    diagram.naryAssociations = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateNaryAssociation(doc, diagram.id, {
+        memberEnds: [
+          { classId: supplierId, multiplicity: '1' },
+          { classId: partId, multiplicity: '1' },
+        ],
+      });
+      handleCreateNaryAssociation(doc, diagram.id, {
+        memberEnds: [
+          { classId: supplierId, multiplicity: '1' },
+          { classId: partId, multiplicity: '1' },
+          { classId: projectIdId, multiplicity: 'garbage' },
+        ],
+      });
+    });
+
+    expect(projectYDocToDiagram(doc).naryAssociations).toHaveLength(0);
+  });
+
+  it('handleCreateNaryAssociation REJECTS an unknown member class leaving the model unchanged (runtime harness)', () => {
+    const { diagram, supplierId, partId } = naryFixture();
+    diagram.naryAssociations = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateNaryAssociation(doc, diagram.id, {
+        memberEnds: [
+          { classId: supplierId, multiplicity: '1' },
+          { classId: partId, multiplicity: '1' },
+          { classId: crypto.randomUUID(), multiplicity: '1' },
+        ],
+      });
+    });
+
+    expect(projectYDocToDiagram(doc).naryAssociations).toHaveLength(0);
+  });
+
+  it('handleDeleteNaryAssociation removes the n-ary from the Y.Doc', () => {
+    const { diagram, naryId } = naryFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleDeleteNaryAssociation(doc, diagram.id, naryId);
+    });
+
+    expect(projectYDocToDiagram(doc).naryAssociations).toHaveLength(0);
+  });
+
+  it('BINARY ASSOCIATIONS UNTOUCHED: n-ary create/delete never mutates the associations collection (D13)', () => {
+    const { diagram, supplierId, partId, projectIdId } = naryFixture();
+    const binaryId = crypto.randomUUID();
+    diagram.associations = [
+      {
+        id: binaryId,
+        sourceClassId: supplierId,
+        targetClassId: partId,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '0..*',
+        directed: false,
+      },
+    ];
+    diagram.naryAssociations = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateNaryAssociation(doc, diagram.id, {
+        memberEnds: [
+          { classId: supplierId, multiplicity: '1' },
+          { classId: partId, multiplicity: '1' },
+          { classId: projectIdId, multiplicity: '1' },
+        ],
+      });
+    });
+    let projected = projectYDocToDiagram(doc);
+    expect(projected.naryAssociations).toHaveLength(1);
+    expect(projected.associations).toHaveLength(1);
+    expect(projected.associations[0]!.id).toBe(binaryId);
+
+    act(() => {
+      handleDeleteNaryAssociation(doc, diagram.id, projected.naryAssociations[0]!.id);
+    });
+    projected = projectYDocToDiagram(doc);
+    expect(projected.naryAssociations).toHaveLength(0);
+    expect(projected.associations).toHaveLength(1);
+    expect(projected.associations[0]!.id).toBe(binaryId);
+  });
+});
+
+describe('unit 13 — editor UI: n-ary mode, per-end multiplicity, diamond context delete (13.3)', () => {
+  function naryUiFixture(): { diagram: Diagram; ids: Record<string, string> } {
+    const supplierId = crypto.randomUUID();
+    const partId = crypto.randomUUID();
+    const projectId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'NaryUi',
+      classes: [
+        { id: supplierId, name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: partId, name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: projectId, name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+    });
+    return { diagram, ids: { Supplier: supplierId, Part: partId, Project: projectId } };
+  }
+
+  function clickClass(container: HTMLElement, index: number): void {
+    const classEl = container.querySelectorAll('.react-flow__node')[index]!.querySelector('.uml-class')!;
+    fireEvent.click(classEl);
+  }
+
+  it('toolbar enters n-ary mode; picking 3 classes with per-end multiplicities creates the n-ary', () => {
+    const { diagram, ids } = naryUiFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'N-ary association' }));
+
+    clickClass(container, 0);
+    clickClass(container, 1);
+    clickClass(container, 2);
+
+    const panel = screen.getByTestId('nary-panel');
+    expect(panel).toBeDefined();
+
+    // Per-end multiplicity editing.
+    const partInput = panel.querySelector<HTMLInputElement>('input[aria-label="Multiplicity for Part"]')!;
+    fireEvent.change(partInput, { target: { value: '0..*' } });
+
+    fireEvent.click(panel.querySelector<HTMLButtonElement>('button[aria-label="Create n-ary association"]')!);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.naryAssociations).toHaveLength(1);
+    const ends = projected.naryAssociations[0]!.memberEnds;
+    expect(ends).toHaveLength(3);
+    expect(ends.find((e) => e.classId === ids.Supplier)!.multiplicity).toBe('1');
+    expect(ends.find((e) => e.classId === ids.Part)!.multiplicity).toBe('0..*');
+    expect(ends.find((e) => e.classId === ids.Project)!.multiplicity).toBe('1');
+  });
+
+  it('creating with fewer than 3 picked classes is guarded: model unchanged', () => {
+    const { diagram } = naryUiFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'N-ary association' }));
+    clickClass(container, 0);
+    clickClass(container, 1);
+
+    const panel = screen.getByTestId('nary-panel');
+    const createButton = panel.querySelector<HTMLButtonElement>('button[aria-label="Create n-ary association"]')!;
+    expect(createButton.disabled).toBe(true);
+
+    fireEvent.click(createButton);
+    expect(projectYDocToDiagram(doc).naryAssociations).toHaveLength(0);
+  });
+
+  it('right-clicking the diamond opens a context menu that deletes the n-ary association', async () => {
+    const supplierId = crypto.randomUUID();
+    const partId = crypto.randomUUID();
+    const projectId = crypto.randomUUID();
+    const naryId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'NaryCtx',
+      classes: [
+        { id: supplierId, name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: partId, name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: projectId, name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      naryAssociations: [
+        {
+          id: naryId,
+          memberEnds: [
+            { classId: supplierId, multiplicity: '1' },
+            { classId: partId, multiplicity: '1' },
+            { classId: projectId, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const diamond = await waitFor(() => {
+      const el = container.querySelector('.uml-nary-diamond');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.contextMenu(diamond);
+
+    const menu = screen.getByTestId('nary-context-menu');
+    fireEvent.click(menu.querySelector<HTMLButtonElement>(`button[aria-label="Delete n-ary association ${naryId}"]`)!);
+
+    expect(projectYDocToDiagram(doc).naryAssociations).toHaveLength(0);
   });
 });

@@ -64,7 +64,7 @@ export function diagramIdFromHash(hash: string): string | null {
 
 /** Empty diagram used when the app creates a brand-new session. */
 export function createEmptyDiagram(id: string): Diagram {
-  return { id, name: DIAGRAM_NAME, classes: [], associations: [], generalizations: [], realizations: [], dependencies: [] };
+  return { id, name: DIAGRAM_NAME, classes: [], associations: [], generalizations: [], realizations: [], dependencies: [], naryAssociations: [] };
 }
 
 /**

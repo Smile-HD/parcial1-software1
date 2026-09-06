@@ -19,6 +19,7 @@ import {
   type Generalization,
   type GeneralizationDelta,
   type MemberDelta,
+  type NaryAssociationDelta,
   type RealizationDelta,
   type LlmPort,
   type LlmResult,
@@ -207,6 +208,39 @@ export class FakeLlm implements LlmPort {
         name: addMethod[1]!,
         returnType: addMethod[2] ?? 'void',
         parameters: [],
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 6b. N-ARY association (unit 13.4): "ternary association between Supplier,
+    // Part and Project" / "n-ary association between A, B, C and D" /
+    // "asociación ternaria entre A, B y C". Evaluated BEFORE the binary
+    // association patterns (7/8): without this, the generic binary pattern
+    // would misread the tail of the member list ("Part and Project") as a
+    // two-end association. The engine enforces the >=3 / duplicate /
+    // existence invariants; the interpreter resolves names and refuses
+    // unknown classes or fewer than three members up front.
+    const naryAssociation = /\b(?:(?:ternary|ternaria|n-ary|nary)\b[\s\S]*?\b(?:association|asociaci[óo]n)\b|(?:association|asociaci[óo]n)\b[\s\S]*?\b(?:ternary|ternaria|n-ary|nary)\b)[\s\S]*?\b(?:between|entre)\s+([A-Za-z_]\w*(?:(?:\s*,\s*|\s+(?:and|y)\s+)[A-Za-z_]\w*)+)/i.exec(utterance);
+    if (naryAssociation) {
+      const names = naryAssociation[1]!
+        .split(/\s*,\s*|\s+(?:and|y)\s+/i)
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
+      if (names.length < 3) {
+        return refused('An n-ary association needs at least three member classes.');
+      }
+      const memberEnds: { classId: string; multiplicity: string }[] = [];
+      for (const name of names) {
+        const classId = classIdByName(currentIr, name);
+        if (classId === null) return refused(`Unknown class "${name}"`);
+        memberEnds.push({ classId, multiplicity: '1' });
+      }
+      const delta: NaryAssociationDelta = {
+        kind: 'naryAssociation',
+        op: 'create',
+        ...deltaBase(currentIr),
+        naryAssociationId: crypto.randomUUID(),
+        memberEnds,
       };
       return { kind: 'delta', value: delta };
     }
@@ -531,8 +565,10 @@ export class OpenAiLlm implements LlmPort {
         'GENERALIZATION DELETE: {"kind":"generalization","op":"delete", ...base, "generalizationId":"<existing generalization uuid from the IR>"}',
          'REALIZATION CREATE: {"kind":"realization","op":"create", ...base, "realizationId":"<new uuid>","clientClassId":"<existing class uuid — the REALIZING class>","supplierInterfaceId":"<existing INTERFACE uuid — kind must be interface>"}',
          'REALIZATION DELETE: {"kind":"realization","op":"delete", ...base, "realizationId":"<existing realization uuid from the IR>"}',
-         'DEPENDENCY CREATE: {"kind":"dependency","op":"create", ...base, "dependencyId":"<new uuid>","clientClassId":"<existing class uuid — the DEPENDENT client>","supplierClassId":"<existing class uuid — the SUPPLIER (any class or interface)>"}',
-         'DEPENDENCY DELETE: {"kind":"dependency","op":"delete", ...base, "dependencyId":"<existing dependency uuid from the IR>"}',
+          'DEPENDENCY CREATE: {"kind":"dependency","op":"create", ...base, "dependencyId":"<new uuid>","clientClassId":"<existing class uuid — the DEPENDENT client>","supplierClassId":"<existing class uuid — the SUPPLIER (any class or interface)>"}',
+          'DEPENDENCY DELETE: {"kind":"dependency","op":"delete", ...base, "dependencyId":"<existing dependency uuid from the IR>"}',
+          'NARY ASSOCIATION CREATE: {"kind":"naryAssociation","op":"create", ...base, "naryAssociationId":"<new uuid>","memberEnds":[{"classId":"<existing class uuid>","multiplicity":"1" [, "role":"<endRole>"]}, ...AT LEAST THREE ENDS...] [, "name":"<assocName>"]}',
+          'NARY ASSOCIATION DELETE: {"kind":"naryAssociation","op":"delete", ...base, "naryAssociationId":"<existing n-ary association uuid from the IR>"}',
         '',
         'GENERALIZATION GUIDANCE:',
         '- "X is a kind of Y", "X inherits from Y", "X is a subclass of Y" → X is the subClass, Y is the superClass.',
@@ -551,6 +587,13 @@ export class OpenAiLlm implements LlmPort {
         '- The supplier may be ANY class or interface (unlike realization, there is NO interface-target requirement). Dependencies carry NO multiplicity.',
         '- "remove dependency between X and Y" / "X does not depend on Y" → dependency delete using the EXACT dependencyId from currentIr.dependencies.',
         '- Duplicate dependencies (same client + supplier) are rejected.',
+        '',
+        'N-ARY ASSOCIATION GUIDANCE (unit 13):',
+        '- "ternary association between A, B and C" / "n-ary association between A, B, C and D" → naryAssociation create with one memberEnd per class (in the order named), each carrying its own multiplicity (default "1") and optional role.',
+        '- An n-ary association connects THREE OR MORE classes through a central diamond. A create with fewer than three member ends is REJECTED by the engine.',
+        '- Every memberEnds[].classId must reference an EXISTING class uuid; duplicate classes within one association are rejected.',
+        '- "remove n-ary association" / "delete ternary association" → naryAssociation delete using the EXACT naryAssociationId from currentIr.naryAssociations.',
+        '- N-ary associations live in their OWN collection; they never touch the binary associations array.',
         '',
       'AGGREGATION END GUIDANCE:',
       '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',
@@ -629,7 +672,7 @@ export class OpenAiLlm implements LlmPort {
 // ── Model-output repair (provider quirk normalization) ─────────────────────
 
 /** UUID fields the MODEL is allowed to invent; malformed values are regenerated. */
-const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'dependencyId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId', 'supplierClassId']);
+const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'dependencyId', 'naryAssociationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId', 'supplierClassId']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 

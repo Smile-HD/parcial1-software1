@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { type Diagram, type Class, type Association, type Generalization, type Realization, type Dependency, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Generalization, type Realization, type Dependency, type NaryAssociation, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema, NaryAssociationSchema } from './ir.js';
 import { z } from 'zod';
 
 /**
@@ -11,6 +11,7 @@ const Y_DOC_TYPES = {
   generalizations: 'generalizations',
   realizations: 'realizations',
   dependencies: 'dependencies',
+  naryAssociations: 'naryAssociations',
   meta: 'meta',
 } as const;
 
@@ -28,6 +29,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
   const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
   const yRealizations = doc.getMap(Y_DOC_TYPES.realizations);
   const yDependencies = doc.getMap(Y_DOC_TYPES.dependencies);
+  const yNaryAssociations = doc.getMap(Y_DOC_TYPES.naryAssociations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   // Set diagram metadata
@@ -132,6 +134,24 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yDependencies.set(dep.id, yDep);
   }
 
+  // Add n-ary associations (unit 13 — blob-preserving; memberEnds is an
+  // ordered Y.Array of Y.Maps so per-end multiplicity/role survive the trip)
+  for (const nary of diagram.naryAssociations ?? []) {
+    const yNary = new Y.Map();
+    yNary.set('id', nary.id);
+    if (nary.name !== undefined) yNary.set('name', nary.name);
+    const yEnds = new Y.Array();
+    for (const end of nary.memberEnds) {
+      const yEnd = new Y.Map();
+      yEnd.set('classId', end.classId);
+      yEnd.set('multiplicity', end.multiplicity);
+      if (end.role !== undefined) yEnd.set('role', end.role);
+      yEnds.push([yEnd]);
+    }
+    yNary.set('memberEnds', yEnds);
+    yNaryAssociations.set(nary.id, yNary);
+  }
+
   return doc;
 }
 
@@ -145,6 +165,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
   const yRealizations = doc.getMap(Y_DOC_TYPES.realizations);
   const yDependencies = doc.getMap(Y_DOC_TYPES.dependencies);
+  const yNaryAssociations = doc.getMap(Y_DOC_TYPES.naryAssociations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   const id = yMeta.get('id') as string;
@@ -281,6 +302,33 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     }));
   });
 
+  const naryAssociations: NaryAssociation[] = [];
+  yNaryAssociations.forEach((yNary) => {
+    if (!(yNary instanceof Y.Map)) return;
+
+    const name = yNary.get('name') as string | undefined;
+    const memberEnds: NaryAssociation['memberEnds'] = [];
+    const yEnds = yNary.get('memberEnds') as Y.Array<Y.Map<unknown>> | undefined;
+    if (yEnds) {
+      yEnds.forEach((yEnd) => {
+        if (yEnd instanceof Y.Map) {
+          const role = yEnd.get('role') as string | undefined;
+          memberEnds.push({
+            classId: yEnd.get('classId') as string,
+            multiplicity: yEnd.get('multiplicity') as NaryAssociation['memberEnds'][number]['multiplicity'],
+            ...(role !== undefined ? { role } : {}),
+          });
+        }
+      });
+    }
+
+    naryAssociations.push(NaryAssociationSchema.parse({
+      id: yNary.get('id') as string,
+      memberEnds,
+      ...(name !== undefined ? { name } : {}),
+    }));
+  });
+
   return DiagramSchema.parse({
     id,
     name,
@@ -289,6 +337,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     generalizations,
     realizations,
     dependencies,
+    naryAssociations,
   });
 }
 

@@ -20,6 +20,7 @@ function createDiagram(overrides: Partial<Diagram> = {}): Diagram {
     generalizations: [],
     realizations: [],
     dependencies: [],
+    naryAssociations: [],
   };
   return DiagramSchema.parse({ ...base, ...overrides });
 }
@@ -1630,5 +1631,387 @@ describe('applyDelta — Dependency invariants (unit 12.2 — 12b half, editor:R
     // Nothing applied — rename did not leak
     expect(state.dependencies).toHaveLength(0);
     expect(state.classes[0]!.name).toBe('Order');
+  });
+});
+
+describe('applyDelta — N-ary association invariants (unit 13.1, editor:R N-ary)', () => {
+  function naryDelta(state: Diagram, memberEnds: { classId: string; multiplicity: string; role?: string }[], naryAssociationId = uuidv4(), name?: string) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'create' as const,
+      naryAssociationId,
+      memberEnds,
+      ...(name !== undefined ? { name } : {}),
+    };
+  }
+
+  function deleteNaryDelta(state: Diagram, naryAssociationId: string) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'delete' as const,
+      naryAssociationId,
+    };
+  }
+
+  function shopState(extra: Partial<Diagram> = {}): Diagram {
+    return createDiagram({
+      classes: [
+        createClass({ name: 'Supplier' }),
+        createClass({ name: 'Part' }),
+        createClass({ name: 'Project' }),
+      ],
+      ...extra,
+    });
+  }
+
+  it('CREATES a ternary association over three existing classes with per-end multiplicities and roles', () => {
+    const [supplier, part, project] = shopState().classes;
+    const state = createDiagram({ classes: [supplier!, part!, project!] });
+    const naryId = uuidv4();
+
+    const result = applyDelta(state, naryDelta(state, [
+      { classId: supplier!.id, multiplicity: '1', role: 'supplier' },
+      { classId: part!.id, multiplicity: '0..*' },
+      { classId: project!.id, multiplicity: '1' },
+    ], naryId, 'supply'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.naryAssociations).toHaveLength(1);
+      expect(result.value.naryAssociations[0]).toMatchObject({
+        id: naryId,
+        name: 'supply',
+        memberEnds: [
+          { classId: supplier!.id, multiplicity: '1', role: 'supplier' },
+          { classId: part!.id, multiplicity: '0..*' },
+          { classId: project!.id, multiplicity: '1' },
+        ],
+      });
+    }
+    // Input state untouched (immutability)
+    expect(state.naryAssociations).toHaveLength(0);
+  });
+
+  it('REJECTS create with fewer than 3 member ends (n-ary means >= 3); model unchanged', () => {
+    const [supplier, part] = shopState().classes;
+    const state = createDiagram({ classes: [supplier!, part!] });
+
+    const result = applyDelta(state, naryDelta(state, [
+      { classId: supplier!.id, multiplicity: '1' },
+      { classId: part!.id, multiplicity: '1' },
+    ]));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('NaryAssociationMinEndsError');
+    expect(state.naryAssociations).toHaveLength(0);
+  });
+
+  it('REJECTS create when a member class does not exist; model unchanged', () => {
+    const [supplier, part] = shopState().classes;
+    const state = createDiagram({ classes: [supplier!, part!] });
+
+    const result = applyDelta(state, naryDelta(state, [
+      { classId: supplier!.id, multiplicity: '1' },
+      { classId: part!.id, multiplicity: '1' },
+      { classId: uuidv4(), multiplicity: '1' }, // ghost member
+    ]));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.naryAssociations).toHaveLength(0);
+  });
+
+  it('REJECTS duplicate classId within one association memberEnds; model unchanged', () => {
+    const [supplier, part, project] = shopState().classes;
+    const state = createDiagram({ classes: [supplier!, part!, project!] });
+
+    const result = applyDelta(state, naryDelta(state, [
+      { classId: supplier!.id, multiplicity: '1' },
+      { classId: supplier!.id, multiplicity: '0..*' }, // duplicate member
+      { classId: project!.id, multiplicity: '1' },
+    ]));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('DuplicateNaryMemberError');
+    expect(state.naryAssociations).toHaveLength(0);
+  });
+
+  it('ALLOWS the same class to appear in TWO different n-ary associations (triangulates the duplicate rule)', () => {
+    const [supplier, part, project] = shopState().classes;
+    const other = createClass({ name: 'Contract' });
+    const state = createDiagram({
+      classes: [supplier!, part!, project!, other],
+      naryAssociations: [
+        {
+          id: uuidv4(),
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1' },
+            { classId: part!.id, multiplicity: '1' },
+            { classId: project!.id, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+
+    const result = applyDelta(state, naryDelta(state, [
+      { classId: supplier!.id, multiplicity: '1' }, // supplier reused across associations — valid
+      { classId: part!.id, multiplicity: '1' },
+      { classId: other.id, multiplicity: '1' },
+    ]));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.naryAssociations).toHaveLength(2);
+  });
+
+  it('DELETES an n-ary association by id', () => {
+    const [supplier, part, project] = shopState().classes;
+    const naryId = uuidv4();
+    const state = createDiagram({
+      classes: [supplier!, part!, project!],
+      naryAssociations: [
+        {
+          id: naryId,
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1' },
+            { classId: part!.id, multiplicity: '1' },
+            { classId: project!.id, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+
+    const result = applyDelta(state, deleteNaryDelta(state, naryId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.naryAssociations).toHaveLength(0);
+  });
+
+  it('REJECTS delete of an unknown n-ary association', () => {
+    const state = shopState();
+
+    const result = applyDelta(state, deleteNaryDelta(state, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('NaryAssociationNotFoundError');
+  });
+
+  it('delete-class CASCADE prunes the member end; an n-ary left with <3 ends is DELETED (spec: Member deletion prunes the n-ary)', () => {
+    const [supplier, part, project] = shopState().classes;
+    const survivorId = uuidv4();
+    const doomedId = uuidv4();
+    const state = createDiagram({
+      classes: [supplier!, part!, project!],
+      naryAssociations: [
+        {
+          id: doomedId,
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1' },
+            { classId: part!.id, multiplicity: '0..*' },
+            { classId: project!.id, multiplicity: '1' },
+          ],
+        },
+        {
+          id: survivorId,
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1' },
+            { classId: part!.id, multiplicity: '1' },
+            { classId: project!.id, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+
+    // Delete Project: BOTH ternaries drop to 2 ends → both are removed entirely.
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: project!.id,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.naryAssociations).toHaveLength(0);
+      expect(result.value.classes).toHaveLength(2);
+    }
+  });
+
+  it('delete-class CASCADE prunes one end of a QUATERNARY association: it survives with exactly 3 ends', () => {
+    const [supplier, part, project] = shopState().classes;
+    const contract = createClass({ name: 'Contract' });
+    const naryId = uuidv4();
+    const state = createDiagram({
+      classes: [supplier!, part!, project!, contract],
+      naryAssociations: [
+        {
+          id: naryId,
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1', role: 'supplier' },
+            { classId: part!.id, multiplicity: '0..*' },
+            { classId: project!.id, multiplicity: '1' },
+            { classId: contract.id, multiplicity: '0..1' },
+          ],
+        },
+      ],
+    });
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: contract.id,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.naryAssociations).toHaveLength(1);
+      const ends = result.value.naryAssociations[0]!.memberEnds;
+      expect(ends).toHaveLength(3);
+      expect(ends.map((e) => e.classId)).not.toContain(contract.id);
+      // Surviving ends keep their multiplicities and roles untouched.
+      expect(ends[0]).toMatchObject({ classId: supplier!.id, multiplicity: '1', role: 'supplier' });
+      expect(ends[1]).toMatchObject({ classId: part!.id, multiplicity: '0..*' });
+    }
+  });
+
+  it('delete-class CASCADE leaves n-ary associations that do not contain the class untouched', () => {
+    const [supplier, part, project] = shopState().classes;
+    const unrelated = createClass({ name: 'Unrelated' });
+    const keptId = uuidv4();
+    const keptEnds = [
+      { classId: supplier!.id, multiplicity: '1' },
+      { classId: part!.id, multiplicity: '1' },
+      { classId: project!.id, multiplicity: '1' },
+    ];
+    const state = createDiagram({
+      classes: [supplier!, part!, project!, unrelated],
+      naryAssociations: [{ id: keptId, memberEnds: keptEnds }],
+    });
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: unrelated.id,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.naryAssociations).toHaveLength(1);
+      expect(result.value.naryAssociations[0]!.id).toBe(keptId);
+      expect(result.value.naryAssociations[0]!.memberEnds).toEqual(keptEnds);
+    }
+  });
+
+  it('BINARY ASSOCIATIONS ARE UNTOUCHED by n-ary create/delete (separate collection — design D13)', () => {
+    const [supplier, part, project] = shopState().classes;
+    const binary = createAssociation(supplier!.id, part!.id);
+    const state = createDiagram({ classes: [supplier!, part!, project!], associations: [binary] });
+
+    const created = applyDelta(state, naryDelta(state, [
+      { classId: supplier!.id, multiplicity: '1' },
+      { classId: part!.id, multiplicity: '1' },
+      { classId: project!.id, multiplicity: '1' },
+    ]));
+    expect(created.ok).toBe(true);
+    if (created.ok) {
+      expect(created.value.associations).toEqual([binary]);
+      expect(created.value.naryAssociations).toHaveLength(1);
+
+      const deleted = applyDelta(created.value, deleteNaryDelta(created.value, created.value.naryAssociations[0]!.id));
+      expect(deleted.ok).toBe(true);
+      if (deleted.ok) expect(deleted.value.associations).toEqual([binary]);
+    }
+  });
+
+  it('delete-class cascade handles binary AND n-ary edges together in one pass', () => {
+    const [supplier, part, project] = shopState().classes;
+    const binary = createAssociation(supplier!.id, part!.id);
+    const ternaryId = uuidv4();
+    const state = createDiagram({
+      classes: [supplier!, part!, project!],
+      associations: [binary],
+      naryAssociations: [
+        {
+          id: ternaryId,
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1' },
+            { classId: part!.id, multiplicity: '1' },
+            { classId: project!.id, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: part!.id,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Binary association cascaded away (existing behavior preserved)…
+      expect(result.value.associations).toHaveLength(0);
+      // …and the ternary dropped below 3 ends, so it is gone too.
+      expect(result.value.naryAssociations).toHaveLength(0);
+    }
+  });
+
+  it('batch: an n-ary create with a missing member inside a batch rejects the WHOLE batch (atomicity)', () => {
+    const [supplier, part] = shopState().classes;
+    const state = createDiagram({ classes: [supplier!, part!] });
+
+    const batch = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        naryDelta(state, [
+          { classId: supplier!.id, multiplicity: '1' },
+          { classId: part!.id, multiplicity: '1' },
+          { classId: uuidv4(), multiplicity: '1' }, // missing member → invalid
+        ]),
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'rename' as const,
+          classId: supplier!.id,
+          newName: 'RenamedSupplier',
+        },
+      ],
+    };
+
+    const result = applyDelta(state, batch);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('BatchError');
+      if (result.error.kind === 'BatchError') {
+        expect(result.error.failedDeltaIndex).toBe(0);
+        expect(result.error.error.kind).toBe('ClassNotFoundError');
+      }
+    }
+    // Nothing applied — rename did not leak
+    expect(state.naryAssociations).toHaveLength(0);
+    expect(state.classes[0]!.name).toBe('Supplier');
   });
 });

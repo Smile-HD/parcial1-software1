@@ -155,11 +155,11 @@ The exam requirements explicitly require BOTH importing AND exporting to Enterpr
 
 ### Unit 13: N-ary associations (PR 13)
 
-- [ ] 13.1 RED: new IR collection `naryAssociations: [{ id, memberEnds: [{ classId, multiplicity, role? }], name? }]` (≥3 ends) + delta kind `naryAssociation` ops `create|delete` + engine invariants (every member class exists, ≥3 ends, no duplicate ends within one association, delete-class cascade removes affected n-ary).
-- [ ] 13.2 Renderer: central diamond node positioned at member centroid; one edge per member end with its multiplicity label.
-- [ ] 13.3 Editor UI: n-ary association mode — pick ≥3 classes, per-end multiplicity; delete via diamond context.
-- [ ] 13.4 Interpreter: "ternary association between Supplier, Part and Project" command (batch emits naryAssociation delta).
-- [ ] 13.5 Verify: round-trip + collab convergence; binary associations untouched.
+- [x] 13.1 RED: new IR collection `naryAssociations: [{ id, memberEnds: [{ classId, multiplicity, role? }], name? }]` (≥3 ends) + delta kind `naryAssociation` ops `create|delete` + engine invariants (every member class exists, ≥3 ends, no duplicate ends within one association, delete-class cascade removes affected n-ary).
+- [x] 13.2 Renderer: central diamond node positioned at member centroid; one edge per member end with its multiplicity label.
+- [x] 13.3 Editor UI: n-ary association mode — pick ≥3 classes, per-end multiplicity; delete via diamond context.
+- [x] 13.4 Interpreter: "ternary association between Supplier, Part and Project" command (batch emits naryAssociation delta).
+- [x] 13.5 Verify: round-trip + collab convergence; binary associations untouched.
 
 ## Phase 5: Adapters II (PRs 14–16)
 

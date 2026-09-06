@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { deltaJsonSchema, type Diagram } from '@app/core';
+import { DeltaSchema, deltaJsonSchema, type Diagram } from '@app/core';
 
 import { FakeLlm, OpenAiLlm } from './index.js';
 
@@ -799,5 +799,136 @@ describe('OpenAiLlm dependency prompt (unit 12.5 — 12b half)', () => {
     expect(captured.system).toContain('dependencyId');
     // The any-supplier rule is documented for the model (unlike realization).
     expect(captured.system).toMatch(/any class or interface/i);
+  });
+});
+
+describe('FakeLlm n-ary association commands (unit 13.4)', () => {
+  function makeNaryDiagram(): Diagram {
+    const supplierId = crypto.randomUUID();
+    const partId = crypto.randomUUID();
+    const projectId = crypto.randomUUID();
+    const contractId = crypto.randomUUID();
+    return {
+      id: crypto.randomUUID(),
+      name: 'Shop',
+      classes: [
+        { id: supplierId, name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: partId, name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: projectId, name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+        { id: contractId, name: 'Contract', position: { x: 450, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+  }
+
+  it('interprets "ternary association between Supplier, Part and Project" as an naryAssociation create with 3 resolved member ends', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeNaryDiagram();
+    const result = await llm.interpret('ternary association between Supplier, Part and Project', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as {
+        kind: string; op: string; naryAssociationId?: string;
+        memberEnds?: { classId: string; multiplicity: string }[];
+      };
+      expect(delta.kind).toBe('naryAssociation');
+      expect(delta.op).toBe('create');
+      expect(delta.naryAssociationId).toBeTruthy();
+      expect(delta.memberEnds).toHaveLength(3);
+      expect(delta.memberEnds?.map((e) => e.classId)).toEqual([
+        diagram.classes[0]!.id, // Supplier
+        diagram.classes[1]!.id, // Part
+        diagram.classes[2]!.id, // Project
+      ]);
+      // Every end carries a default multiplicity.
+      for (const end of delta.memberEnds ?? []) {
+        expect(end.multiplicity).toBe('1');
+      }
+    }
+  });
+
+  it('the emitted n-ary delta passes the real DeltaSchema gate (interpreter:R1)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeNaryDiagram();
+    const result = await llm.interpret('n-ary association between Supplier, Part, Project and Contract', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const parsed = DeltaSchema.safeParse(result.value);
+      expect(parsed.success).toBe(true);
+      const delta = result.value as { memberEnds?: unknown[] };
+      expect(delta.memberEnds).toHaveLength(4); // quaternary via the n-ary keyword
+    }
+  });
+
+  it('interprets the Spanish phrasing "asociación ternaria entre Supplier, Part y Project"', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeNaryDiagram();
+    const result = await llm.interpret('asociación ternaria entre Supplier, Part y Project', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { kind: string; memberEnds?: { classId: string }[] };
+      expect(delta.kind).toBe('naryAssociation');
+      expect(delta.memberEnds?.map((e) => e.classId)).toEqual([
+        diagram.classes[0]!.id,
+        diagram.classes[1]!.id,
+        diagram.classes[2]!.id,
+      ]);
+    }
+  });
+
+  it('refuses an n-ary naming an unknown class', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('ternary association between Supplier, Part and Ghost', {}, makeNaryDiagram());
+    expect(result.kind).toBe('refused');
+  });
+
+  it('refuses an n-ary with fewer than three members (n-ary means >= 3)', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('ternary association between Supplier and Part', {}, makeNaryDiagram());
+    expect(result.kind).toBe('refused');
+  });
+
+  it('out-of-vocabulary stays rejected (interpreter:R4)', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret('make the n-ary diagram sparkle', {}, makeNaryDiagram());
+    expect(result.kind).toBe('refused');
+  });
+});
+
+describe('OpenAiLlm n-ary association prompt (unit 13.4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('system prompt documents the naryAssociation create/delete shapes', async () => {
+    const captured: { system?: string } = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init: { body: string }) => {
+        const body = JSON.parse(init.body) as { messages: { role: string; content: string }[] };
+        captured.system = body.messages.find((m) => m.role === 'system')?.content;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ action: 'refuse', reason: 'noop' }) } }],
+          }),
+        });
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    await llm.interpret('ternary association between Supplier, Part and Project', {}, makeDiagram());
+
+    expect(captured.system).toBeDefined();
+    expect(captured.system).toContain('NARY ASSOCIATION CREATE');
+    expect(captured.system).toContain('NARY ASSOCIATION DELETE');
+    expect(captured.system).toContain('naryAssociationId');
+    expect(captured.system).toContain('memberEnds');
+    // The >=3 floor is documented for the model.
+    expect(captured.system).toMatch(/three or more/i);
   });
 });

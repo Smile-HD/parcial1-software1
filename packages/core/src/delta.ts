@@ -158,6 +158,35 @@ export const DependencyDeltaSchema = DeltaBase.extend({
 export type DependencyDelta = z.infer<typeof DependencyDeltaSchema>;
 
 /**
+ * N-ary association-level operations: create (>=3 member ends) and delete.
+ * A `create` must carry memberEnds (schema gate); the engine invariants —
+ * every member class exists, >=3 ends, no duplicate classId within one
+ * association — are enforced by applyDelta (unit 13.1). The ≥3 floor is
+ * deliberately NOT a schema gate so a 2-end create surfaces as a typed
+ * engine error (NaryAssociationMinEndsError) instead of a thrown ZodError.
+ */
+export const NaryAssociationDeltaSchema = DeltaBase.extend({
+  kind: z.literal('naryAssociation'),
+  op: z.enum(['create', 'delete']),
+  naryAssociationId: z.string().uuid(),
+  // For create: member ends required (enforced by the refinement below)
+  memberEnds: z.array(z.object({
+    classId: z.string().uuid(),
+    multiplicity: MultiplicitySchema,
+    role: z.string().optional(),
+  })).optional(),
+  name: z.string().optional(),
+}).strict().superRefine((delta, ctx) => {
+  if (delta.op === 'create' && (!delta.memberEnds || delta.memberEnds.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'NaryAssociation create requires memberEnds',
+    });
+  }
+});
+export type NaryAssociationDelta = z.infer<typeof NaryAssociationDeltaSchema>;
+
+/**
  * Batch delta: atomic application of multiple deltas (all or nothing).
  */
 export const BatchDeltaSchema = DeltaBase.extend({
@@ -169,6 +198,7 @@ export const BatchDeltaSchema = DeltaBase.extend({
     GeneralizationDeltaSchema,
     RealizationDeltaSchema,
     DependencyDeltaSchema,
+    NaryAssociationDeltaSchema,
   ])),
 }).strict();
 export type BatchDelta = z.infer<typeof BatchDeltaSchema>;
@@ -184,6 +214,7 @@ export const DeltaSchema = z.discriminatedUnion('kind', [
   GeneralizationDeltaSchema,
   RealizationDeltaSchema,
   DependencyDeltaSchema,
+  NaryAssociationDeltaSchema,
   BatchDeltaSchema,
 ]);
 export type Delta = z.infer<typeof DeltaSchema>;

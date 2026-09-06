@@ -20,6 +20,7 @@ import {
   type Dependency,
   type Diagram,
   type Generalization,
+  type NaryAssociation,
   type Realization,
 } from '@app/core';
 
@@ -29,6 +30,7 @@ const Y_ASSOCIATIONS = 'associations';
 const Y_GENERALIZATIONS = 'generalizations';
 const Y_REALIZATIONS = 'realizations';
 const Y_DEPENDENCIES = 'dependencies';
+const Y_NARY_ASSOCIATIONS = 'naryAssociations';
 const Y_META = 'meta';
 
 /**
@@ -57,6 +59,7 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
     const yGeneralizations = doc.getMap(Y_GENERALIZATIONS);
     const yRealizations = doc.getMap(Y_REALIZATIONS);
     const yDependencies = doc.getMap(Y_DEPENDENCIES);
+    const yNaryAssociations = doc.getMap(Y_NARY_ASSOCIATIONS);
     const yMeta = doc.getMap(Y_META);
 
     yClasses.clear();
@@ -64,6 +67,7 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
     yGeneralizations.clear();
     yRealizations.clear();
     yDependencies.clear();
+    yNaryAssociations.clear();
 
     yMeta.set('id', diagram.id);
     yMeta.set('name', diagram.name);
@@ -86,6 +90,10 @@ function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
 
     for (const dep of diagram.dependencies ?? []) {
       yDependencies.set(dep.id, buildYDependency(dep));
+    }
+
+    for (const nary of diagram.naryAssociations ?? []) {
+      yNaryAssociations.set(nary.id, buildYNaryAssociation(nary));
     }
   });
 }
@@ -183,4 +191,22 @@ function buildYDependency(dep: Dependency): Y.Map<unknown> {
   yDep.set('clientClassId', dep.clientClassId);
   yDep.set('supplierClassId', dep.supplierClassId);
   return yDep;
+}
+
+function buildYNaryAssociation(nary: NaryAssociation): Y.Map<unknown> {
+  const yNary = new Y.Map<unknown>();
+  yNary.set('id', nary.id);
+  if (nary.name !== undefined) yNary.set('name', nary.name);
+  // memberEnds is an ordered Y.Array of Y.Maps — same blob-preserving
+  // shape as attributes/methods/parameters in core's ydoc codec (unit 13).
+  const yEnds = new Y.Array<Y.Map<unknown>>();
+  for (const end of nary.memberEnds) {
+    const yEnd = new Y.Map<unknown>();
+    yEnd.set('classId', end.classId);
+    yEnd.set('multiplicity', end.multiplicity);
+    if (end.role !== undefined) yEnd.set('role', end.role);
+    yEnds.push([yEnd]);
+  }
+  yNary.set('memberEnds', yEnds);
+  return yNary;
 }

@@ -160,10 +160,36 @@ export const DependencySchema = z.object({
 export type Dependency = z.infer<typeof DependencySchema>;
 
 /**
+ * One member end of an n-ary association: the participating class plus its
+ * own multiplicity and optional role name (editor:R N-ary, unit 13.1).
+ */
+export const NaryMemberEndSchema = z.object({
+  classId: z.string().uuid(),
+  multiplicity: MultiplicitySchema,
+  role: z.string().optional(),
+});
+export type NaryMemberEnd = z.infer<typeof NaryMemberEndSchema>;
+
+/**
+ * N-ary association: a single association connecting THREE OR MORE classes
+ * through a central diamond (UML 2.5.1 n-ary association, unit 13.1).
+ * Kept in its OWN collection so the binary-association path stays untouched
+ * (design decision D13). The `min(3)` bound is IR integrity: the apply
+ * engine prunes/deletes n-aries below this floor on member-class deletion,
+ * so a persisted diagram can never hold a degenerate n-ary.
+ */
+export const NaryAssociationSchema = z.object({
+  id: z.string().uuid(),
+  memberEnds: z.array(NaryMemberEndSchema).min(3),
+  name: z.string().optional(),
+});
+export type NaryAssociation = z.infer<typeof NaryAssociationSchema>;
+
+/**
  * Diagram: the top-level IR containing classes, associations,
- * generalizations, realizations and dependencies. `generalizations`,
- * `realizations` and `dependencies` default to [] so pre-unit-11/12
- * diagrams stay valid (backward compat).
+ * generalizations, realizations, dependencies and n-ary associations.
+ * `generalizations`, `realizations`, `dependencies` and `naryAssociations`
+ * default to [] so pre-unit-11/12/13 diagrams stay valid (backward compat).
  */
 export const DiagramSchema = z.object({
   id: z.string().uuid(),
@@ -173,5 +199,6 @@ export const DiagramSchema = z.object({
   generalizations: z.array(GeneralizationSchema).default([]),
   realizations: z.array(RealizationSchema).default([]),
   dependencies: z.array(DependencySchema).default([]),
+  naryAssociations: z.array(NaryAssociationSchema).default([]),
 });
 export type Diagram = z.infer<typeof DiagramSchema>;

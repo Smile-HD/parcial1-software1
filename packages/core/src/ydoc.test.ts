@@ -514,3 +514,75 @@ describe('ydoc codec — Dependency round-trip (unit 12.2/12.6 — 12b half)', (
     expect(projected.dependencies).toEqual([]);
   });
 });
+describe('ydoc codec — NaryAssociation round-trip (unit 13.1/13.5)', () => {
+  function diagramWithNary(): Diagram {
+    return DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Nary Test',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      naryAssociations: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440004',
+          name: 'supply',
+          memberEnds: [
+            { classId: '550e8400-e29b-41d4-a716-446655440001', multiplicity: '1', role: 'supplier' },
+            { classId: '550e8400-e29b-41d4-a716-446655440002', multiplicity: '0..*' },
+            { classId: '550e8400-e29b-41d4-a716-446655440003', multiplicity: '1..*' },
+          ],
+        },
+      ],
+    });
+  }
+
+  it('buildYDocFromDiagram → projectYDocToDiagram preserves naryAssociations losslessly (memberEnds order, roles, name)', () => {
+    const original = diagramWithNary();
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.naryAssociations).toHaveLength(1);
+    expect(projected.naryAssociations[0]).toEqual(original.naryAssociations[0]);
+  });
+
+  it('round-trip through encode/load preserves naryAssociations (blob-authoritative path)', () => {
+    const original = diagramWithNary();
+    const doc = buildYDocFromDiagram(original);
+    const update = encodeYDoc(doc);
+    const loadedDoc = loadYDocFromUpdate(update);
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.naryAssociations).toHaveLength(1);
+    const nary = projected.naryAssociations[0]!;
+    expect(nary.name).toBe('supply');
+    expect(nary.memberEnds.map((e) => e.classId)).toEqual([
+      '550e8400-e29b-41d4-a716-446655440001',
+      '550e8400-e29b-41d4-a716-446655440002',
+      '550e8400-e29b-41d4-a716-446655440003',
+    ]);
+    expect(nary.memberEnds[0]).toMatchObject({ multiplicity: '1', role: 'supplier' });
+    expect(nary.memberEnds[1]!.role).toBeUndefined();
+  });
+
+  it('backward compat: old Y.Doc without an naryAssociations map projects to an empty collection', () => {
+    // Simulate a pre-unit-13 doc: no naryAssociations map at all.
+    const doc = new Y.Doc();
+    const yClasses = doc.getMap('classes');
+    const yMeta = doc.getMap('meta');
+    yMeta.set('id', '550e8400-e29b-41d4-a716-446655440000');
+    yMeta.set('name', 'Old Diagram');
+    const yClass1 = new Y.Map();
+    yClass1.set('id', '550e8400-e29b-41d4-a716-446655440001');
+    yClass1.set('name', 'Supplier');
+    yClass1.set('position', new Y.Map([['x', 0], ['y', 0]]));
+    yClass1.set('attributes', new Y.Array());
+    yClass1.set('methods', new Y.Array());
+    yClasses.set('550e8400-e29b-41d4-a716-446655440001', yClass1);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.naryAssociations).toEqual([]);
+  });
+});

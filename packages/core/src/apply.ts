@@ -1,5 +1,5 @@
-import { type Diagram, type Class, type Association, type Generalization, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
-import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type RealizationDelta, type DependencyDelta, type BatchDelta, DeltaSchema } from './delta.js';
+import { type Diagram, type Class, type Association, type Generalization, type NaryAssociation, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema, NaryAssociationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
+import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type RealizationDelta, type DependencyDelta, type NaryAssociationDelta, type BatchDelta, DeltaSchema } from './delta.js';
 import { z } from 'zod';
 
 /**
@@ -22,6 +22,9 @@ export type ApplyError =
   | { kind: 'RealizationTargetNotInterfaceError'; supplierClassId: string }
   | { kind: 'DuplicateDependencyError'; clientClassId: string; supplierClassId: string }
   | { kind: 'DependencyNotFoundError'; dependencyId: string }
+  | { kind: 'NaryAssociationNotFoundError'; naryAssociationId: string }
+  | { kind: 'NaryAssociationMinEndsError'; count: number }
+  | { kind: 'DuplicateNaryMemberError'; classId: string }
   | { kind: 'BatchError'; error: ApplyError; failedDeltaIndex: number };
 
 /**
@@ -160,6 +163,29 @@ function cascadeDeleteDependencies(diagram: Diagram, classId: string): Diagram {
 }
 
 /**
+ * Prunes a deleted class from every n-ary association's member ends
+ * (cascade delete, editor:R N-ary — unit 13.1). An n-ary left with fewer
+ * than three ends is no longer an n-ary association and is removed whole
+ * (spec scenario "Member deletion prunes the n-ary"). Associations that do
+ * not contain the class are carried over by reference — untouched.
+ */
+function cascadeDeleteNaryAssociations(diagram: Diagram, classId: string): Diagram {
+  const updated: NaryAssociation[] = [];
+  for (const nary of diagram.naryAssociations ?? []) {
+    const keptEnds = nary.memberEnds.filter(e => e.classId !== classId);
+    if (keptEnds.length === nary.memberEnds.length) {
+      updated.push(nary); // class not a member — leave the object as-is
+      continue;
+    }
+    if (keptEnds.length >= 3) {
+      updated.push({ ...nary, memberEnds: keptEnds });
+    }
+    // < 3 ends after pruning: the whole n-ary association is deleted.
+  }
+  return { ...diagram, naryAssociations: updated };
+}
+
+/**
  * Cycle check for generalization edges (the highest-risk invariant, unit 11.2).
  *
  * Edges point subClass → superClass. Adding `sub → super` closes a cycle iff
@@ -268,12 +294,14 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
       }
       // Remove the class
       const updatedClasses = diagram.classes.filter(c => c.id !== delta.classId);
-      // Cascade delete associations, generalization, realization and dependency edges
+      // Cascade delete associations, generalization, realization, dependency
+      // and n-ary association edges
       let updatedDiagram = { ...diagram, classes: updatedClasses };
       updatedDiagram = cascadeDeleteAssociations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteGeneralizations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteRealizations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteDependencies(updatedDiagram, delta.classId);
+      updatedDiagram = cascadeDeleteNaryAssociations(updatedDiagram, delta.classId);
       return ok(updatedDiagram);
     }
 
@@ -655,6 +683,60 @@ function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyRe
 }
 
 /**
+ * Applies a single n-ary association delta (unit 13.1 invariants,
+ * editor:R N-ary):
+ * - create: at least THREE member ends; no duplicate classId within one
+ *   association; every member class must exist. Lives in its OWN
+ *   `naryAssociations` collection — the binary-association path is never
+ *   touched (design decision D13).
+ * - delete: the association must exist.
+ */
+function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta): ApplyResult<Diagram> {
+  switch (delta.op) {
+    case 'create': {
+      if (!delta.memberEnds || delta.memberEnds.length === 0) {
+        return err({ kind: 'InvalidOperationError', reason: 'NaryAssociation create requires memberEnds' });
+      }
+      if (delta.memberEnds.length < 3) {
+        return err({ kind: 'NaryAssociationMinEndsError', count: delta.memberEnds.length });
+      }
+      const seen = new Set<string>();
+      for (const end of delta.memberEnds) {
+        if (seen.has(end.classId)) {
+          return err({ kind: 'DuplicateNaryMemberError', classId: end.classId });
+        }
+        seen.add(end.classId);
+      }
+      for (const end of delta.memberEnds) {
+        if (!findClass(diagram, end.classId)) {
+          return err({ kind: 'ClassNotFoundError', classId: end.classId });
+        }
+      }
+      const newNary = NaryAssociationSchema.parse({
+        id: delta.naryAssociationId,
+        memberEnds: delta.memberEnds,
+        name: delta.name,
+      });
+      return ok({ ...diagram, naryAssociations: [...(diagram.naryAssociations ?? []), newNary] });
+    }
+
+    case 'delete': {
+      const naryIndex = (diagram.naryAssociations ?? []).findIndex(n => n.id === delta.naryAssociationId);
+      if (naryIndex === -1) {
+        return err({ kind: 'NaryAssociationNotFoundError', naryAssociationId: delta.naryAssociationId });
+      }
+      const updatedNaryAssociations = diagram.naryAssociations.filter(n => n.id !== delta.naryAssociationId);
+      return ok({ ...diagram, naryAssociations: updatedNaryAssociations });
+    }
+
+    default: {
+      const _exhaustive: never = delta.op;
+      return err({ kind: 'InvalidOperationError', reason: `Unknown naryAssociation op: ${_exhaustive}` });
+    }
+  }
+}
+
+/**
  * Applies a batch delta atomically (all-or-nothing).
  * Validates all deltas first, then applies them sequentially on a cloned state.
  * If any delta fails, the original state is returned unchanged.
@@ -686,6 +768,9 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
         break;
       case 'dependency':
         result = applyDependencyDelta(workingDiagram, delta);
+        break;
+      case 'naryAssociation':
+        result = applyNaryAssociationDelta(workingDiagram, delta);
         break;
       default: {
         const _exhaustive: never = delta.kind;
@@ -746,6 +831,8 @@ export function applyDelta(state: Diagram, delta: Delta): ApplyResult<Diagram> {
       return applyRealizationDelta(clonedState, validatedDelta);
     case 'dependency':
       return applyDependencyDelta(clonedState, validatedDelta);
+    case 'naryAssociation':
+      return applyNaryAssociationDelta(clonedState, validatedDelta);
     case 'batch':
       return applyBatchDelta(clonedState, validatedDelta);
     default: {
