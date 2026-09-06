@@ -107,30 +107,36 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yAssociations.set(assoc.id, yAssoc);
   }
 
-  // Add generalizations (unit 11 — blob-preserving, same shape as associations)
+  // Add generalizations (unit 11 — blob-preserving, same shape as associations;
+  // unit 13c carries the optional label name)
   for (const gen of diagram.generalizations ?? []) {
     const yGen = new Y.Map();
     yGen.set('id', gen.id);
     yGen.set('subClassId', gen.subClassId);
     yGen.set('superClassId', gen.superClassId);
+    if (gen.name !== undefined) yGen.set('name', gen.name);
     yGeneralizations.set(gen.id, yGen);
   }
 
-  // Add realizations (unit 12 — blob-preserving, same shape as generalizations)
+  // Add realizations (unit 12 — blob-preserving, same shape as generalizations;
+  // unit 13c carries the optional label name)
   for (const real of diagram.realizations ?? []) {
     const yReal = new Y.Map();
     yReal.set('id', real.id);
     yReal.set('clientClassId', real.clientClassId);
     yReal.set('supplierInterfaceId', real.supplierInterfaceId);
+    if (real.name !== undefined) yReal.set('name', real.name);
     yRealizations.set(real.id, yReal);
   }
 
-  // Add dependencies (unit 12b — blob-preserving, same shape as realizations)
+  // Add dependencies (unit 12b — blob-preserving, same shape as realizations;
+  // unit 13c carries the optional label name)
   for (const dep of diagram.dependencies ?? []) {
     const yDep = new Y.Map();
     yDep.set('id', dep.id);
     yDep.set('clientClassId', dep.clientClassId);
     yDep.set('supplierClassId', dep.supplierClassId);
+    if (dep.name !== undefined) yDep.set('name', dep.name);
     yDependencies.set(dep.id, yDep);
   }
 
@@ -273,10 +279,13 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   yGeneralizations.forEach((yGen) => {
     if (!(yGen instanceof Y.Map)) return;
 
+    // Unit 13c: optional label name (absent on pre-13c docs → undefined).
+    const name = yGen.get('name') as string | undefined;
     generalizations.push(GeneralizationSchema.parse({
       id: yGen.get('id') as string,
       subClassId: yGen.get('subClassId') as string,
       superClassId: yGen.get('superClassId') as string,
+      ...(name !== undefined ? { name } : {}),
     }));
   });
 
@@ -284,10 +293,12 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   yRealizations.forEach((yReal) => {
     if (!(yReal instanceof Y.Map)) return;
 
+    const name = yReal.get('name') as string | undefined;
     realizations.push(RealizationSchema.parse({
       id: yReal.get('id') as string,
       clientClassId: yReal.get('clientClassId') as string,
       supplierInterfaceId: yReal.get('supplierInterfaceId') as string,
+      ...(name !== undefined ? { name } : {}),
     }));
   });
 
@@ -295,10 +306,12 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   yDependencies.forEach((yDep) => {
     if (!(yDep instanceof Y.Map)) return;
 
+    const name = yDep.get('name') as string | undefined;
     dependencies.push(DependencySchema.parse({
       id: yDep.get('id') as string,
       clientClassId: yDep.get('clientClassId') as string,
       supplierClassId: yDep.get('supplierClassId') as string,
+      ...(name !== undefined ? { name } : {}),
     }));
   });
 

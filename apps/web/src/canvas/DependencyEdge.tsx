@@ -33,8 +33,10 @@ export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
 
   const arrowId = `uml-${id}-dependency-arrow`;
 
-  // v12 returns a [path, labelX, labelY] tuple — take the path string.
-  const [path] = getBezierPath(props);
+  // v12 returns a [path, labelX, labelY] tuple — the label coords center the
+  // editable edge name (unit 13c) on the bezier path.
+  const [path, labelX, labelY] = getBezierPath(props);
+  const label = data.dependency.name;
 
   return (
     <>
@@ -62,6 +64,23 @@ export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
         stroke="#1a1a2e"
         strokeDasharray={DEPENDENCY_DASH}
       />
+
+      {/* Optional editable label (unit 13c) centered on the edge. */}
+      {label ? (
+        <text
+          x={labelX}
+          y={labelY - 8}
+          dominantBaseline="middle"
+          textAnchor="middle"
+          fontSize="10"
+          fill="#333"
+          paintOrder="stroke"
+          stroke="white"
+          strokeWidth="3"
+        >
+          {label}
+        </text>
+      ) : null}
     </>
   );
 }

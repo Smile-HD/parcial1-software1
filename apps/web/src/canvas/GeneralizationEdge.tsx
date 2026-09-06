@@ -28,8 +28,10 @@ export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
 
   const triangleId = `uml-${id}-generalization-triangle`;
 
-  // v12 returns a [path, labelX, labelY] tuple — take the path string.
-  const [path] = getBezierPath(props);
+  // v12 returns a [path, labelX, labelY] tuple — the label coords center the
+  // editable edge name (unit 13c) on the bezier path.
+  const [path, labelX, labelY] = getBezierPath(props);
+  const label = data.generalization.name;
 
   return (
     <>
@@ -55,6 +57,23 @@ export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
         strokeWidth={1.5}
         stroke="#1a1a2e"
       />
+
+      {/* Optional editable label (unit 13c) centered on the edge. */}
+      {label ? (
+        <text
+          x={labelX}
+          y={labelY - 8}
+          dominantBaseline="middle"
+          textAnchor="middle"
+          fontSize="10"
+          fill="#333"
+          paintOrder="stroke"
+          stroke="white"
+          strokeWidth="3"
+        >
+          {label}
+        </text>
+      ) : null}
     </>
   );
 }

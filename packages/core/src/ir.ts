@@ -125,11 +125,14 @@ export type Association = z.infer<typeof AssociationSchema>;
  * inherits from the superClass (UML 2.5.1 generalization, rendered as a
  * solid line with a hollow triangle on the superclass end).
  * Cycle and duplicate invariants are enforced by the apply engine.
+ * `name` is an optional editable label (unit 13c); absent on pre-13c edges
+ * so existing diagrams stay valid (backward compat).
  */
 export const GeneralizationSchema = z.object({
   id: z.string().uuid(),
   subClassId: z.string().uuid(),
   superClassId: z.string().uuid(),
+  name: z.string().optional(),
 });
 export type Generalization = z.infer<typeof GeneralizationSchema>;
 
@@ -138,11 +141,13 @@ export type Generalization = z.infer<typeof GeneralizationSchema>;
  * interface (UML 2.5.1 realization, rendered as a dashed line with a
  * hollow triangle on the interface end). The supplier MUST have
  * `kind === 'interface'` — enforced by the apply engine (unit 12.2).
+ * `name` is an optional editable label (unit 13c, backward compat).
  */
 export const RealizationSchema = z.object({
   id: z.string().uuid(),
   clientClassId: z.string().uuid(),
   supplierInterfaceId: z.string().uuid(),
+  name: z.string().optional(),
 });
 export type Realization = z.infer<typeof RealizationSchema>;
 
@@ -151,11 +156,13 @@ export type Realization = z.infer<typeof RealizationSchema>;
  * (UML 2.5.1 dependency, rendered as a dashed line with an open arrow on
  * the supplier end; no multiplicity). Unlike realization, the supplier
  * may be ANY class or interface — enforced by the apply engine (unit 12.2).
+ * `name` is an optional editable label (unit 13c, backward compat).
  */
 export const DependencySchema = z.object({
   id: z.string().uuid(),
   clientClassId: z.string().uuid(),
   supplierClassId: z.string().uuid(),
+  name: z.string().optional(),
 });
 export type Dependency = z.infer<typeof DependencySchema>;
 

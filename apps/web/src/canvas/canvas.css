@@ -111,8 +111,8 @@
 .diagram-canvas__toolbar {
   position: absolute;
   top: 10px;
-  left: 10px;
-  z-index: 10;
+  left: 100px;
+  z-index: 13;
 }
 
 .diagram-canvas__toolbar button {
@@ -126,8 +126,8 @@
   cursor: pointer;
 }
 
-/* unit 10 — association delete button in the multiplicity panel */
-.diagram-canvas__delete-association {
+/* unit 13c — delete button in the unified edge editor */
+.diagram-canvas__delete-edge {
   margin-left: 8px;
   font-family: inherit;
   font-size: 12px;
@@ -140,6 +140,40 @@
   color: #b00020;
   cursor: pointer;
   align-self: flex-start;
+}
+
+/* unit 13c — ONE unified edge editor (label + delete for every edge kind,
+   multiplicities/roles for associations only). Sits below the toolbar row
+   so it never overlaps it. */
+.diagram-canvas__edge-editor {
+  position: absolute;
+  top: 48px;
+  left: 100px;
+  z-index: 13;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.diagram-canvas__edge-editor-title {
+  font-weight: 700;
+}
+
+.diagram-canvas__close-edge-editor {
+  align-self: flex-start;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a1a2e;
+  cursor: pointer;
 }
 /* unit 9.3 — UML member adornments */
 .uml-member--static {
@@ -196,12 +230,14 @@
   padding: 4px 8px;
 }
 
-/* unit 11.4 — per-class generalization list in the editor panel */
+/* unit 11.4 — per-class generalization list in the editor panel.
+   unit 13c — moved to the RIGHT edge so it can never collide with the
+   unified edge editor (left side). */
 .diagram-canvas__generalizations {
   position: absolute;
-  top: 52px;
-  left: 10px;
-  z-index: 10;
+  top: 10px;
+  right: 10px;
+  z-index: 13;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -253,12 +289,12 @@
   font-style: italic;
 }
 
-/* unit 12.4 — per-class realization list in the editor panel */
+/* unit 12.4 — per-class realization list in the editor panel (right edge, 13c) */
 .diagram-canvas__realizations {
   position: absolute;
   top: 150px;
-  left: 10px;
-  z-index: 10;
+  right: 10px;
+  z-index: 13;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -294,12 +330,12 @@
   cursor: pointer;
 }
 
-/* unit 12.4 (12b) — per-class dependency list in the editor panel */
+/* unit 12.4 (12b) — per-class dependency list in the editor panel (right edge, 13c) */
 .diagram-canvas__dependencies {
   position: absolute;
   top: 290px;
-  left: 10px;
-  z-index: 10;
+  right: 10px;
+  z-index: 13;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -385,8 +421,8 @@
 .diagram-canvas__nary {
   position: absolute;
   top: 380px;
-  left: 10px;
-  z-index: 10;
+  left: 100px;
+  z-index: 13;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -427,4 +463,109 @@
   color: #999;
   border-color: #ccc;
   cursor: not-allowed;
+}
+
+/* ── unit 13b — drag-from-palette editor UX ─────────────────────────────── */
+
+/* Anchor for the absolutely-positioned palette rail and overlays. */
+.diagram-canvas {
+  position: relative;
+}
+
+.palette {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  bottom: 10px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 68px;
+  padding: 8px 6px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.palette__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* unit 13c — block headings (Objects / Relations) */
+.palette__group-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #555;
+  text-align: center;
+}
+
+.palette__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a1a2e;
+  font-family: inherit;
+  font-size: 9px;
+  cursor: grab;
+}
+
+.palette__item:hover {
+  border-color: #1a1a2e;
+}
+
+.palette__item--active {
+  border-color: #1a1a2e;
+  background: #e8ecff;
+  box-shadow: inset 0 0 0 1px #1a1a2e;
+}
+
+.palette__label {
+  line-height: 1.1;
+}
+
+.diagram-canvas__hint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  padding: 4px 10px;
+  background: #1a1a2e;
+  color: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.diagram-canvas__palette-message {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  padding: 4px 10px;
+  background: #b00020;
+  color: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+/* unit 13c — full-node transparent connect overlay (rendered only while an
+   edge tool is armed): the whole node body starts a connection. */
+.uml-class__connect-overlay {
+  cursor: crosshair;
 }

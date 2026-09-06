@@ -31,8 +31,10 @@ export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
 
   const triangleId = `uml-${id}-realization-triangle`;
 
-  // v12 returns a [path, labelX, labelY] tuple — take the path string.
-  const [path] = getBezierPath(props);
+  // v12 returns a [path, labelX, labelY] tuple — the label coords center the
+  // editable edge name (unit 13c) on the bezier path.
+  const [path, labelX, labelY] = getBezierPath(props);
+  const label = data.realization.name;
 
   return (
     <>
@@ -60,6 +62,23 @@ export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
         stroke="#1a1a2e"
         strokeDasharray={REALIZATION_DASH}
       />
+
+      {/* Optional editable label (unit 13c) centered on the edge. */}
+      {label ? (
+        <text
+          x={labelX}
+          y={labelY - 8}
+          dominantBaseline="middle"
+          textAnchor="middle"
+          fontSize="10"
+          fill="#333"
+          paintOrder="stroke"
+          stroke="white"
+          strokeWidth="3"
+        >
+          {label}
+        </text>
+      ) : null}
     </>
   );
 }

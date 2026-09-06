@@ -250,13 +250,13 @@ describe('Delta Schema — Generalization kind (unit 11.1)', () => {
     expect(result.success).toBe(true);
   });
 
-  it('REJECTS unknown ops for generalization deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for generalization deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'generalization' as const,
-      op: 'update',
+      op: 'rename',
       generalizationId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
@@ -326,13 +326,13 @@ describe('Delta Schema — Realization kind (unit 12.2)', () => {
     expect(DeltaSchema.safeParse(delta).success).toBe(true);
   });
 
-  it('REJECTS unknown ops for realization deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for realization deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'realization' as const,
-      op: 'update',
+      op: 'rename',
       realizationId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
@@ -471,13 +471,13 @@ describe('Delta Schema — Dependency kind (unit 12.2 — 12b half)', () => {
     expect(DeltaSchema.safeParse(delta).success).toBe(true);
   });
 
-  it('REJECTS unknown ops for dependency deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for dependency deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'dependency' as const,
-      op: 'update',
+      op: 'rename',
       dependencyId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
@@ -519,6 +519,113 @@ describe('Delta Schema — Dependency kind (unit 12.2 — 12b half)', () => {
       deltas: [
         { ...base, kind: 'dependency' as const, op: 'create' as const, dependencyId: crypto.randomUUID(), clientClassId: crypto.randomUUID(), supplierClassId: crypto.randomUUID() },
         { ...base, kind: 'dependency' as const, op: 'delete' as const, dependencyId: crypto.randomUUID() },
+      ],
+    };
+    expect(DeltaSchema.safeParse(batch).success).toBe(true);
+  });
+});
+
+describe('Delta Schema — Edge label update ops (unit 13c, unified edge editing)', () => {
+  const base = () => ({
+    id: crypto.randomUUID(),
+    diagramId: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+  });
+
+  it('generalization update delta with a name validates through the union', () => {
+    const result = DeltaSchema.safeParse({
+      ...base(),
+      kind: 'generalization' as const,
+      op: 'update' as const,
+      generalizationId: crypto.randomUUID(),
+      name: 'inherits',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.op).toBe('update');
+    }
+  });
+
+  it('generalization update delta WITHOUT a name is REJECTED (schema gate)', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'generalization' as const,
+        op: 'update' as const,
+        generalizationId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('realization update delta with a name validates; without a name it is rejected', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'realization' as const,
+        op: 'update' as const,
+        realizationId: crypto.randomUUID(),
+        name: 'implements',
+      }).success,
+    ).toBe(true);
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'realization' as const,
+        op: 'update' as const,
+        realizationId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('dependency update delta with a name validates; without a name it is rejected', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'dependency' as const,
+        op: 'update' as const,
+        dependencyId: crypto.randomUUID(),
+        name: 'uses',
+      }).success,
+    ).toBe(true);
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'dependency' as const,
+        op: 'update' as const,
+        dependencyId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('create and delete deltas stay valid unchanged (backward compat)', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'generalization' as const,
+        op: 'create' as const,
+        generalizationId: crypto.randomUUID(),
+        subClassId: crypto.randomUUID(),
+        superClassId: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'realization' as const,
+        op: 'delete' as const,
+        realizationId: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('batch delta accepts edge label update inner deltas', () => {
+    const batch = {
+      ...base(),
+      kind: 'batch' as const,
+      deltas: [
+        { ...base(), kind: 'generalization' as const, op: 'update' as const, generalizationId: crypto.randomUUID(), name: 'a' },
+        { ...base(), kind: 'realization' as const, op: 'update' as const, realizationId: crypto.randomUUID(), name: 'b' },
+        { ...base(), kind: 'dependency' as const, op: 'update' as const, dependencyId: crypto.randomUUID(), name: 'c' },
       ],
     };
     expect(DeltaSchema.safeParse(batch).success).toBe(true);

@@ -174,6 +174,9 @@ function buildYGeneralization(gen: Generalization): Y.Map<unknown> {
   yGen.set('id', gen.id);
   yGen.set('subClassId', gen.subClassId);
   yGen.set('superClassId', gen.superClassId);
+  // Unit 13c: the optional label must survive the bridge's full rewrite,
+  // otherwise any unrelated delta would silently drop edge names.
+  if (gen.name !== undefined) yGen.set('name', gen.name);
   return yGen;
 }
 
@@ -182,6 +185,7 @@ function buildYRealization(real: Realization): Y.Map<unknown> {
   yReal.set('id', real.id);
   yReal.set('clientClassId', real.clientClassId);
   yReal.set('supplierInterfaceId', real.supplierInterfaceId);
+  if (real.name !== undefined) yReal.set('name', real.name);
   return yReal;
 }
 
@@ -190,6 +194,7 @@ function buildYDependency(dep: Dependency): Y.Map<unknown> {
   yDep.set('id', dep.id);
   yDep.set('clientClassId', dep.clientClassId);
   yDep.set('supplierClassId', dep.supplierClassId);
+  if (dep.name !== undefined) yDep.set('name', dep.name);
   return yDep;
 }
 
