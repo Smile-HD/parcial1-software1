@@ -1,5 +1,5 @@
-import { type Diagram, type Class, type Association, type Generalization, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
-import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type RealizationDelta, type BatchDelta, DeltaSchema } from './delta.js';
+import { type Diagram, type Class, type Association, type Generalization, type Attribute, type Method, type Position, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema, AttributeSchema, MethodSchema, AggregationKindSchema } from './ir.js';
+import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, type GeneralizationDelta, type RealizationDelta, type DependencyDelta, type BatchDelta, DeltaSchema } from './delta.js';
 import { z } from 'zod';
 
 /**
@@ -20,6 +20,8 @@ export type ApplyError =
   | { kind: 'DuplicateRealizationError'; clientClassId: string; supplierInterfaceId: string }
   | { kind: 'RealizationNotFoundError'; realizationId: string }
   | { kind: 'RealizationTargetNotInterfaceError'; supplierClassId: string }
+  | { kind: 'DuplicateDependencyError'; clientClassId: string; supplierClassId: string }
+  | { kind: 'DependencyNotFoundError'; dependencyId: string }
   | { kind: 'BatchError'; error: ApplyError; failedDeltaIndex: number };
 
 /**
@@ -144,6 +146,20 @@ function cascadeDeleteRealizations(diagram: Diagram, classId: string): Diagram {
 }
 
 /**
+ * Removes all dependency edges connected to a class, in either the
+ * client or the supplier role (cascade delete, editor:R Interfaces —
+ * unit 12.2, 12b half).
+ */
+function cascadeDeleteDependencies(diagram: Diagram, classId: string): Diagram {
+  return {
+    ...diagram,
+    dependencies: diagram.dependencies.filter(
+      d => d.clientClassId !== classId && d.supplierClassId !== classId
+    ),
+  };
+}
+
+/**
  * Cycle check for generalization edges (the highest-risk invariant, unit 11.2).
  *
  * Edges point subClass → superClass. Adding `sub → super` closes a cycle iff
@@ -252,11 +268,12 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
       }
       // Remove the class
       const updatedClasses = diagram.classes.filter(c => c.id !== delta.classId);
-      // Cascade delete associations, generalization and realization edges
+      // Cascade delete associations, generalization, realization and dependency edges
       let updatedDiagram = { ...diagram, classes: updatedClasses };
       updatedDiagram = cascadeDeleteAssociations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteGeneralizations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteRealizations(updatedDiagram, delta.classId);
+      updatedDiagram = cascadeDeleteDependencies(updatedDiagram, delta.classId);
       return ok(updatedDiagram);
     }
 
@@ -591,6 +608,53 @@ function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): Apply
 }
 
 /**
+ * Applies a single dependency delta (unit 12.2 invariants, 12b half):
+ * - create: both ends must exist; no duplicate edge (same client +
+ *   supplier). Unlike realization, the supplier may be ANY class or
+ *   interface — there is NO interface-target requirement and NO
+ *   multiplicity.
+ * - delete: the edge must exist.
+ */
+function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyResult<Diagram> {
+  switch (delta.op) {
+    case 'create': {
+      if (!delta.clientClassId || !delta.supplierClassId) {
+        return err({ kind: 'InvalidOperationError', reason: 'Dependency create requires clientClassId and supplierClassId' });
+      }
+      if (!findClass(diagram, delta.clientClassId)) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.clientClassId });
+      }
+      if (!findClass(diagram, delta.supplierClassId)) {
+        return err({ kind: 'ClassNotFoundError', classId: delta.supplierClassId });
+      }
+      if (diagram.dependencies.some(d => d.clientClassId === delta.clientClassId && d.supplierClassId === delta.supplierClassId)) {
+        return err({ kind: 'DuplicateDependencyError', clientClassId: delta.clientClassId, supplierClassId: delta.supplierClassId });
+      }
+      const newDependency = DependencySchema.parse({
+        id: delta.dependencyId,
+        clientClassId: delta.clientClassId,
+        supplierClassId: delta.supplierClassId,
+      });
+      return ok({ ...diagram, dependencies: [...diagram.dependencies, newDependency] });
+    }
+
+    case 'delete': {
+      const depIndex = diagram.dependencies.findIndex(d => d.id === delta.dependencyId);
+      if (depIndex === -1) {
+        return err({ kind: 'DependencyNotFoundError', dependencyId: delta.dependencyId });
+      }
+      const updatedDependencies = diagram.dependencies.filter(d => d.id !== delta.dependencyId);
+      return ok({ ...diagram, dependencies: updatedDependencies });
+    }
+
+    default: {
+      const _exhaustive: never = delta.op;
+      return err({ kind: 'InvalidOperationError', reason: `Unknown dependency op: ${_exhaustive}` });
+    }
+  }
+}
+
+/**
  * Applies a batch delta atomically (all-or-nothing).
  * Validates all deltas first, then applies them sequentially on a cloned state.
  * If any delta fails, the original state is returned unchanged.
@@ -619,6 +683,9 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
         break;
       case 'realization':
         result = applyRealizationDelta(workingDiagram, delta);
+        break;
+      case 'dependency':
+        result = applyDependencyDelta(workingDiagram, delta);
         break;
       default: {
         const _exhaustive: never = delta.kind;
@@ -677,6 +744,8 @@ export function applyDelta(state: Diagram, delta: Delta): ApplyResult<Diagram> {
       return applyGeneralizationDelta(clonedState, validatedDelta);
     case 'realization':
       return applyRealizationDelta(clonedState, validatedDelta);
+    case 'dependency':
+      return applyDependencyDelta(clonedState, validatedDelta);
     case 'batch':
       return applyBatchDelta(clonedState, validatedDelta);
     default: {

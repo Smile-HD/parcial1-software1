@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 
 import { buildYDocFromDiagram, DiagramSchema, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
 
-import { DiagramCanvas, handleCreateAssociation, handleCreateGeneralization, handleCreateRealization, handleDeleteGeneralization, handleDeleteRealization, handleNodeDragStop, handleSetAbstract, handleUpdateMultiplicity } from './DiagramCanvas';
+import { DiagramCanvas, handleCreateAssociation, handleCreateDependency, handleCreateGeneralization, handleCreateRealization, handleDeleteDependency, handleDeleteGeneralization, handleDeleteRealization, handleNodeDragStop, handleSetAbstract, handleUpdateMultiplicity } from './DiagramCanvas';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
 /**
@@ -1293,5 +1293,168 @@ describe('unit 12a — editor UI: add interface, realize + abstract in context m
     expect(removeButton).not.toBeNull();
     fireEvent.click(removeButton!);
     expect(projectYDocToDiagram(doc).realizations).toHaveLength(0);
+  });
+});
+
+describe('unit 12b — dependency edge render (12.3)', () => {
+  function depFixture(): { diagram: Diagram; orderId: string; serviceId: string; depId: string } {
+    const orderId = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    const depId = crypto.randomUUID();
+    const diagram = {
+      id: crypto.randomUUID(),
+      name: 'Depends',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: serviceId, name: 'Service', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      dependencies: [{ id: depId, clientClassId: orderId, supplierClassId: serviceId }],
+    };
+    return { diagram: DiagramSchema.parse(diagram), orderId, serviceId, depId };
+  }
+
+  it('renders a dashed line with an OPEN (non-filled) arrowhead at the SUPPLIER (target) end', async () => {
+    const { diagram } = depFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const svg = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return (el!.querySelector('svg') ?? el!) as SVGSVGElement | HTMLElement;
+    });
+
+    // Open V arrowhead def: fill NONE (non-filled) with dark stroke — the
+    // UML dependency arrowhead, distinct from the realization triangle.
+    const arrowMarker = Array.from(svg.querySelectorAll('marker')).find((m) =>
+      (m.getAttribute('id') ?? '').includes('dependency-arrow'),
+    );
+    expect(arrowMarker).toBeDefined();
+    const arrowPath = arrowMarker!.querySelector('path');
+    expect(arrowPath).toBeDefined();
+    expect(arrowPath!.getAttribute('fill')).toBe('none');
+    expect(arrowPath!.getAttribute('stroke')).toBe('#1a1a2e');
+
+    // Dashed line + open arrow on the target (supplier) end via url(#id) string.
+    const basePath = Array.from(svg.querySelectorAll('path')).find((p) => !p.closest('marker'));
+    expect(basePath).toBeDefined();
+    expect(basePath!.getAttribute('marker-end') ?? '').toContain('dependency-arrow');
+    expect(basePath!.getAttribute('stroke-dasharray')).toBeTruthy();
+  });
+
+  it('handleCreateDependency writes the edge through applyDeltaToYDoc (bridge round-trip)', () => {
+    const { diagram, orderId, serviceId } = depFixture();
+    diagram.dependencies = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateDependency(doc, diagram.id, { clientClassId: orderId, supplierClassId: serviceId });
+    });
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.dependencies).toHaveLength(1);
+    expect(projected.dependencies[0]).toMatchObject({ clientClassId: orderId, supplierClassId: serviceId });
+  });
+
+  it('handleCreateDependency REJECTS a duplicate leaving the model unchanged (runtime harness, 12.6 invariant)', () => {
+    const { diagram, orderId, serviceId } = depFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateDependency(doc, diagram.id, { clientClassId: orderId, supplierClassId: serviceId });
+    });
+
+    expect(projectYDocToDiagram(doc).dependencies).toHaveLength(1);
+  });
+
+  it('handleCreateDependency REJECTS a missing end leaving the model unchanged (runtime harness, 12.6 invariant)', () => {
+    const { diagram, orderId } = depFixture();
+    diagram.dependencies = [];
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleCreateDependency(doc, diagram.id, { clientClassId: orderId, supplierClassId: crypto.randomUUID() });
+    });
+
+    expect(projectYDocToDiagram(doc).dependencies).toHaveLength(0);
+  });
+
+  it('handleDeleteDependency removes the edge from the Y.Doc', () => {
+    const { diagram, depId } = depFixture();
+    const doc = buildYDocFromDiagram(diagram);
+
+    act(() => {
+      handleDeleteDependency(doc, diagram.id, depId);
+    });
+
+    expect(projectYDocToDiagram(doc).dependencies).toHaveLength(0);
+  });
+});
+
+describe('unit 12b — editor UI: "depends on" in context menu + dependency panel (12.4)', () => {
+  function depUiFixture(): { diagram: Diagram; orderId: string; serviceId: string; repoId: string } {
+    const orderId = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    const repoId = crypto.randomUUID();
+    const diagram = {
+      id: crypto.randomUUID(),
+      name: 'DepUi',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: serviceId, name: 'Service', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: repoId, name: 'Repository', position: { x: 600, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+    };
+    return { diagram: DiagramSchema.parse(diagram), orderId, serviceId, repoId };
+  }
+
+  it('context menu offers "Depends on <X>" for EVERY other classifier (class AND interface) and emits the create delta', () => {
+    const { diagram, orderId, serviceId, repoId } = depUiFixture();
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const orderNode = container.querySelector('.react-flow__node');
+    fireEvent.contextMenu(orderNode!.querySelector('.uml-class')!);
+
+    // Supplier may be ANY classifier: plain class and interface both offered.
+    const plainButton = container.querySelector('button[aria-label="Depends on Service"]');
+    expect(plainButton).not.toBeNull();
+    expect(container.querySelector('button[aria-label="Depends on Repository"]')).not.toBeNull();
+
+    fireEvent.click(plainButton!);
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.dependencies).toHaveLength(1);
+    expect(projected.dependencies[0]).toMatchObject({ clientClassId: orderId, supplierClassId: serviceId });
+    expect(projected.dependencies[0]!.supplierClassId).not.toBe(repoId);
+  });
+
+  it('clicking a class shows its dependencies in the panel with role labels and remove works', () => {
+    const { diagram, orderId, serviceId } = depUiFixture();
+    const depId = crypto.randomUUID();
+    (diagram as { dependencies: unknown[] }).dependencies = [{ id: depId, clientClassId: orderId, supplierClassId: serviceId }];
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    // Client side: Order depends on Service.
+    const orderNode = container.querySelector('.react-flow__node');
+    fireEvent.click(orderNode!.querySelector('.uml-class')!);
+    const panel = screen.getByTestId('dependency-panel');
+    expect(panel.textContent).toContain('Depends on Service');
+
+    // Supplier side mirrored on Service.
+    fireEvent.click(container.querySelectorAll('.react-flow__node')[1]!.querySelector('.uml-class')!);
+    expect(screen.getByTestId('dependency-panel').textContent).toContain('Dependency from Order');
+
+    // Remove from the panel deletes the edge.
+    fireEvent.click(container.querySelector('.react-flow__node')!.querySelector('.uml-class')!);
+    const removeButton = screen.getByTestId('dependency-panel').querySelector<HTMLButtonElement>(
+      `button[aria-label="Delete dependency ${depId}"]`,
+    );
+    expect(removeButton).not.toBeNull();
+    fireEvent.click(removeButton!);
+    expect(projectYDocToDiagram(doc).dependencies).toHaveLength(0);
   });
 });

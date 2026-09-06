@@ -43,6 +43,8 @@ export type ClassNodeData = Record<string, unknown> & {
   onToggleAbstract: (isAbstract: boolean) => void;
   /** Unit 12.4: emit a realization create with this class as the client. */
   onRealize: (supplierInterfaceId: string) => void;
+  /** Unit 12.4 (12b): emit a dependency create with this class as the client. */
+  onDependOn: (supplierClassId: string) => void;
   /** Unit 11.4: select this class to show its generalization list in the panel. */
   onSelect: () => void;
 };
@@ -305,6 +307,23 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
               }}
             >
               Realize {iface.name}
+            </button>
+          ))}
+          {/* Unit 12.4 (12b) — depends on (client = this class). The supplier may
+              be ANY other classifier (class or interface) — unlike realization. */}
+          {data.otherClasses.map((other) => (
+            <button
+              key={`dep-${other.id}`}
+              type="button"
+              role="menuitem"
+              aria-label={`Depends on ${other.name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onDependOn(other.id);
+                setMenuOpen(false);
+              }}
+            >
+              Depends on {other.name}
             </button>
           ))}
           {/* Unit 12.4 — abstract toggle (interfaces are implicitly abstract; hide it there). */}

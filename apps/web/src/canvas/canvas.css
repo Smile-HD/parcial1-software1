@@ -293,3 +293,44 @@
   color: #b00020;
   cursor: pointer;
 }
+
+/* unit 12.4 (12b) — per-class dependency list in the editor panel */
+.diagram-canvas__dependencies {
+  position: absolute;
+  top: 290px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.diagram-canvas__dependencies-title {
+  font-weight: 700;
+}
+
+.diagram-canvas__dependencies-empty {
+  color: #777;
+}
+
+.diagram-canvas__dependency-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagram-canvas__delete-dependency {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #b00020;
+  border-radius: 4px;
+  background: #fff;
+  color: #b00020;
+  cursor: pointer;
+}

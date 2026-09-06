@@ -19,6 +19,7 @@ function createDiagram(overrides: Partial<Diagram> = {}): Diagram {
     associations: [],
     generalizations: [],
     realizations: [],
+    dependencies: [],
   };
   return DiagramSchema.parse({ ...base, ...overrides });
 }
@@ -1377,5 +1378,257 @@ describe('applyDelta — Class update op: kind + isAbstract (unit 12.1/12.4)', (
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.classes[0]!.kind).toBe('class');
+  });
+});
+
+describe('applyDelta — Dependency invariants (unit 12.2 — 12b half, editor:R Interfaces)', () => {
+  function dependencyDelta(state: Diagram, clientClassId: string, supplierClassId: string, dependencyId = uuidv4()) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'create' as const,
+      dependencyId,
+      clientClassId,
+      supplierClassId,
+    };
+  }
+
+  function deleteDependencyDelta(state: Diagram, dependencyId: string) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'delete' as const,
+      dependencyId,
+    };
+  }
+
+  it('CREATES a dependency edge between two PLAIN classes (supplier may be any classifier — unlike realization)', () => {
+    const orderId = uuidv4();
+    const serviceId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: serviceId, name: 'Service' }),
+      ],
+    });
+
+    const result = applyDelta(state, dependencyDelta(state, orderId, serviceId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.dependencies).toHaveLength(1);
+      expect(result.value.dependencies[0]).toMatchObject({ clientClassId: orderId, supplierClassId: serviceId });
+    }
+    // Input state untouched (immutability)
+    expect(state.dependencies).toHaveLength(0);
+  });
+
+  it('CREATES a dependency whose supplier is an INTERFACE (any classifier allowed)', () => {
+    const clientId = uuidv4();
+    const repoId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: clientId, name: 'Order' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+    });
+
+    const result = applyDelta(state, dependencyDelta(state, clientId, repoId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.dependencies).toHaveLength(1);
+  });
+
+  it('REJECTS create when the client class does not exist; model unchanged', () => {
+    const serviceId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: serviceId, name: 'Service' })] });
+
+    const result = applyDelta(state, dependencyDelta(state, uuidv4(), serviceId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.dependencies).toHaveLength(0);
+  });
+
+  it('REJECTS create when the supplier class does not exist; model unchanged', () => {
+    const orderId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: orderId, name: 'Order' })] });
+
+    const result = applyDelta(state, dependencyDelta(state, orderId, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.dependencies).toHaveLength(0);
+  });
+
+  it('REJECTS a duplicate dependency (same client + supplier) even with a different id', () => {
+    const orderId = uuidv4();
+    const serviceId = uuidv4();
+    const existing = { id: uuidv4(), clientClassId: orderId, supplierClassId: serviceId };
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: serviceId, name: 'Service' }),
+      ],
+      dependencies: [existing],
+    });
+
+    const result = applyDelta(state, dependencyDelta(state, orderId, serviceId));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('DuplicateDependencyError');
+    expect(state.dependencies).toHaveLength(1);
+  });
+
+  it('ALLOWS the same client depending on TWO different suppliers (triangulates the duplicate rule)', () => {
+    const orderId = uuidv4();
+    const serviceA = uuidv4();
+    const serviceB = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: serviceA, name: 'ServiceA' }),
+        createClass({ id: serviceB, name: 'ServiceB' }),
+      ],
+      dependencies: [{ id: uuidv4(), clientClassId: orderId, supplierClassId: serviceA }],
+    });
+
+    const result = applyDelta(state, dependencyDelta(state, orderId, serviceB));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.dependencies).toHaveLength(2);
+  });
+
+  it('ALLOWS two different clients depending on the SAME supplier', () => {
+    const supplierId = uuidv4();
+    const order1 = uuidv4();
+    const order2 = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: order1, name: 'Order' }),
+        createClass({ id: order2, name: 'Customer' }),
+        createClass({ id: supplierId, name: 'Service' }),
+      ],
+      dependencies: [{ id: uuidv4(), clientClassId: order1, supplierClassId: supplierId }],
+    });
+
+    const result = applyDelta(state, dependencyDelta(state, order2, supplierId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.dependencies).toHaveLength(2);
+  });
+
+  it('DELETES a dependency edge by id', () => {
+    const orderId = uuidv4();
+    const serviceId = uuidv4();
+    const depId = uuidv4();
+    const state = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: serviceId, name: 'Service' }),
+      ],
+      dependencies: [{ id: depId, clientClassId: orderId, supplierClassId: serviceId }],
+    });
+
+    const result = applyDelta(state, deleteDependencyDelta(state, depId));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.dependencies).toHaveLength(0);
+  });
+
+  it('REJECTS delete of an unknown dependency', () => {
+    const state = createDiagram({ classes: [createClass({ name: 'Item' })] });
+
+    const result = applyDelta(state, deleteDependencyDelta(state, uuidv4()));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('DependencyNotFoundError');
+  });
+
+  it('delete-class CASCADES: removes dependencies where the class is client AND where it is supplier', () => {
+    const orderId = uuidv4();
+    const customerId = uuidv4();
+    const serviceId = uuidv4();
+    // Edges are seeded directly through the IR (not the engine) so the cascade
+    // can be proven for BOTH roles.
+    const validState = createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: customerId, name: 'Customer' }),
+        createClass({ id: serviceId, name: 'Service' }),
+      ],
+      dependencies: [
+        { id: uuidv4(), clientClassId: orderId, supplierClassId: serviceId },    // Order is client
+        { id: uuidv4(), clientClassId: customerId, supplierClassId: serviceId }, // unrelated to Order
+        { id: uuidv4(), clientClassId: customerId, supplierClassId: orderId },   // Order as supplier
+      ],
+    });
+
+    const deleteOrder = {
+      id: uuidv4(),
+      diagramId: validState.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class' as const,
+      op: 'delete' as const,
+      classId: orderId,
+    };
+
+    const result = applyDelta(validState, deleteOrder);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Only the edge not touching Order survives.
+      expect(result.value.dependencies).toHaveLength(1);
+      expect(result.value.dependencies[0]).toMatchObject({ clientClassId: customerId, supplierClassId: serviceId });
+      // No dangling endpoint references remain
+      const remainingClassIds = result.value.classes.map((c) => c.id);
+      for (const dep of result.value.dependencies) {
+        expect(remainingClassIds).toContain(dep.clientClassId);
+        expect(remainingClassIds).toContain(dep.supplierClassId);
+      }
+    }
+  });
+
+  it('batch: a dependency with a missing end inside a batch rejects the WHOLE batch (atomicity)', () => {
+    const orderId = uuidv4();
+    const missingId = uuidv4();
+    const state = createDiagram({ classes: [createClass({ id: orderId, name: 'Order' })] });
+
+    const batch = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        dependencyDelta(state, orderId, missingId), // supplier does not exist → invalid
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'rename' as const,
+          classId: orderId,
+          newName: 'RenamedOrder',
+        },
+      ],
+    };
+
+    const result = applyDelta(state, batch);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('BatchError');
+      if (result.error.kind === 'BatchError') {
+        expect(result.error.failedDeltaIndex).toBe(0);
+        expect(result.error.error.kind).toBe('ClassNotFoundError');
+      }
+    }
+    // Nothing applied — rename did not leak
+    expect(state.dependencies).toHaveLength(0);
+    expect(state.classes[0]!.name).toBe('Order');
   });
 });

@@ -478,6 +478,39 @@ describe('collab-server transport (PR 5)', () => {
     });
   }, 15_000);
 
+  it('12.6 dependency edges survive collab and converge schema-valid (realtime:R3, editor:R5 — 12b half)', async () => {
+    const diagram = makeDiagram();
+    await insertDiagramRow(diagram);
+    const alice = connectClient(diagram.id, 'Alice');
+    const bob = connectClient(diagram.id, 'Bob');
+    await alice.synced;
+    await bob.synced;
+
+    // Alice adds a dependency edge (User → Order, both plain classes) to her doc.
+    const depId = uuidv7();
+    const yDep = new Y.Map();
+    yDep.set('id', depId);
+    yDep.set('clientClassId', diagram.classes[0]!.id);
+    yDep.set('supplierClassId', diagram.classes[1]!.id);
+    alice.ydoc.getMap('dependencies').set(depId, yDep);
+
+    await waitFor(
+      () => JSON.stringify(diagramOf(alice)) === JSON.stringify(diagramOf(bob)),
+      'dependency converges',
+    );
+    const parsed = DiagramSchema.safeParse(diagramOf(alice));
+    expect(parsed.success).toBe(true);
+
+    // Bob sees the edge with both endpoints intact.
+    const bobDeps = diagramOf(bob).dependencies;
+    expect(bobDeps).toHaveLength(1);
+    expect(bobDeps[0]).toMatchObject({
+      id: depId,
+      clientClassId: diagram.classes[0]!.id,
+      supplierClassId: diagram.classes[1]!.id,
+    });
+  }, 15_000);
+
   it('API PUT and collab debounce do not corrupt each other (5.2, two writers)', async () => {
     const diagram = makeDiagram();
     await insertDiagramRow(diagram);

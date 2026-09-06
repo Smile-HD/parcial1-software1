@@ -147,9 +147,23 @@ export const RealizationSchema = z.object({
 export type Realization = z.infer<typeof RealizationSchema>;
 
 /**
+ * Dependency edge: a client classifier uses a supplier classifier
+ * (UML 2.5.1 dependency, rendered as a dashed line with an open arrow on
+ * the supplier end; no multiplicity). Unlike realization, the supplier
+ * may be ANY class or interface — enforced by the apply engine (unit 12.2).
+ */
+export const DependencySchema = z.object({
+  id: z.string().uuid(),
+  clientClassId: z.string().uuid(),
+  supplierClassId: z.string().uuid(),
+});
+export type Dependency = z.infer<typeof DependencySchema>;
+
+/**
  * Diagram: the top-level IR containing classes, associations,
- * generalizations and realizations. `generalizations` and `realizations`
- * default to [] so pre-unit-11/12 diagrams stay valid (backward compat).
+ * generalizations, realizations and dependencies. `generalizations`,
+ * `realizations` and `dependencies` default to [] so pre-unit-11/12
+ * diagrams stay valid (backward compat).
  */
 export const DiagramSchema = z.object({
   id: z.string().uuid(),
@@ -158,5 +172,6 @@ export const DiagramSchema = z.object({
   associations: z.array(AssociationSchema),
   generalizations: z.array(GeneralizationSchema).default([]),
   realizations: z.array(RealizationSchema).default([]),
+  dependencies: z.array(DependencySchema).default([]),
 });
 export type Diagram = z.infer<typeof DiagramSchema>;

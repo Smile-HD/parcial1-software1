@@ -27,6 +27,8 @@ export {
   type Generalization,
   RealizationSchema,
   type Realization,
+  DependencySchema,
+  type Dependency,
   DiagramSchema,
   type Diagram,
 } from './ir.js';
@@ -45,6 +47,8 @@ export {
   type GeneralizationDelta,
   RealizationDeltaSchema,
   type RealizationDelta,
+  DependencyDeltaSchema,
+  type DependencyDelta,
   BatchDeltaSchema,
   type BatchDelta,
   deltaJsonSchema,

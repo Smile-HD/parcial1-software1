@@ -831,3 +831,65 @@ describe('API: Interface/abstract/realization round-trip (unit 12.6 — 12a half
     expect(body.diagram.realizations).toEqual([]);
   });
 });
+
+describe('API: Dependency round-trip (unit 12.6 — 12b half, editor:R5)', () => {
+  it('12.6 dependencies survive POST→GET losslessly through the blob-authoritative path', async () => {
+    const orderId = uuidv7();
+    const serviceId = uuidv7();
+    const repoId = uuidv7();
+    const depId = uuidv7();
+    const diagram = DiagramSchema.parse({
+      id: uuidv7(),
+      name: 'Dependency Round-trip',
+      classes: [
+        { id: orderId, name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: serviceId, name: 'Service', position: { x: 200, y: 0 }, attributes: [], methods: [] },
+        { id: repoId, name: 'Repository', position: { x: 400, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+      dependencies: [
+        { id: depId, clientClassId: orderId, supplierClassId: serviceId },
+        { id: uuidv7(), clientClassId: serviceId, supplierClassId: repoId },
+      ],
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Dependency Round-trip', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({ method: 'GET', url: `/diagrams/${diagram.id}` });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+
+    expect(body.diagram.dependencies).toHaveLength(2);
+    const pairs = body.diagram.dependencies
+      .map((d: any) => `${d.clientClassId}->${d.supplierClassId}`)
+      .sort();
+    expect(pairs).toEqual(
+      [`${orderId}->${serviceId}`, `${serviceId}->${repoId}`].sort(),
+    );
+    // Ids survive too (no re-generation on projection).
+    for (const dep of body.diagram.dependencies) {
+      expect(diagram.dependencies.some((d) => d.id === dep.id)).toBe(true);
+    }
+  });
+
+  it('12.6 backward compat: a diagram without dependencies still round-trips with an empty collection', async () => {
+    const diagram = createCompleteTestDiagram(); // pre-unit-12b shape
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/diagrams',
+      payload: { name: 'Legacy 12b', diagram },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const getResponse = await app.inject({ method: 'GET', url: `/diagrams/${diagram.id}` });
+    expect(getResponse.statusCode).toBe(200);
+    const body = JSON.parse(getResponse.body);
+    expect(body.diagram.dependencies).toEqual([]);
+  });
+});

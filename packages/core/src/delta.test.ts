@@ -11,14 +11,14 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     expect(Array.isArray((deltaJsonSchema as Record<string, unknown>).oneOf)).toBe(true);
   });
 
-  it('includes all six delta kinds in the generated schema', () => {
+  it('includes all seven delta kinds in the generated schema', () => {
     const schema = deltaJsonSchema as Record<string, unknown>;
     // The discriminated union should produce a oneOf/anyOf with all variants
     const variants = (schema.oneOf ?? schema.anyOf) as Array<Record<string, unknown>>;
     expect(Array.isArray(variants)).toBe(true);
     const kinds = variants.map(v => v.properties?.kind?.const).filter(Boolean);
-    // Unit 12.2 adds `realization` — expected union growth (12a half; dependency lands in 12b).
-    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'generalization', 'member', 'realization']);
+    // Unit 12.2 adds `realization` (12a) and `dependency` (12b) — expected union growth.
+    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'dependency', 'generalization', 'member', 'realization']);
   });
 
   it('validates a valid class delta through the union', () => {
@@ -435,5 +435,91 @@ describe('Delta Schema — Class kind/isAbstract carriers (unit 12.1/12.4)', () 
       classId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+});
+
+describe('Delta Schema — Dependency kind (unit 12.2 — 12b half)', () => {
+  it('validates a dependency create delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'create' as const,
+      dependencyId: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+      supplierClassId: crypto.randomUUID(),
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe('dependency');
+      expect(result.data.op).toBe('create');
+    }
+  });
+
+  it('validates a dependency delete delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'delete' as const,
+      dependencyId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(true);
+  });
+
+  it('REJECTS unknown ops for dependency deltas (only create|delete)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'update',
+      dependencyId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS a dependency create missing an end (schema gate, like realization)', () => {
+    const missingSupplier = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'create' as const,
+      dependencyId: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(missingSupplier).success).toBe(false);
+
+    const missingClient = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'dependency' as const,
+      op: 'create' as const,
+      dependencyId: crypto.randomUUID(),
+      supplierClassId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(missingClient).success).toBe(false);
+  });
+
+  it('batch delta accepts dependency inner deltas', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+    const batch = {
+      ...base,
+      kind: 'batch' as const,
+      deltas: [
+        { ...base, kind: 'dependency' as const, op: 'create' as const, dependencyId: crypto.randomUUID(), clientClassId: crypto.randomUUID(), supplierClassId: crypto.randomUUID() },
+        { ...base, kind: 'dependency' as const, op: 'delete' as const, dependencyId: crypto.randomUUID() },
+      ],
+    };
+    expect(DeltaSchema.safeParse(batch).success).toBe(true);
   });
 });

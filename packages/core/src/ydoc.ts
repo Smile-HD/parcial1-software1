@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { type Diagram, type Class, type Association, type Generalization, type Realization, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Generalization, type Realization, type Dependency, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema } from './ir.js';
 import { z } from 'zod';
 
 /**
@@ -10,6 +10,7 @@ const Y_DOC_TYPES = {
   associations: 'associations',
   generalizations: 'generalizations',
   realizations: 'realizations',
+  dependencies: 'dependencies',
   meta: 'meta',
 } as const;
 
@@ -26,6 +27,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
   const yAssociations = doc.getMap(Y_DOC_TYPES.associations);
   const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
   const yRealizations = doc.getMap(Y_DOC_TYPES.realizations);
+  const yDependencies = doc.getMap(Y_DOC_TYPES.dependencies);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   // Set diagram metadata
@@ -121,6 +123,15 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yRealizations.set(real.id, yReal);
   }
 
+  // Add dependencies (unit 12b — blob-preserving, same shape as realizations)
+  for (const dep of diagram.dependencies ?? []) {
+    const yDep = new Y.Map();
+    yDep.set('id', dep.id);
+    yDep.set('clientClassId', dep.clientClassId);
+    yDep.set('supplierClassId', dep.supplierClassId);
+    yDependencies.set(dep.id, yDep);
+  }
+
   return doc;
 }
 
@@ -133,6 +144,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   const yAssociations = doc.getMap(Y_DOC_TYPES.associations);
   const yGeneralizations = doc.getMap(Y_DOC_TYPES.generalizations);
   const yRealizations = doc.getMap(Y_DOC_TYPES.realizations);
+  const yDependencies = doc.getMap(Y_DOC_TYPES.dependencies);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
   const id = yMeta.get('id') as string;
@@ -258,6 +270,17 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     }));
   });
 
+  const dependencies: Dependency[] = [];
+  yDependencies.forEach((yDep) => {
+    if (!(yDep instanceof Y.Map)) return;
+
+    dependencies.push(DependencySchema.parse({
+      id: yDep.get('id') as string,
+      clientClassId: yDep.get('clientClassId') as string,
+      supplierClassId: yDep.get('supplierClassId') as string,
+    }));
+  });
+
   return DiagramSchema.parse({
     id,
     name,
@@ -265,6 +288,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     associations,
     generalizations,
     realizations,
+    dependencies,
   });
 }
 

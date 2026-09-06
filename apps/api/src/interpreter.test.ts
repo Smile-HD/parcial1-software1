@@ -213,9 +213,11 @@ describe('text interpreter API (PR 7)', () => {
     expect(body.supportedCategories).toContain('add/rename/delete class');
     // Unit 11.5 — generalization is part of the bounded vocabulary.
     expect(body.supportedCategories).toContain('create/remove generalization (inheritance)');
-    // Unit 12.5 (12a) — interfaces/abstract + realization join the vocabulary (dependency lands in 12b).
+    // Unit 12.5 (12a) — interfaces/abstract + realization join the vocabulary.
     expect(body.supportedCategories).toContain('create interfaces and abstract classes');
     expect(body.supportedCategories).toContain('create/remove realization (class realizes interface)');
+    // Unit 12.5 (12b) — dependency joins the vocabulary.
+    expect(body.supportedCategories).toContain('create/remove dependency (client depends on supplier)');
   });
 
   it('returns 404 when interpreting a diagram that does not exist', async () => {
