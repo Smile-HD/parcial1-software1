@@ -47,6 +47,13 @@ export type ClassNodeData = Record<string, unknown> & {
   onDependOn: (supplierClassId: string) => void;
   /** Unit 11.4: select this class to show its generalization list in the panel. */
   onSelect: () => void;
+  /**
+   * Unit 13c — node-wide drag-to-connect: when an edge tool is armed the
+   * canvas renders a full-node transparent source handle so a connection can
+   * START anywhere on the body, not just on the small handle dots. When not
+   * armed the overlay does not exist, so node dragging is untouched.
+   */
+  connectArmed?: boolean;
 };
 
 export type ClassFlowNode = import('@xyflow/react').Node<ClassNodeData, 'class'>;
@@ -645,6 +652,37 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
+      {/* unit 13c — node-wide drag-to-connect: while an edge tool is armed,
+          this transparent full-node source handle makes the whole body a
+          valid connection start (and, in loose mode, a valid end). It is NOT
+          rendered when no tool is armed, so node dragging and in-node
+          editing behave exactly as before. */}
+      {data.connectArmed === true && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="connect-body"
+          data-testid="node-connect-overlay"
+          className="uml-class__connect-overlay"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100%',
+            height: '100%',
+            minWidth: 0,
+            minHeight: 0,
+            transform: 'none',
+            borderRadius: 0,
+            border: 'none',
+            background: 'transparent',
+            boxShadow: 'none',
+            zIndex: 5,
+          }}
+        />
+      )}
     </div>
   );
 }

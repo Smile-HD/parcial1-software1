@@ -586,3 +586,71 @@ describe('ydoc codec — NaryAssociation round-trip (unit 13.1/13.5)', () => {
     expect(projected.naryAssociations).toEqual([]);
   });
 });
+
+describe('ydoc codec — Edge label (name) round-trip (unit 13c)', () => {
+  function diagramWithLabeledEdges(): Diagram {
+    return DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Edge Labels',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ItemType', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'Repository', position: { x: 600, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+      generalizations: [
+        { id: '550e8400-e29b-41d4-a716-446655440004', subClassId: '550e8400-e29b-41d4-a716-446655440001', superClassId: '550e8400-e29b-41d4-a716-446655440002', name: 'inherits' },
+      ],
+      realizations: [
+        { id: '550e8400-e29b-41d4-a716-446655440005', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierInterfaceId: '550e8400-e29b-41d4-a716-446655440003', name: 'implements' },
+      ],
+      dependencies: [
+        { id: '550e8400-e29b-41d4-a716-446655440006', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierClassId: '550e8400-e29b-41d4-a716-446655440002', name: 'uses' },
+      ],
+    });
+  }
+
+  it('buildYDocFromDiagram → projectYDocToDiagram preserves names on generalization/realization/dependency', () => {
+    const original = diagramWithLabeledEdges();
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.generalizations[0]!.name).toBe('inherits');
+    expect(projected.realizations[0]!.name).toBe('implements');
+    expect(projected.dependencies[0]!.name).toBe('uses');
+  });
+
+  it('round-trip through encode/load preserves edge names (blob-authoritative path)', () => {
+    const original = diagramWithLabeledEdges();
+    const doc = buildYDocFromDiagram(original);
+    const update = encodeYDoc(doc);
+    const loadedDoc = loadYDocFromUpdate(update);
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.generalizations[0]!.name).toBe('inherits');
+    expect(projected.realizations[0]!.name).toBe('implements');
+    expect(projected.dependencies[0]!.name).toBe('uses');
+  });
+
+  it('backward compat: edges without a name key project name undefined (no phantom field)', () => {
+    const original = DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'No Labels',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ItemType', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [{ id: '550e8400-e29b-41d4-a716-446655440003', subClassId: '550e8400-e29b-41d4-a716-446655440001', superClassId: '550e8400-e29b-41d4-a716-446655440002' }],
+      dependencies: [{ id: '550e8400-e29b-41d4-a716-446655440004', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierClassId: '550e8400-e29b-41d4-a716-446655440002' }],
+    });
+
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.generalizations[0]!.name).toBeUndefined();
+    expect(projected.dependencies[0]!.name).toBeUndefined();
+    // The projected object must deep-equal the original entry (no undefined-key drift).
+    expect(projected.generalizations[0]).toEqual(original.generalizations[0]);
+  });
+});

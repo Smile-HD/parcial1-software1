@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssociationSchema, AttributeSchema, ClassSchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema, NaryAssociationSchema, NaryMemberEndSchema, RealizationSchema } from './ir.js';
+import { AssociationSchema, AttributeSchema, ClassSchema, DependencySchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema, NaryAssociationSchema, NaryMemberEndSchema, RealizationSchema } from './ir.js';
 
 describe('IR Schema — Multiplicity Validation (editor:R4)', () => {
   it('accepts valid multiplicities: 1, 0..1, 1..*, 0..*', () => {
@@ -447,5 +447,91 @@ describe('IR Schema — NaryAssociation collection (unit 13.1, editor:R N-ary)',
       associations: [],
     });
     expect(parsed.naryAssociations).toEqual([]);
+  });
+});
+
+describe('IR Schema — Optional edge labels (unit 13c, unified edge editing)', () => {
+  it('GeneralizationSchema accepts an optional name', () => {
+    const parsed = GeneralizationSchema.parse({
+      id: crypto.randomUUID(),
+      subClassId: crypto.randomUUID(),
+      superClassId: crypto.randomUUID(),
+      name: 'inherits',
+    });
+    expect(parsed.name).toBe('inherits');
+  });
+
+  it('GeneralizationSchema still validates WITHOUT a name (backward compat)', () => {
+    const parsed = GeneralizationSchema.parse({
+      id: crypto.randomUUID(),
+      subClassId: crypto.randomUUID(),
+      superClassId: crypto.randomUUID(),
+    });
+    expect(parsed.name).toBeUndefined();
+  });
+
+  it('GeneralizationSchema REJECTS a non-string name', () => {
+    expect(
+      GeneralizationSchema.safeParse({
+        id: crypto.randomUUID(),
+        subClassId: crypto.randomUUID(),
+        superClassId: crypto.randomUUID(),
+        name: 42,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('RealizationSchema accepts an optional name and stays valid without one', () => {
+    const withName = RealizationSchema.parse({
+      id: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+      supplierInterfaceId: crypto.randomUUID(),
+      name: 'implements',
+    });
+    expect(withName.name).toBe('implements');
+
+    const withoutName = RealizationSchema.parse({
+      id: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+      supplierInterfaceId: crypto.randomUUID(),
+    });
+    expect(withoutName.name).toBeUndefined();
+  });
+
+  it('DependencySchema accepts an optional name and stays valid without one', () => {
+    const withName = DependencySchema.parse({
+      id: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+      supplierClassId: crypto.randomUUID(),
+      name: 'uses',
+    });
+    expect(withName.name).toBe('uses');
+
+    const withoutName = DependencySchema.parse({
+      id: crypto.randomUUID(),
+      clientClassId: crypto.randomUUID(),
+      supplierClassId: crypto.randomUUID(),
+    });
+    expect(withoutName.name).toBeUndefined();
+  });
+
+  it('DiagramSchema round-trips edge names on all three collections', () => {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Labels',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: bId, name: 'B', position: { x: 100, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [{ id: crypto.randomUUID(), subClassId: aId, superClassId: bId, name: 'gen' }],
+      realizations: [{ id: crypto.randomUUID(), clientClassId: aId, supplierInterfaceId: bId, name: 'real' }],
+      dependencies: [{ id: crypto.randomUUID(), clientClassId: aId, supplierClassId: bId, name: 'dep' }],
+    });
+    expect(parsed.generalizations[0]!.name).toBe('gen');
+    expect(parsed.realizations[0]!.name).toBe('real');
+    expect(parsed.dependencies[0]!.name).toBe('dep');
   });
 });

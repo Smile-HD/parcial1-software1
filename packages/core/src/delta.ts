@@ -89,17 +89,21 @@ export const AssociationDeltaSchema = DeltaBase.extend({
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 
 /**
- * Generalization-level operations: create (subclass → superclass) and delete.
- * A `create` must carry both ends (schema gate); engine invariants (both
- * classes exist, no duplicates, no cycles) are enforced by applyDelta — unit 11.2.
+ * Generalization-level operations: create (subclass → superclass), update
+ * (editable label — unit 13c) and delete. A `create` must carry both ends
+ * (schema gate); an `update` must carry `name` (schema gate, mirroring the
+ * class-update gate). Engine invariants (both classes exist, no duplicates,
+ * no cycles) are enforced by applyDelta — unit 11.2.
  */
 export const GeneralizationDeltaSchema = DeltaBase.extend({
   kind: z.literal('generalization'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   generalizationId: z.string().uuid(),
   // For create: both ends required (enforced by the refinement below)
   subClassId: z.string().uuid().optional(),
   superClassId: z.string().uuid().optional(),
+  // For update: the optional edge label (unit 13c)
+  name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.subClassId || !delta.superClassId)) {
     ctx.addIssue({
@@ -107,22 +111,31 @@ export const GeneralizationDeltaSchema = DeltaBase.extend({
       message: 'Generalization create requires subClassId and superClassId',
     });
   }
+  if (delta.op === 'update' && delta.name === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Generalization update requires name',
+    });
+  }
 });
 export type GeneralizationDelta = z.infer<typeof GeneralizationDeltaSchema>;
 
 /**
- * Realization-level operations: create (client class → supplier interface)
- * and delete. A `create` must carry both ends (schema gate); engine
+ * Realization-level operations: create (client class → supplier interface),
+ * update (editable label — unit 13c) and delete. A `create` must carry both
+ * ends (schema gate); an `update` must carry `name` (schema gate). Engine
  * invariants (both exist, supplier is an interface, no duplicates) are
  * enforced by applyDelta — unit 12.2.
  */
 export const RealizationDeltaSchema = DeltaBase.extend({
   kind: z.literal('realization'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   realizationId: z.string().uuid(),
   // For create: both ends required (enforced by the refinement below)
   clientClassId: z.string().uuid().optional(),
   supplierInterfaceId: z.string().uuid().optional(),
+  // For update: the optional edge label (unit 13c)
+  name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierInterfaceId)) {
     ctx.addIssue({
@@ -130,28 +143,43 @@ export const RealizationDeltaSchema = DeltaBase.extend({
       message: 'Realization create requires clientClassId and supplierInterfaceId',
     });
   }
+  if (delta.op === 'update' && delta.name === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Realization update requires name',
+    });
+  }
 });
 export type RealizationDelta = z.infer<typeof RealizationDeltaSchema>;
 
 /**
  * Dependency-level operations: create (client class → supplier class or
- * interface) and delete. A `create` must carry both ends (schema gate);
- * engine invariants (both exist, no duplicates) are enforced by
- * applyDelta — unit 12.2 (12b half). The supplier may be ANY classifier
- * (no interface requirement) and there is NO multiplicity.
+ * interface), update (editable label — unit 13c) and delete. A `create`
+ * must carry both ends (schema gate); an `update` must carry `name`
+ * (schema gate). Engine invariants (both exist, no duplicates) are
+ * enforced by applyDelta — unit 12.2 (12b half). The supplier may be ANY
+ * classifier (no interface requirement) and there is NO multiplicity.
  */
 export const DependencyDeltaSchema = DeltaBase.extend({
   kind: z.literal('dependency'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   dependencyId: z.string().uuid(),
   // For create: both ends required (enforced by the refinement below)
   clientClassId: z.string().uuid().optional(),
   supplierClassId: z.string().uuid().optional(),
+  // For update: the optional edge label (unit 13c)
+  name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierClassId)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Dependency create requires clientClassId and supplierClassId',
+    });
+  }
+  if (delta.op === 'update' && delta.name === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Dependency update requires name',
     });
   }
 });

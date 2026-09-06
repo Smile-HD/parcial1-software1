@@ -539,6 +539,8 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
  * Applies a single generalization delta (unit 11.2 invariants):
  * - create: both classes must exist; no duplicate edge (same sub+super);
  *   no cycles (self-loop, 2-cycle, or transitive via ancestor traversal).
+ * - update: the edge must exist; sets the optional label (unit 13c). An
+ *   empty string clears it (mirrors the association name semantics).
  * - delete: the edge must exist.
  */
 function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta): ApplyResult<Diagram> {
@@ -567,6 +569,22 @@ function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta):
       return ok({ ...diagram, generalizations: [...diagram.generalizations, newGeneralization] });
     }
 
+    case 'update': {
+      if (delta.name === undefined) {
+        return err({ kind: 'InvalidOperationError', reason: 'Generalization update requires name' });
+      }
+      const genIndex = diagram.generalizations.findIndex(g => g.id === delta.generalizationId);
+      if (genIndex === -1) {
+        return err({ kind: 'GeneralizationNotFoundError', generalizationId: delta.generalizationId });
+      }
+      const updatedGeneralizations = [...diagram.generalizations];
+      updatedGeneralizations[genIndex] = {
+        ...updatedGeneralizations[genIndex],
+        name: delta.name || undefined,
+      };
+      return ok({ ...diagram, generalizations: updatedGeneralizations });
+    }
+
     case 'delete': {
       const genIndex = diagram.generalizations.findIndex(g => g.id === delta.generalizationId);
       if (genIndex === -1) {
@@ -588,6 +606,8 @@ function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta):
  * - create: both ends must exist; the SUPPLIER MUST be an interface
  *   (`kind === 'interface'` — realizing a plain or abstract class is a
  *   UML violation); no duplicate edge (same client + supplier).
+ * - update: the edge must exist; sets the optional label (unit 13c). An
+ *   empty string clears it (mirrors the association name semantics).
  * - delete: the edge must exist.
  */
 function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): ApplyResult<Diagram> {
@@ -619,6 +639,22 @@ function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): Apply
       return ok({ ...diagram, realizations: [...diagram.realizations, newRealization] });
     }
 
+    case 'update': {
+      if (delta.name === undefined) {
+        return err({ kind: 'InvalidOperationError', reason: 'Realization update requires name' });
+      }
+      const realIndex = diagram.realizations.findIndex(r => r.id === delta.realizationId);
+      if (realIndex === -1) {
+        return err({ kind: 'RealizationNotFoundError', realizationId: delta.realizationId });
+      }
+      const updatedRealizations = [...diagram.realizations];
+      updatedRealizations[realIndex] = {
+        ...updatedRealizations[realIndex],
+        name: delta.name || undefined,
+      };
+      return ok({ ...diagram, realizations: updatedRealizations });
+    }
+
     case 'delete': {
       const realIndex = diagram.realizations.findIndex(r => r.id === delta.realizationId);
       if (realIndex === -1) {
@@ -641,6 +677,8 @@ function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): Apply
  *   supplier). Unlike realization, the supplier may be ANY class or
  *   interface — there is NO interface-target requirement and NO
  *   multiplicity.
+ * - update: the edge must exist; sets the optional label (unit 13c). An
+ *   empty string clears it (mirrors the association name semantics).
  * - delete: the edge must exist.
  */
 function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyResult<Diagram> {
@@ -664,6 +702,22 @@ function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyRe
         supplierClassId: delta.supplierClassId,
       });
       return ok({ ...diagram, dependencies: [...diagram.dependencies, newDependency] });
+    }
+
+    case 'update': {
+      if (delta.name === undefined) {
+        return err({ kind: 'InvalidOperationError', reason: 'Dependency update requires name' });
+      }
+      const depIndex = diagram.dependencies.findIndex(d => d.id === delta.dependencyId);
+      if (depIndex === -1) {
+        return err({ kind: 'DependencyNotFoundError', dependencyId: delta.dependencyId });
+      }
+      const updatedDependencies = [...diagram.dependencies];
+      updatedDependencies[depIndex] = {
+        ...updatedDependencies[depIndex],
+        name: delta.name || undefined,
+      };
+      return ok({ ...diagram, dependencies: updatedDependencies });
     }
 
     case 'delete': {

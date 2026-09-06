@@ -2015,3 +2015,145 @@ describe('applyDelta — N-ary association invariants (unit 13.1, editor:R N-ary
     expect(state.classes[0]!.name).toBe('Supplier');
   });
 });
+
+describe('applyDelta — Edge label updates (unit 13c, unified edge editing)', () => {
+  function edgeState(): Diagram {
+    const orderId = uuidv4();
+    const itemTypeId = uuidv4();
+    const repoId = uuidv4();
+    return createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: itemTypeId, name: 'ItemType' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+      generalizations: [{ id: uuidv4(), subClassId: orderId, superClassId: itemTypeId }],
+      realizations: [{ id: uuidv4(), clientClassId: orderId, supplierInterfaceId: repoId }],
+      dependencies: [{ id: uuidv4(), clientClassId: orderId, supplierClassId: itemTypeId }],
+    });
+  }
+
+  function updateEdgeDelta(
+    state: Diagram,
+    kind: 'generalization' | 'realization' | 'dependency',
+    idField: 'generalizationId' | 'realizationId' | 'dependencyId',
+    edgeId: string,
+    name: string,
+  ) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: kind as const,
+      op: 'update' as const,
+      [idField]: edgeId,
+      name,
+    };
+  }
+
+  it('UPDATES a generalization name; endpoints untouched; delete still works afterwards', () => {
+    const state = edgeState();
+    const gen = state.generalizations[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'generalization', 'generalizationId', gen.id, 'inherits'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const updated = result.value.generalizations[0]!;
+      expect(updated.name).toBe('inherits');
+      expect(updated.subClassId).toBe(gen.subClassId);
+      expect(updated.superClassId).toBe(gen.superClassId);
+      // Input state untouched (immutability)
+      expect(state.generalizations[0]!.name).toBeUndefined();
+
+      // Delete still works on an edge that carries a name.
+      const deleted = applyDelta(result.value, {
+        id: uuidv4(),
+        diagramId: result.value.id,
+        timestamp: new Date().toISOString(),
+        kind: 'generalization' as const,
+        op: 'delete' as const,
+        generalizationId: gen.id,
+      });
+      expect(deleted.ok).toBe(true);
+      if (deleted.ok) expect(deleted.value.generalizations).toHaveLength(0);
+    }
+  });
+
+  it('UPDATES a realization name', () => {
+    const state = edgeState();
+    const real = state.realizations[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'realization', 'realizationId', real.id, 'implements'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.realizations[0]!.name).toBe('implements');
+      expect(result.value.realizations[0]!.clientClassId).toBe(real.clientClassId);
+    }
+  });
+
+  it('UPDATES a dependency name', () => {
+    const state = edgeState();
+    const dep = state.dependencies[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'dependency', 'dependencyId', dep.id, 'uses'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.dependencies[0]!.name).toBe('uses');
+      expect(result.value.dependencies[0]!.clientClassId).toBe(dep.clientClassId);
+    }
+  });
+
+  it('an EMPTY name clears the label (back to undefined)', () => {
+    const state = edgeState();
+    const gen = state.generalizations[0]!;
+
+    const named = applyDelta(state, updateEdgeDelta(state, 'generalization', 'generalizationId', gen.id, 'inherits'));
+    expect(named.ok).toBe(true);
+    if (named.ok) {
+      const cleared = applyDelta(named.value, updateEdgeDelta(named.value, 'generalization', 'generalizationId', gen.id, ''));
+      expect(cleared.ok).toBe(true);
+      if (cleared.ok) expect(cleared.value.generalizations[0]!.name).toBeUndefined();
+    }
+  });
+
+  it('REJECTS update of an unknown edge with the matching NotFound error; model unchanged', () => {
+    const state = edgeState();
+
+    const cases: {
+      kind: 'generalization' | 'realization' | 'dependency';
+      idField: 'generalizationId' | 'realizationId' | 'dependencyId';
+      error: string;
+    }[] = [
+      { kind: 'generalization', idField: 'generalizationId', error: 'GeneralizationNotFoundError' },
+      { kind: 'realization', idField: 'realizationId', error: 'RealizationNotFoundError' },
+      { kind: 'dependency', idField: 'dependencyId', error: 'DependencyNotFoundError' },
+    ];
+
+    for (const { kind, idField, error } of cases) {
+      const result = applyDelta(state, updateEdgeDelta(state, kind, idField, uuidv4(), 'ghost'));
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe(error);
+    }
+    // Nothing leaked
+    expect(state.generalizations[0]!.name).toBeUndefined();
+    expect(state.realizations[0]!.name).toBeUndefined();
+    expect(state.dependencies[0]!.name).toBeUndefined();
+  });
+
+  it('update on one edge kind does not touch the other collections', () => {
+    const state = edgeState();
+    const gen = state.generalizations[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'generalization', 'generalizationId', gen.id, 'inherits'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.realizations[0]!.name).toBeUndefined();
+      expect(result.value.dependencies[0]!.name).toBeUndefined();
+      expect(result.value.associations).toEqual(state.associations);
+    }
+  });
+});
