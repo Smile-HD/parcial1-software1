@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssociationSchema, AttributeSchema, ClassSchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema, RealizationSchema } from './ir.js';
+import { AssociationSchema, AttributeSchema, ClassSchema, DiagramSchema, GeneralizationSchema, MethodSchema, MultiplicitySchema, NaryAssociationSchema, NaryMemberEndSchema, RealizationSchema } from './ir.js';
 
 describe('IR Schema — Multiplicity Validation (editor:R4)', () => {
   it('accepts valid multiplicities: 1, 0..1, 1..*, 0..*', () => {
@@ -365,5 +365,87 @@ describe('IR Schema — Realization collection (unit 12.2)', () => {
       associations: [],
     });
     expect(parsed.realizations).toEqual([]);
+  });
+});
+
+describe('IR Schema — NaryAssociation collection (unit 13.1, editor:R N-ary)', () => {
+  it('NaryMemberEndSchema accepts { classId, multiplicity } and an optional role', () => {
+    const classId = crypto.randomUUID();
+    const parsed = NaryMemberEndSchema.parse({ classId, multiplicity: '1' });
+    expect(parsed.classId).toBe(classId);
+    expect(parsed.role).toBeUndefined();
+
+    const withRole = NaryMemberEndSchema.parse({ classId, multiplicity: '0..*', role: 'supplier' });
+    expect(withRole.role).toBe('supplier');
+  });
+
+  it('NaryMemberEndSchema rejects non-uuid classId and garbage multiplicity', () => {
+    expect(NaryMemberEndSchema.safeParse({ classId: 'nope', multiplicity: '1' }).success).toBe(false);
+    expect(NaryMemberEndSchema.safeParse({ classId: crypto.randomUUID(), multiplicity: 'abc' }).success).toBe(false);
+    expect(NaryMemberEndSchema.safeParse({ multiplicity: '1' }).success).toBe(false);
+  });
+
+  it('NaryAssociationSchema accepts { id, memberEnds (>=3), name? }', () => {
+    const ends = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const parsed = NaryAssociationSchema.parse({
+      id: crypto.randomUUID(),
+      memberEnds: ends.map((classId, i) => ({
+        classId,
+        multiplicity: i === 0 ? '1' : i === 1 ? '0..*' : '*',
+        ...(i === 0 ? { role: 'supplier' } : {}),
+      })),
+      name: 'supply',
+    });
+    expect(parsed.memberEnds).toHaveLength(3);
+    expect(parsed.memberEnds[0]!.role).toBe('supplier');
+    expect(parsed.name).toBe('supply');
+  });
+
+  it('NaryAssociationSchema REJECTS fewer than 3 member ends (IR integrity: n-ary means >=3)', () => {
+    const two = [crypto.randomUUID(), crypto.randomUUID()];
+    expect(NaryAssociationSchema.safeParse({
+      id: crypto.randomUUID(),
+      memberEnds: two.map((classId) => ({ classId, multiplicity: '1' })),
+    }).success).toBe(false);
+    expect(NaryAssociationSchema.safeParse({
+      id: crypto.randomUUID(),
+      memberEnds: [],
+    }).success).toBe(false);
+  });
+
+  it('NaryAssociationSchema accepts 4+ ends (quaternary and beyond)', () => {
+    const four = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const parsed = NaryAssociationSchema.parse({
+      id: crypto.randomUUID(),
+      memberEnds: four.map((classId) => ({ classId, multiplicity: '1' })),
+    });
+    expect(parsed.memberEnds).toHaveLength(4);
+    expect(parsed.name).toBeUndefined();
+  });
+
+  it('DiagramSchema accepts an naryAssociations collection', () => {
+    const classIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const naryId = crypto.randomUUID();
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Nary',
+      classes: classIds.map((id, i) => ({ id, name: `C${i}`, position: { x: i * 100, y: 0 }, attributes: [], methods: [] })),
+      associations: [],
+      naryAssociations: [
+        { id: naryId, memberEnds: classIds.map((classId) => ({ classId, multiplicity: '1' })) },
+      ],
+    });
+    expect(parsed.naryAssociations).toHaveLength(1);
+    expect(parsed.naryAssociations[0]!.id).toBe(naryId);
+  });
+
+  it('backward compat: diagrams WITHOUT naryAssociations still validate and default to []', () => {
+    const parsed = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'Legacy',
+      classes: [],
+      associations: [],
+    });
+    expect(parsed.naryAssociations).toEqual([]);
   });
 });

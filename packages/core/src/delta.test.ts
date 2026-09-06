@@ -11,14 +11,15 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     expect(Array.isArray((deltaJsonSchema as Record<string, unknown>).oneOf)).toBe(true);
   });
 
-  it('includes all seven delta kinds in the generated schema', () => {
+  it('includes all eight delta kinds in the generated schema', () => {
     const schema = deltaJsonSchema as Record<string, unknown>;
     // The discriminated union should produce a oneOf/anyOf with all variants
     const variants = (schema.oneOf ?? schema.anyOf) as Array<Record<string, unknown>>;
     expect(Array.isArray(variants)).toBe(true);
     const kinds = variants.map(v => v.properties?.kind?.const).filter(Boolean);
-    // Unit 12.2 adds `realization` (12a) and `dependency` (12b) — expected union growth.
-    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'dependency', 'generalization', 'member', 'realization']);
+    // Unit 12.2 adds `realization` (12a) and `dependency` (12b); unit 13.1 adds
+    // `naryAssociation` — expected union growth.
+    expect(kinds.sort()).toEqual(['association', 'batch', 'class', 'dependency', 'generalization', 'member', 'naryAssociation', 'realization']);
   });
 
   it('validates a valid class delta through the union', () => {
@@ -518,6 +519,126 @@ describe('Delta Schema — Dependency kind (unit 12.2 — 12b half)', () => {
       deltas: [
         { ...base, kind: 'dependency' as const, op: 'create' as const, dependencyId: crypto.randomUUID(), clientClassId: crypto.randomUUID(), supplierClassId: crypto.randomUUID() },
         { ...base, kind: 'dependency' as const, op: 'delete' as const, dependencyId: crypto.randomUUID() },
+      ],
+    };
+    expect(DeltaSchema.safeParse(batch).success).toBe(true);
+  });
+});
+
+describe('Delta Schema — NaryAssociation kind (unit 13.1)', () => {
+  it('validates an naryAssociation create delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'create' as const,
+      naryAssociationId: crypto.randomUUID(),
+      memberEnds: [
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+        { classId: crypto.randomUUID(), multiplicity: '0..*' },
+        { classId: crypto.randomUUID(), multiplicity: '*', role: 'supplier' },
+      ],
+      name: 'supply',
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe('naryAssociation');
+      expect(result.data.op).toBe('create');
+    }
+  });
+
+  it('validates an naryAssociation delete delta through the union', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'delete' as const,
+      naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(true);
+  });
+
+  it('REJECTS unknown ops for naryAssociation deltas (only create|delete)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update',
+      naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS an naryAssociation create missing memberEnds (schema gate, like dependency)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'create' as const,
+      naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS member ends with garbage multiplicity or non-uuid classId (schema gate)', () => {
+    const garbage = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'create' as const,
+      naryAssociationId: crypto.randomUUID(),
+      memberEnds: [
+        { classId: crypto.randomUUID(), multiplicity: 'abc' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+      ],
+    };
+    expect(DeltaSchema.safeParse(garbage).success).toBe(false);
+
+    const badId = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'create' as const,
+      naryAssociationId: crypto.randomUUID(),
+      memberEnds: [
+        { classId: 'not-a-uuid', multiplicity: '1' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+      ],
+    };
+    expect(DeltaSchema.safeParse(badId).success).toBe(false);
+  });
+
+  it('batch delta accepts naryAssociation inner deltas', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+    const batch = {
+      ...base,
+      kind: 'batch' as const,
+      deltas: [
+        {
+          ...base,
+          kind: 'naryAssociation' as const,
+          op: 'create' as const,
+          naryAssociationId: crypto.randomUUID(),
+          memberEnds: [
+            { classId: crypto.randomUUID(), multiplicity: '1' },
+            { classId: crypto.randomUUID(), multiplicity: '1' },
+            { classId: crypto.randomUUID(), multiplicity: '1' },
+          ],
+        },
+        { ...base, kind: 'naryAssociation' as const, op: 'delete' as const, naryAssociationId: crypto.randomUUID() },
       ],
     };
     expect(DeltaSchema.safeParse(batch).success).toBe(true);

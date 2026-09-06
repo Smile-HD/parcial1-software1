@@ -511,6 +511,78 @@ describe('collab-server transport (PR 5)', () => {
     });
   }, 15_000);
 
+  it('13.5 n-ary associations survive collab and converge schema-valid; binary associations untouched (realtime:R3, editor:R5)', async () => {
+    // Three classes + one BINARY association: the n-ary must never touch it.
+    const classA = { id: uuidv7(), name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] };
+    const classB = { id: uuidv7(), name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] };
+    const classC = { id: uuidv7(), name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] };
+    const binaryId = uuidv7();
+    const diagram = DiagramSchema.parse({
+      id: uuidv7(),
+      name: 'Nary Collab',
+      classes: [classA, classB, classC],
+      associations: [
+        {
+          id: binaryId,
+          sourceClassId: classA.id,
+          targetClassId: classB.id,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: true,
+        },
+      ],
+    });
+    await insertDiagramRow(diagram);
+    const alice = connectClient(diagram.id, 'Alice');
+    const bob = connectClient(diagram.id, 'Bob');
+    await alice.synced;
+    await bob.synced;
+
+    // Alice adds a ternary association (central diamond) over the three classes.
+    const naryId = uuidv7();
+    const yNary = new Y.Map();
+    yNary.set('id', naryId);
+    yNary.set('name', 'supply');
+    const yEnds = new Y.Array();
+    const ends: readonly [string, string, string | null][] = [
+      [classA.id, '1', 'supplier'],
+      [classB.id, '0..*', null],
+      [classC.id, '*', null],
+    ];
+    for (const [classId, multiplicity, role] of ends) {
+      const yEnd = new Y.Map();
+      yEnd.set('classId', classId);
+      yEnd.set('multiplicity', multiplicity);
+      if (role !== null) yEnd.set('role', role);
+      yEnds.push([yEnd]);
+    }
+    yNary.set('memberEnds', yEnds);
+    alice.ydoc.getMap('naryAssociations').set(naryId, yNary);
+
+    await waitFor(
+      () => JSON.stringify(diagramOf(alice)) === JSON.stringify(diagramOf(bob)),
+      'n-ary converges',
+    );
+    const parsed = DiagramSchema.safeParse(diagramOf(alice));
+    expect(parsed.success).toBe(true);
+
+    // Bob sees the n-ary with all three ends, multiplicities and the role.
+    const bobNary = diagramOf(bob).naryAssociations;
+    expect(bobNary).toHaveLength(1);
+    expect(bobNary[0]!.id).toBe(naryId);
+    expect(bobNary[0]!.name).toBe('supply');
+    expect(bobNary[0]!.memberEnds).toEqual([
+      { classId: classA.id, multiplicity: '1', role: 'supplier' },
+      { classId: classB.id, multiplicity: '0..*' },
+      { classId: classC.id, multiplicity: '*' },
+    ]);
+
+    // The binary association survived the n-ary round completely untouched.
+    expect(diagramOf(bob).associations).toHaveLength(1);
+    expect(diagramOf(bob).associations[0]!.id).toBe(binaryId);
+    expect(diagramOf(bob).associations[0]!.sourceClassId).toBe(classA.id);
+  }, 15_000);
+
   it('API PUT and collab debounce do not corrupt each other (5.2, two writers)', async () => {
     const diagram = makeDiagram();
     await insertDiagramRow(diagram);

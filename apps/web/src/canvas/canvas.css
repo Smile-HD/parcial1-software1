@@ -334,3 +334,97 @@
   color: #b00020;
   cursor: pointer;
 }
+
+/* unit 13.2 — central diamond node for n-ary associations */
+.uml-nary-diamond {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+.uml-nary-diamond__svg {
+  display: block;
+  overflow: visible;
+}
+
+.uml-nary-diamond__context-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 11px;
+}
+
+.uml-nary-diamond__context-menu button {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.uml-nary-diamond__context-menu button[role='menuitem'] {
+  border-color: #b00020;
+  color: #b00020;
+}
+
+/* unit 13.3 — n-ary association editor panel */
+.diagram-canvas__nary {
+  position: absolute;
+  top: 380px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.diagram-canvas__nary-title {
+  font-weight: 700;
+}
+
+.diagram-canvas__nary-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diagram-canvas__nary input {
+  width: 70px;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.diagram-canvas__create-nary {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #1a1a2e;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.diagram-canvas__create-nary:disabled {
+  color: #999;
+  border-color: #ccc;
+  cursor: not-allowed;
+}

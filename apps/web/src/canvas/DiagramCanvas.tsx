@@ -10,18 +10,20 @@ import { ReactFlow, type Edge, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type Dependency, type DependencyDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type Parameter, type Realization, type RealizationDelta } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type Association, type AssociationDelta, type ClassDelta, type DependencyDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type NaryAssociationDelta, type NaryMemberEnd, type Parameter, type Realization, type RealizationDelta } from '@app/core';
 
 import './canvas.css';
 import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
+import { NaryDiamondNode, type NaryDiamondFlowNode } from './NaryDiamondNode';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 import { AssociationEdge } from './AssociationEdge';
 import { GeneralizationEdge } from './GeneralizationEdge';
 import { RealizationEdge } from './RealizationEdge';
 import { DependencyEdge } from './DependencyEdge';
+import { NaryEndEdge } from './NaryEndEdge';
 
-const nodeTypes = { class: ClassNode };
-const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge, dependency: DependencyEdge };
+const nodeTypes = { class: ClassNode, naryDiamond: NaryDiamondNode };
+const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge, dependency: DependencyEdge, naryEnd: NaryEndEdge };
 
 export interface DiagramCanvasProps {
   doc: Y.Doc;
@@ -312,6 +314,94 @@ export function handleDeleteDependency(
 }
 
 /**
+ * editor:R N-ary (unit 13.2) — centroid of the member class positions.
+ * The diamond node is positioned here and re-derived on every projection,
+ * so it always sits at the center of its members (never user-dragged).
+ * An empty member list degenerates to the origin (defensive only: the
+ * engine guarantees >=3 ends).
+ */
+export function computeNaryCentroid(
+  positions: readonly { x: number; y: number }[],
+): { x: number; y: number } {
+  if (positions.length === 0) {
+    return { x: 0, y: 0 };
+  }
+  const sum = positions.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / positions.length, y: sum.y / positions.length };
+}
+
+/** One member end as entered in the n-ary editor UI. */
+export interface NaryMemberEndInput {
+  classId: string;
+  multiplicity: string;
+  role?: string;
+}
+
+/**
+ * editor:R N-ary (unit 13.2/13.3) — emit an naryAssociation `create` delta.
+ * Guards BEFORE emitting (DeltaSchema.parse throws, so garbage must never
+ * reach applyDeltaToYDoc): fewer than three ends are rejected, and every
+ * multiplicity must satisfy MultiplicitySchema. Engine invariants (member
+ * existence, duplicate ends) are enforced by applyDelta; a rejected delta
+ * leaves the Y.Doc unchanged.
+ */
+export function handleCreateNaryAssociation(
+  doc: Y.Doc,
+  diagramId: string,
+  input: { memberEnds: NaryMemberEndInput[]; name?: string },
+): void {
+  if (input.memberEnds.length < 3) {
+    return;
+  }
+  const memberEnds: NaryMemberEnd[] = [];
+  for (const end of input.memberEnds) {
+    if (end.classId === '') {
+      return;
+    }
+    const parsed = MultiplicitySchema.safeParse(end.multiplicity);
+    if (!parsed.success) {
+      return;
+    }
+    memberEnds.push({
+      classId: end.classId,
+      multiplicity: parsed.data,
+      ...(end.role !== undefined && end.role !== '' ? { role: end.role } : {}),
+    });
+  }
+  const delta: NaryAssociationDelta = {
+    kind: 'naryAssociation',
+    op: 'create',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    naryAssociationId: crypto.randomUUID(),
+    memberEnds,
+    ...(input.name !== undefined && input.name !== '' ? { name: input.name } : {}),
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
+ * editor:R N-ary (unit 13.3) — emit an naryAssociation `delete` delta
+ * (the diamond's context-menu action).
+ */
+export function handleDeleteNaryAssociation(
+  doc: Y.Doc,
+  diagramId: string,
+  naryAssociationId: string,
+): void {
+  const delta: NaryAssociationDelta = {
+    kind: 'naryAssociation',
+    op: 'delete',
+    id: crypto.randomUUID(),
+    diagramId,
+    timestamp: new Date().toISOString(),
+    naryAssociationId,
+  };
+  applyDeltaToYDoc(doc, delta);
+}
+
+/**
  * editor:R Interfaces (unit 12.4) — toggle the abstract marker via a class
  * `update` delta carrying isAbstract.
  */
@@ -355,6 +445,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [selectedAssociationId, setSelectedAssociationId] = useState<string | null>(null);
   // Unit 11.4 — the class whose generalization list is shown in the panel.
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  // Unit 13.3 — n-ary association mode: pick >=3 classes, per-end multiplicity.
+  const [naryMode, setNaryMode] = useState(false);
+  const [narySelection, setNarySelection] = useState<string[]>([]);
+  const [naryEnds, setNaryEnds] = useState<Record<string, string>>({});
+  const [naryName, setNaryName] = useState('');
 
   useEffect(() => {
     const sync = (): void => {
@@ -424,7 +519,17 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /** editor:R4 - link mode: click source class, then a different class to complete. */
-  const handleNodeClick = (node: { id: string }): void => {
+  const handleNodeClick = (node: { id: string; type?: string }): void => {
+    // Unit 13.3 — n-ary mode: clicking classes accumulates the member
+    // selection (click again to drop it). The diamond itself is not a
+    // selectable member; only class nodes participate.
+    if (naryMode) {
+      if (node.type !== 'class') return;
+      setNarySelection((prev) =>
+        prev.includes(node.id) ? prev.filter((id) => id !== node.id) : [...prev, node.id],
+      );
+      return;
+    }
     if (!linkMode) return;
     if (linkSource === null) {
       setLinkSource(node.id);
@@ -441,6 +546,24 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     });
     setLinkSource(null);
     setLinkMode(false);
+  };
+
+  /** Unit 13.3 — commit the n-ary association from the editor panel. */
+  const handleCreateNaryFromPanel = (): void => {
+    const memberEnds: NaryMemberEndInput[] = narySelection
+      .filter((classId) => diagram.classes.some((cls) => cls.id === classId))
+      .map((classId) => ({
+        classId,
+        multiplicity: naryEnds[classId] ?? '1',
+      }));
+    handleCreateNaryAssociation(doc, diagram.id, {
+      memberEnds,
+      ...(naryName.trim() !== '' ? { name: naryName.trim() } : {}),
+    });
+    setNaryMode(false);
+    setNarySelection([]);
+    setNaryEnds({});
+    setNaryName('');
   };
 
   const handleAddAttribute = (classId: string, name: string, type: string, adornments?: MemberAdornments): void => {
@@ -550,9 +673,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     applyDeltaToYDoc(doc, delta);
   };
 
-  const nodes = useMemo<ClassFlowNode[]>(
-    () =>
-      diagram.classes.map((cls) => ({
+  const nodes = useMemo<(ClassFlowNode | NaryDiamondFlowNode)[]>(
+    () => [
+      ...diagram.classes.map((cls) => ({
         id: cls.id,
         type: 'class' as const,
         position: cls.position,
@@ -590,6 +713,28 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           onSelect: () => setSelectedClassId(cls.id),
         } satisfies ClassNodeData,
       })),
+      // Unit 13.2 — one diamond node per n-ary association, positioned at the
+      // centroid of its member classes and re-derived on every projection
+      // (draggable: false — the centroid IS its position).
+      ...(diagram.naryAssociations ?? [])
+        .map((nary) => {
+          const memberPositions = nary.memberEnds
+            .map((end) => diagram.classes.find((cls) => cls.id === end.classId)?.position)
+            .filter((pos): pos is { x: number; y: number } => pos !== undefined);
+          if (memberPositions.length === 0) return null;
+          return {
+            id: nary.id,
+            type: 'naryDiamond' as const,
+            position: computeNaryCentroid(memberPositions),
+            draggable: false,
+            data: {
+              nary,
+              onDelete: () => handleDeleteNaryAssociation(doc, diagram.id, nary.id),
+            },
+          } satisfies NaryDiamondFlowNode;
+        })
+        .filter((node): node is NaryDiamondFlowNode => node !== null),
+    ],
     [diagram],
   );
 
@@ -629,6 +774,17 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         type: 'dependency' as const,
         data: { dependency: dep },
       })),
+      // Unit 13.2 — one plain edge per n-ary member end: diamond → class,
+      // labeled with that end's multiplicity (and role when present).
+      ...(diagram.naryAssociations ?? []).flatMap((nary) =>
+        nary.memberEnds.map((end) => ({
+          id: `${nary.id}:${end.classId}`,
+          source: nary.id,
+          target: end.classId,
+          type: 'naryEnd' as const,
+          data: { end, naryAssociationId: nary.id },
+        })),
+      ),
     ],
     [diagram],
   );
@@ -695,6 +851,19 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         >
           {linkMode ? 'Cancel link' : 'Link classes'}
         </button>
+        {/* Unit 13.3 — n-ary association mode: pick >=3 classes, set per-end
+            multiplicities, create. */}
+        <button
+          type="button"
+          onClick={() => {
+            setNaryMode(!naryMode);
+            setNarySelection([]);
+            setNaryEnds({});
+            setNaryName('');
+          }}
+        >
+          {naryMode ? 'Cancel n-ary' : 'N-ary association'}
+        </button>
         <label>
           <input
             type="checkbox"
@@ -706,6 +875,47 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         </label>
         {linkSource !== null && <span>Select target class</span>}
       </div>
+      {naryMode && narySelection.length > 0 && (
+        <div className="diagram-canvas__nary" data-testid="nary-panel">
+          <span className="diagram-canvas__nary-title">
+            N-ary association — {narySelection.length} of 3+ classes selected
+          </span>
+          {narySelection.map((classId) => {
+            const cls = diagram.classes.find((candidate) => candidate.id === classId);
+            if (cls === undefined) return null;
+            return (
+              <label key={classId} className="diagram-canvas__nary-end">
+                {cls.name}
+                <input
+                  aria-label={`Multiplicity for ${cls.name}`}
+                  value={naryEnds[classId] ?? '1'}
+                  onChange={(event) =>
+                    setNaryEnds((prev) => ({ ...prev, [classId]: event.target.value }))
+                  }
+                />
+              </label>
+            );
+          })}
+          <label>
+            Name
+            <input
+              aria-label="N-ary association name"
+              placeholder="optional"
+              value={naryName}
+              onChange={(event) => setNaryName(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="diagram-canvas__create-nary"
+            aria-label="Create n-ary association"
+            disabled={narySelection.length < 3}
+            onClick={handleCreateNaryFromPanel}
+          >
+            Create
+          </button>
+        </div>
+      )}
       {selectedAssociation && (
         <div className="diagram-canvas__multiplicity">
           <label>
