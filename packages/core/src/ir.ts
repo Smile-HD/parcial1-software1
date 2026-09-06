@@ -104,13 +104,17 @@ export type AggregationKind = z.infer<typeof AggregationKindSchema>;
  * Aggregation/composition and association names/roles are optional (backward compat).
  * aggregationEnd explicitly declares which end owns the aggregation diamond ('source' or 'target'),
  * independent of drawing direction. Defaults to 'source' for backward compat with old diagrams.
+ * Unit 13d fix C: the endpoint multiplicities are OPTIONAL — an end may be
+ * unspecified (composition/aggregation start empty, per the UML convention
+ * that a new connector carries no assumed multiplicity). Existing diagrams
+ * with multiplicities stay valid (backward compat); unspecified ≠ '1'.
  */
 export const AssociationSchema = z.object({
   id: z.string().uuid(),
   sourceClassId: z.string().uuid(),
   targetClassId: z.string().uuid(),
-  sourceMultiplicity: MultiplicitySchema,
-  targetMultiplicity: MultiplicitySchema,
+  sourceMultiplicity: MultiplicitySchema.optional(),
+  targetMultiplicity: MultiplicitySchema.optional(),
   directed: z.boolean(),
   aggregation: AggregationKindSchema.default('none'),
   aggregationEnd: z.enum(['source', 'target']).default('source'),

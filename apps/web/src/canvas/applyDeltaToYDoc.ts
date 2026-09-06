@@ -157,8 +157,10 @@ function buildYAssociation(assoc: Association): Y.Map<unknown> {
   yAssoc.set('id', assoc.id);
   yAssoc.set('sourceClassId', assoc.sourceClassId);
   yAssoc.set('targetClassId', assoc.targetClassId);
-  yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
-  yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
+  // Unit 13d fix C: optional multiplicities — an unspecified end stores NO
+  // key (absence ≠ '1'), mirroring core's ydoc codec.
+  if (assoc.sourceMultiplicity !== undefined) yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
+  if (assoc.targetMultiplicity !== undefined) yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
   yAssoc.set('directed', assoc.directed);
   // Unit 10: aggregation/name/roles must round-trip through the Y.Doc bridge
   yAssoc.set('aggregation', assoc.aggregation ?? 'none');

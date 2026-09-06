@@ -96,8 +96,10 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yAssoc.set('id', assoc.id);
     yAssoc.set('sourceClassId', assoc.sourceClassId);
     yAssoc.set('targetClassId', assoc.targetClassId);
-    yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
-    yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
+    // Unit 13d fix C: multiplicities are optional — an unspecified end stores
+    // NO key (absence is the signal; never a phantom '1').
+    if (assoc.sourceMultiplicity !== undefined) yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
+    if (assoc.targetMultiplicity !== undefined) yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
     yAssoc.set('directed', assoc.directed);
     yAssoc.set('aggregation', assoc.aggregation);
     yAssoc.set('aggregationEnd', assoc.aggregationEnd);
@@ -259,13 +261,17 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     const name = yAssoc.get('name') as string | undefined;
     const sourceRole = yAssoc.get('sourceRole') as string | undefined;
     const targetRole = yAssoc.get('targetRole') as string | undefined;
+    // Unit 13d fix C: absent multiplicity keys project to UNDEFINED ends
+    // (unspecified ≠ '1'); present keys round-trip exactly (backward compat).
+    const sourceMultiplicity = yAssoc.get('sourceMultiplicity') as Association['sourceMultiplicity'];
+    const targetMultiplicity = yAssoc.get('targetMultiplicity') as Association['targetMultiplicity'];
 
     associations.push(AssociationSchema.parse({
       id: yAssoc.get('id') as string,
       sourceClassId: yAssoc.get('sourceClassId') as string,
       targetClassId: yAssoc.get('targetClassId') as string,
-      sourceMultiplicity: yAssoc.get('sourceMultiplicity') as Association['sourceMultiplicity'],
-      targetMultiplicity: yAssoc.get('targetMultiplicity') as Association['targetMultiplicity'],
+      ...(sourceMultiplicity !== undefined ? { sourceMultiplicity } : {}),
+      ...(targetMultiplicity !== undefined ? { targetMultiplicity } : {}),
       directed: yAssoc.get('directed') as boolean,
       aggregation,
       aggregationEnd,
