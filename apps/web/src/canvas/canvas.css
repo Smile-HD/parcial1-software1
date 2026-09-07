@@ -484,6 +484,7 @@
   width: 68px;
   padding: 8px 6px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #fff;
   border: 1px solid #1a1a2e;
   border-radius: 6px;
@@ -534,6 +535,13 @@
 
 .palette__label {
   line-height: 1.1;
+  /* 13e.13 — labels never overflow the rail: long translations degrade to
+     an ellipsis (tooltip still carries the full text) instead of scrolling. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
 }
 
 .diagram-canvas__hint {
@@ -643,4 +651,674 @@
 
 .quicklinker-menu button:hover {
   background: #eef0f7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   unit 13e — EA-style visual theme (presentation only; behavior untouched).
+   Sparx Enterprise Architect look: cream classifier boxes with the folded
+   corner tab, three 1px-ruled compartments, orthogonal connectors, a docked
+   gray toolbox rail, light chrome panels and a dotted canvas.
+   These rules intentionally come LAST so they win over the plain pre-13e
+   styling above without deleting it (single rollback boundary: this block).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ea-ink: #1a1a2e;
+  --ea-border: #8a8a6a;
+  --ea-rule: #b3b39c;
+  --ea-fill-top: #fffdf4;
+  --ea-fill-bottom: #fff8e1;
+  --ea-select: #1e6fbf;
+  --ea-chrome: #f3f3f1;
+  --ea-chrome-border: #c8c8c4;
+  --ea-font: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── class box: three compartments + EA corner tab ───────────────────────── */
+
+.uml-class {
+  background: linear-gradient(180deg, var(--ea-fill-top) 0%, var(--ea-fill-bottom) 100%);
+  border: 1px solid var(--ea-border);
+  border-radius: 2px;
+  font-family: var(--ea-font);
+  font-size: 12px;
+  color: var(--ea-ink);
+  min-width: 170px;
+  box-shadow: 1px 2px 4px rgba(60, 60, 40, 0.18);
+}
+
+/* selected = EA blue 2px border + soft glow (modifier set in ClassNode). */
+.uml-class--selected {
+  border: 2px solid var(--ea-select);
+  box-shadow: 0 0 0 1px rgba(30, 111, 191, 0.25), 0 2px 8px rgba(30, 111, 191, 0.3);
+}
+
+/* interface keeps the 12a dashed border, same cream fill. */
+.uml-class--interface {
+  border-style: dashed;
+}
+
+/* The EA signature folded-corner tab (top-right dog-ear). Decorative. */
+.uml-class__corner-tab {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  z-index: 4;
+  background: linear-gradient(
+    225deg,
+    #f7f7f4 0%,
+    #f7f7f4 50%,
+    #ded6b6 50%,
+    #cfc6a2 100%
+  );
+  border-bottom-left-radius: 3px;
+}
+
+/* Compartments: name / attributes / operations, separated by 1px rules.
+   Empty ones stay as thin bands (consistent three-box EA look). */
+.uml-class__compartment {
+  border-top: 1px solid var(--ea-rule);
+}
+
+.uml-class__compartment--name {
+  border-top: none;
+  text-align: center;
+  padding: 4px 8px 5px;
+}
+
+.uml-class__compartment--attributes,
+.uml-class__compartment--operations {
+  min-height: 16px;
+}
+
+.uml-class__title {
+  background: transparent;
+  color: var(--ea-ink);
+  font-weight: 700;
+  padding: 0;
+  text-align: center;
+  border-bottom: none;
+}
+
+.uml-class__name {
+  font-weight: 700;
+}
+
+.uml-class__stereotype {
+  font-weight: 400;
+  font-style: italic;
+  font-size: 10.5px;
+  color: #55554a;
+  line-height: 1.2;
+}
+
+.uml-class__title-input {
+  border: 1px solid var(--ea-select);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--ea-ink);
+}
+
+/* Members: left-aligned UML signatures (visibility glyph, /derived, _static_). */
+.uml-class__section {
+  border-top: none;
+  padding: 2px 0;
+}
+
+.uml-class__member {
+  padding: 1px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.uml-class__member-text {
+  color: var(--ea-ink);
+}
+
+/* In-node add rows: quiet editing affordances inside their compartment. */
+.uml-class__add {
+  padding: 3px 8px 5px;
+  gap: 3px;
+  border-top: 1px dotted #d5d0ba;
+}
+
+.uml-class__add-input {
+  font-size: 10.5px;
+  border-color: #c5c5b5;
+  background: #fffef9;
+}
+
+.uml-class__add-button {
+  border: 1px solid var(--ea-border);
+  background: #f7f4e6;
+  font-size: 11px;
+}
+
+.uml-class__add-button:hover {
+  background: #efe9d2;
+}
+
+.uml-class__delete,
+.uml-class__edit-button,
+.uml-class__remove {
+  color: #6b6b58;
+}
+
+.uml-class__delete:hover,
+.uml-class__edit-button:hover,
+.uml-class__remove:hover {
+  color: var(--ea-select);
+}
+
+/* Handles: EA shows no big connector dots — keep them tiny and neutral. */
+.react-flow__handle {
+  width: 7px;
+  height: 7px;
+  background: #7f7f7f;
+  border: 1px solid #fff;
+}
+
+/* ── edges: EA ink + selection highlight (paths are orthogonal since 13e) ── */
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--ea-select);
+}
+
+.react-flow__edge .react-flow__edge-path {
+  stroke-linejoin: round;
+}
+
+/* ── docked toolbox (Palette.tsx) ────────────────────────────────────────── */
+
+.palette {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  /* 13e.13 — wide enough for glyph + FULL label text (was 86px, which
+     clipped "Generalization" to "gene" and forced a horizontal scroll). */
+  width: 160px;
+  gap: 8px;
+  padding: 0 0 8px;
+  background: var(--ea-chrome);
+  border: none;
+  border-right: 1px solid var(--ea-chrome-border);
+  border-radius: 0;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.06);
+  font-family: var(--ea-font);
+}
+
+.palette__header {
+  flex: none;
+  padding: 6px 4px;
+  margin-bottom: 2px;
+  background: #e3e3df;
+  border-bottom: 1px solid var(--ea-chrome-border);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4a4a42;
+  text-align: center;
+}
+
+.palette__group {
+  padding: 0 6px;
+  gap: 4px;
+}
+
+.palette__group-title {
+  color: #6a6a60;
+  border-bottom: 1px solid #dcdcd6;
+  padding-bottom: 2px;
+}
+
+.palette__item {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  font-size: 10px;
+  color: #3a3a34;
+}
+
+.palette__item svg {
+  flex: none;
+}
+
+.palette__item:hover {
+  border-color: var(--ea-chrome-border);
+  background: #fff;
+}
+
+.palette__item--active {
+  border-color: var(--ea-select);
+  background: #dcebfa;
+  box-shadow: inset 0 0 0 1px var(--ea-select);
+  color: #14497d;
+}
+
+/* ── light chrome: toolbar, editors, panels, hints ───────────────────────── */
+
+.diagram-canvas__toolbar {
+  left: 96px;
+}
+
+.diagram-canvas__toolbar button,
+.diagram-canvas__edge-editor,
+.diagram-canvas__nary,
+.diagram-canvas__generalizations,
+.diagram-canvas__realizations,
+.diagram-canvas__dependencies,
+.uml-class__context-menu,
+.uml-nary-diamond__context-menu,
+.quicklinker-menu {
+  font-family: var(--ea-font);
+}
+
+.diagram-canvas__toolbar button,
+.diagram-canvas__create-nary,
+.diagram-canvas__close-edge-editor,
+.diagram-canvas__delete-edge,
+.diagram-canvas__delete-generalization,
+.diagram-canvas__delete-realization,
+.diagram-canvas__delete-dependency {
+  background: #fbfbf9;
+  border: 1px solid #a9a9a0;
+  border-radius: 2px;
+  color: #33332e;
+}
+
+.diagram-canvas__toolbar button:hover,
+.diagram-canvas__create-nary:hover,
+.diagram-canvas__close-edge-editor:hover {
+  background: #eef0f4;
+  border-color: var(--ea-select);
+}
+
+.diagram-canvas__edge-editor,
+.diagram-canvas__nary,
+.diagram-canvas__generalizations,
+.diagram-canvas__realizations,
+.diagram-canvas__dependencies {
+  background: var(--ea-chrome);
+  border: 1px solid var(--ea-chrome-border);
+  border-radius: 2px;
+  box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.1);
+  color: #33332e;
+}
+
+/* 13e.13 — clear the widened 160px toolbox rail (was 96px for the 86px rail). */
+.diagram-canvas__edge-editor {
+  left: 172px;
+}
+
+.diagram-canvas__nary {
+  left: 172px;
+}
+
+.diagram-canvas__hint {
+  background: #4a4a44;
+  border-radius: 2px;
+  font-family: var(--ea-font);
+}
+
+.diagram-canvas__palette-message {
+  border-radius: 2px;
+  font-family: var(--ea-font);
+}
+
+.uml-class__context-menu,
+.quicklinker-menu {
+  background: #fbfbf9;
+  border: 1px solid #9a9a92;
+  border-radius: 2px;
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.uml-class__context-menu button:hover,
+.quicklinker-menu button:hover {
+  background: #dcebfa;
+}
+
+/* n-ary diamond: EA white fill, thin gray-olive stroke. */
+.uml-nary-diamond svg path {
+  fill: #fffdf4;
+  stroke: var(--ea-border);
+}
+
+/* ── app shell (App.tsx): compact title bar + light tool strips ──────────── */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  font-family: var(--ea-font);
+  color: var(--ea-ink);
+  background: #e9e9e5;
+}
+
+.app-shell__title {
+  flex: none;
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #3c3c36;
+  background: linear-gradient(180deg, #f4f4f1 0%, #e3e3de 100%);
+  border-bottom: 1px solid #b5b5ae;
+}
+
+.app-toolbar {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 12px;
+  background: var(--ea-chrome);
+  border-bottom: 1px solid var(--ea-chrome-border);
+  font-size: 12px;
+}
+
+.app-toolbar button {
+  font-family: var(--ea-font);
+  font-size: 12px;
+  padding: 3px 12px;
+  background: #fbfbf9;
+  border: 1px solid #a9a9a0;
+  border-radius: 2px;
+  color: #33332e;
+  cursor: pointer;
+}
+
+.app-toolbar button:hover {
+  border-color: var(--ea-select);
+  background: #eef0f4;
+}
+
+.interpreter-bar {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 12px;
+  background: #eeeeea;
+  border-bottom: 1px solid var(--ea-chrome-border);
+  font-size: 12px;
+}
+
+.interpreter-bar input {
+  flex: 1 1 auto;
+  max-width: 520px;
+  font-family: var(--ea-font);
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid #a9a9a0;
+  border-radius: 2px;
+  background: #fff;
+}
+
+.interpreter-bar button {
+  font-family: var(--ea-font);
+  font-size: 12px;
+  padding: 3px 12px;
+  background: #fbfbf9;
+  border: 1px solid #a9a9a0;
+  border-radius: 2px;
+  color: #33332e;
+  cursor: pointer;
+}
+
+.interpreter-bar button:hover {
+  border-color: var(--ea-select);
+  background: #eef0f4;
+}
+
+.interpreter-refusal,
+.interpreter-error {
+  color: #b00020;
+  font-size: 12px;
+}
+
+.app-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Canvas surface: EA light paper with the dot grid from <Background>. */
+.react-flow {
+  background: #fafaf6;
+  font-family: var(--ea-font);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   unit 13e.11 — responsive chrome, toolbox collapse, EA-style presence chips
+   and the language toggle. Appended LAST (same single-rollback-boundary rule
+   as the 13e theme block): presentation only, no behavior touched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Full-viewport shell: the canvas must fill the remaining height at any
+   window size (body margin was the only thing breaking the 100vh column). */
+body {
+  margin: 0;
+}
+
+/* ── toolbox collapse (canvas-owned state, header toggle) ────────────────── */
+
+.palette__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  /* 13e.13 — the ES header ("Caja de herramientas") is long: let it wrap
+     instead of squeezing the toggle or clipping. */
+  flex-wrap: wrap;
+}
+
+.palette__header-text {
+  min-width: 0;
+}
+
+.palette__toggle {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ea-font);
+  font-size: 11px;
+  line-height: 1;
+  color: #4a4a42;
+  background: #fbfbf9;
+  border: 1px solid var(--ea-chrome-border);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.palette__toggle:hover {
+  border-color: var(--ea-select);
+  background: #dcebfa;
+  color: #14497d;
+}
+
+/* Icon-only rail: labels and the header text disappear, items center. */
+.palette--collapsed {
+  width: 52px;
+}
+
+.palette--collapsed .palette__label,
+.palette--collapsed .palette__header-text {
+  display: none;
+}
+
+.palette--collapsed .palette__item {
+  justify-content: center;
+  padding: 3px 2px;
+}
+
+.palette--collapsed .palette__group {
+  padding: 0 4px;
+}
+
+/* ── EA-style presence chips (PresenceBar.tsx) ───────────────────────────── */
+
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.presence-bar__user {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 3px;
+  background: #fff;
+  border: 1px solid #d0d0c8;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #33332e;
+}
+
+.presence-bar__user:hover {
+  border-color: #b5b5ac;
+  background: #fdfdfb;
+}
+
+.presence-bar__avatar {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #dcebfa;
+  color: #14497d;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.presence-bar__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2e9e44;
+}
+
+.presence-bar__name {
+  line-height: 1.2;
+}
+
+/* ── language toggle (i18n.tsx LanguageToggle): EA segmented control ─────── */
+
+.lang-toggle {
+  display: inline-flex;
+  margin-left: auto;
+  background: #fff;
+  border: 1px solid #a9a9a0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.lang-toggle__option {
+  padding: 2px 9px;
+  font-family: var(--ea-font);
+  font-size: 11px;
+  line-height: 1.4;
+  color: #55554e;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+.lang-toggle__option + .lang-toggle__option {
+  border-left: 1px solid #a9a9a0;
+}
+
+.lang-toggle__option:hover {
+  background: #f0f4f8;
+}
+
+.lang-toggle__option--active {
+  background: #dcebfa;
+  color: #14497d;
+  font-weight: 600;
+}
+
+/* ── responsive: tablet/narrow ───────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  /* The toolbox auto-collapses to an icon-only rail. */
+  .palette {
+    width: 52px;
+  }
+
+  .palette .palette__label,
+  .palette .palette__header-text {
+    display: none;
+  }
+
+  .palette .palette__item {
+    justify-content: center;
+    padding: 3px 2px;
+  }
+
+  .palette .palette__group {
+    padding: 0 4px;
+  }
+
+  /* Panels hug the collapsed 52px rail again. */
+  .diagram-canvas__edge-editor,
+  .diagram-canvas__nary {
+    left: 64px;
+  }
+
+  /* Chrome strips wrap instead of clipping; panels stay on-screen. */
+  .app-toolbar,
+  .interpreter-bar {
+    flex-wrap: wrap;
+  }
+
+  .diagram-canvas__edge-editor,
+  .diagram-canvas__nary,
+  .diagram-canvas__generalizations,
+  .diagram-canvas__realizations,
+  .diagram-canvas__dependencies {
+    max-width: calc(100vw - 120px);
+    overflow: auto;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Interpreter stacks full-width; toolbar goes compact. */
+  .interpreter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .interpreter-bar input {
+    max-width: none;
+  }
+
+  .app-toolbar {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+
+  .lang-toggle {
+    margin-left: 0;
+  }
 }
