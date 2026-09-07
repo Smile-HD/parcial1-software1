@@ -215,15 +215,26 @@ Adds Unit 16b (diagram image export, PNG/JPEG, spec `diagram-image-export`); pai
 
 ## Phase 5: Adapters II (PRs 14–16)
 
-- [ ] 14.1 RED: name sanitizer — `../../pom.xml` rejected; `class` rejected; every write asserted inside job output root (codegen threat row 1).
+### Unit 14a: Generation core + name sanitizer (PR 14a — split 2026-09-07)
+
+- [ ] 14.1 RED: name sanitizer — `../../pom.xml` (read-only) rejected; `class` rejected; every write asserted inside job output root (codegen threat row 1).
 - [ ] 14.2 Create `packages/codegen/src/generate.ts` — IR→file map, type + multiplicity→JPA mapping tables, warning collector (document both tables).
 - [ ] 14.3 Test: unmapped attribute type ⇒ warning + String fallback (codegen:R2); missing-endpoint association skipped with warning, generation completes (codegen:R3).
 - [ ] 14.4 Test: 3-class diagram output contains ONLY backend sources/resources/build file — zero frontend dirs (codegen:R1).
-- [ ] 14.5 UML-v2 mapping: composition ⇒ owning-side `cascade = ALL, orphanRemoval = true`; shared aggregation ⇒ plain association (documented decision); generalization ⇒ `@Inheritance` single-table strategy with discriminator (warning per unmapped case); interfaces with realizations ⇒ `implements` clause; abstract class ⇒ `@MappedSuperclass` fallback OR abstract entity (warning); visibility `-`/`#` ⇒ private/protected fields; n-ary ⇒ intermediate join entity (documented); attribute multiplicity >1 ⇒ `List<T>` with `@ElementCollection`. Documented as codegen mapping table extension (spec delta below).
-- [ ] 14.6 Create `templates/spring-backend/**/*.hbs` (pom, application.properties, entity, repository, controller) + `golden/reference-diagram.json` (uses composition, generalization, interface + n-ary to lock the mappings) + `tools/golden-check.mjs` — `spawn` argv array, `shell:false`, fixed cwd, timeout (codegen threat row 2).
-- [ ] 14.6b Production profile in generated backend: `application-prod.properties` (PostgreSQL via env vars, schema managed by JPA/Flyway) alongside the offline H2 profile; generated README documents the AWS deploy path (EB/EC2 + RDS PostgreSQL) — production deploy itself is operator work.
-- [ ] 14.7 `POST /diagrams/:id/generate` → `{jobId}`; `GET /jobs/:id`; artifact download — in-process job registry (design D8).
+
+### Unit 14b: Spring templates + golden build (PR 14b — split 2026-09-07)
+
+- [ ] 14.6 Create `templates/spring-backend/**/*.hbs` (pom, application.properties, entity, repository, controller) + `golden/reference-diagram.json` (basic subset at this stage — composition, generalization, interface and n-ary are added in 14c to lock the v2 mappings) + `tools/golden-check.mjs` — `spawn` argv array, `shell:false`, fixed cwd, timeout (codegen threat row 2).
 - [ ] 14.8 Verify: golden build green (codegen:R5); intentionally break one template once and confirm the check fails naming it (codegen:R5).
+
+### Unit 14c: UML v2 semantic mappings + production profile (PR 14c — split 2026-09-07)
+
+- [ ] 14.5 UML-v2 mapping: composition ⇒ owning-side `cascade = ALL, orphanRemoval = true`; shared aggregation ⇒ plain association (documented decision); generalization ⇒ `@Inheritance` single-table strategy with discriminator (warning per unmapped case); interfaces with realizations ⇒ `implements` clause; abstract class ⇒ `@MappedSuperclass` fallback OR abstract entity (warning); visibility `-`/`#` ⇒ private/protected fields; n-ary ⇒ intermediate join entity (documented); attribute multiplicity >1 ⇒ `List<T>` with `@ElementCollection`. Documented as codegen mapping table extension (spec delta below). Extend `golden/reference-diagram.json` from 14b to lock every mapping above.
+- [ ] 14.6b Production profile in generated backend: `application-prod.properties` (PostgreSQL via env vars, schema managed by JPA/Flyway) alongside the offline H2 profile; generated README documents the AWS deploy path (EB/EC2 + RDS PostgreSQL) — production deploy itself is operator work.
+
+### Unit 14d: Generate-over-HTTP job API (PR 14d — split 2026-09-07)
+
+- [ ] 14.7 `POST /diagrams/:id/generate` → `{jobId}`; `GET /jobs/:id`; artifact download — in-process job registry (design D8).
 - [ ] 15.1 [P] RED: unsupported XMI version rejected naming supported version; current diagram unchanged (xmi:R1).
 - [ ] 15.2 RED: truncated/malformed XML ⇒ parse error, pre-import state intact (xmi:R4).
 - [ ] 15.3 Create `packages/adapters-import/src/xmi21.ts` (`fast-xml-parser`): classes/attrs/operations/associations+multiplicities, visibility from member name prefixes, aggregation kinds from memberEnd (`aggregation="shared"|"composite"`), generalization elements, interface/abstract classifiers, realization/dependency + n-ary membership (xmi:R1 + v2 subset).
@@ -235,7 +246,7 @@ Adds Unit 16b (diagram image export, PNG/JPEG, spec `diagram-image-export`); pai
 ### Unit 15b: XMI 2.1 exporter (PR 15b — scope amendment 2026-09-05)
 
 - [ ] 15b.1 RED: exported XMI parses back through the importer into the SAME model — lossless round-trip for the full supported subset (classes, members with visibility/static/derived/attribute-multiplicity, associations with kinds/names/roles/multiplicities, generalizations, interfaces/abstract/realization/dependency, n-ary).
-- [ ] 15b.2 Create `packages/adapters-import/src/xmi21-export.ts` — IR → standard UML 2.x XMI 2.1 document that EA can import (visibility prefixes `+|-|#|~`, derived `/`, static, multiplicity ranges, aggregation kinds on memberEnd, generalization/realization/dependency elements, n-ary membership); no EA-proprietary extensions required for round-trip.
+- [ ] 15b.2 Create `packages/adapters-import/src/xmi21-export.ts` — IR → standard UML 2.x XMI 2.1 document that EA can import (visibility prefixes `+|-|#|~`, derived /, static, multiplicity ranges, aggregation kinds on memberEnd, generalization/realization/dependency elements, n-ary membership); no EA-proprietary extensions required for round-trip.
 - [ ] 15b.3 Export preserves layout: canvas positions serialized in an XMI layout extension; importer falls back to grid auto-layout when absent.
 - [ ] 15b.4 `GET /diagrams/:id/export/xmi` streams the `.xmi` file as attachment; export is strictly read-only — idempotent, no mutation, no confirm gate.
 - [ ] 15b.5 Verify: golden diagram exercising the full supported subset round-trips (export → import → identical model) and works offline with zero network calls.
