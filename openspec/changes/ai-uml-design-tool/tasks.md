@@ -217,10 +217,10 @@ Adds Unit 16b (diagram image export, PNG/JPEG, spec `diagram-image-export`); pai
 
 ### Unit 14a: Generation core + name sanitizer (PR 14a — split 2026-09-07)
 
-- [ ] 14.1 RED: name sanitizer — `../../pom.xml` (read-only) rejected; `class` rejected; every write asserted inside job output root (codegen threat row 1).
-- [ ] 14.2 Create `packages/codegen/src/generate.ts` — IR→file map, type + multiplicity→JPA mapping tables, warning collector (document both tables).
-- [ ] 14.3 Test: unmapped attribute type ⇒ warning + String fallback (codegen:R2); missing-endpoint association skipped with warning, generation completes (codegen:R3).
-- [ ] 14.4 Test: 3-class diagram output contains ONLY backend sources/resources/build file — zero frontend dirs (codegen:R1).
+- [x] 14.1 RED: name sanitizer — `../../pom.xml` (read-only) rejected; `class` rejected; every write asserted inside job output root (codegen threat row 1).
+- [x] 14.2 Create `packages/codegen/src/generate.ts` — IR→file map, type + multiplicity→JPA mapping tables, warning collector (document both tables).
+- [x] 14.3 Test: unmapped attribute type ⇒ warning + String fallback (codegen:R2); missing-endpoint association skipped with warning, generation completes (codegen:R3).
+- [x] 14.4 Test: 3-class diagram output contains ONLY backend sources/resources/build file — zero frontend dirs (codegen:R1). Verified 2026-09-07 on `feature/ai-uml-design-tool-pr14`: codegen 18/18, full monorepo suite 593/593 green with Postgres up.
 
 ### Unit 14b: Spring templates + golden build (PR 14b — split 2026-09-07)
 
