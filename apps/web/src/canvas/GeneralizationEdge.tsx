@@ -9,7 +9,7 @@
  * serializes marker objects into attributes the browser cannot resolve
  * for custom SVG defs).
  */
-import { type EdgeProps, getBezierPath, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
 
 import type { Generalization } from '@app/core';
 
@@ -22,15 +22,15 @@ export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
 
   // Fallback for edges without generalization data (defensive).
   if (!data?.generalization) {
-    const [fallbackPath] = getBezierPath(props);
+    const [fallbackPath] = getSmoothStepPath(props);
     return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
   }
 
   const triangleId = `uml-${id}-generalization-triangle`;
 
-  // v12 returns a [path, labelX, labelY] tuple — the label coords center the
-  // editable edge name (unit 13c) on the bezier path.
-  const [path, labelX, labelY] = getBezierPath(props);
+  // unit 13e — EA-style orthogonal routing; the tuple's label coords center
+  // the editable edge name (unit 13c) on the connector.
+  const [path, labelX, labelY] = getSmoothStepPath(props);
   const label = data.generalization.name;
 
   return (

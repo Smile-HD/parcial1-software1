@@ -9,7 +9,7 @@
  * PR 11's GeneralizationEdge: React Flow serializes marker objects into
  * attributes the browser cannot resolve for custom SVG defs).
  */
-import { type EdgeProps, getBezierPath, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
 
 import type { Realization } from '@app/core';
 
@@ -25,15 +25,15 @@ export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
 
   // Fallback for edges without realization data (defensive).
   if (!data?.realization) {
-    const [fallbackPath] = getBezierPath(props);
+    const [fallbackPath] = getSmoothStepPath(props);
     return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={REALIZATION_DASH} fill="none" />;
   }
 
   const triangleId = `uml-${id}-realization-triangle`;
 
-  // v12 returns a [path, labelX, labelY] tuple — the label coords center the
-  // editable edge name (unit 13c) on the bezier path.
-  const [path, labelX, labelY] = getBezierPath(props);
+  // unit 13e — EA-style orthogonal routing; the tuple's label coords center
+  // the editable edge name (unit 13c) on the connector.
+  const [path, labelX, labelY] = getSmoothStepPath(props);
   const label = data.realization.name;
 
   return (

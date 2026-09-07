@@ -38,6 +38,7 @@ import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
 import { PresenceBar } from './canvas/PresenceBar';
+import { LanguageToggle, t, useT } from './i18n';
 
 const DIAGRAM_NAME = 'Untitled';
 const COLLAB_URL: string = import.meta.env.VITE_COLLAB_URL ?? 'ws://localhost:1234';
@@ -115,13 +116,13 @@ export async function saveDiagramFromDoc(
           currentVersion: error.currentVersion,
         };
       }
-      return { ok: false, status: 0, message: 'Failed to connect to the API' };
+      return { ok: false, status: 0, message: t('app.apiConnectFailed') };
     }
   }
   return {
     ok: false,
     status: 409,
-    message: 'Could not save: the diagram kept changing on the server',
+    message: t('app.saveRetryExhausted'),
   };
 }
 
@@ -150,6 +151,7 @@ function resolveCollabUrl(collabUrl: AppProps['collabUrl']): string | null {
 }
 
 export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {}) {
+  const { t: tr } = useT();
   const docRef = useRef<Y.Doc | null>(null);
   if (docRef.current === null) {
     docRef.current = injectedDoc ?? new Y.Doc();
@@ -195,7 +197,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     };
 
     const fail = (error: unknown): void => {
-      setErrorMessage(error instanceof DiagramApiError ? error.message : 'Failed to connect to the API');
+      setErrorMessage(error instanceof DiagramApiError ? error.message : t('app.apiConnectFailed'));
       setStatus('error');
     };
 
@@ -308,7 +310,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
         setInterpreter({ phase: 'error', message: outcome.message });
       })
       .catch((error: unknown) => {
-        setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Failed to reach the interpreter') });
+        setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.reachFailed')) });
       });
   };
 
@@ -322,13 +324,13 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       .then((result) => {
         const applied = applyDeltaToYDoc(doc, result.delta);
         if (!applied.ok) {
-          setInterpreter({ phase: 'error', message: `The confirmed change could not be applied (${applied.error.kind})` });
+          setInterpreter({ phase: 'error', message: t('interpreter.applyFailed', { kind: applied.error.kind }) });
           return;
         }
         setInterpreter({ phase: 'idle' });
       })
       .catch((error: unknown) => {
-        setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Failed to confirm the change') });
+        setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.confirmFailed')) });
       });
   };
 
@@ -345,7 +347,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       .catch((error: unknown) => {
         // Already consumed server-side is as good as discarded for the client.
         setInterpreter({ phase: 'idle' });
-        setSaveMessage(apiFailureMessage(error, 'Failed to discard the change'));
+        setSaveMessage(apiFailureMessage(error, t('interpreter.discardFailed')));
       });
   };
 
@@ -363,7 +365,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
         .startRecording()
         .catch((error: unknown) => {
           setRecording(false);
-          setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Microphone unavailable') });
+          setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.micUnavailable')) });
         });
       return;
     }
@@ -388,60 +390,63 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             setInterpreter({ phase: 'error', message: response.message });
           })
           .catch((error: unknown) => {
-            setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Failed to reach the speech-to-text service') });
+            setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.sttFailed')) });
           });
       },
       (error: unknown) => {
-        setInterpreter({ phase: 'error', message: apiFailureMessage(error, 'Recording failed') });
+        setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.recordingFailed')) });
       },
     );
   };
 
   return (
-    <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', margin: 0 }}>
-      <h1>AI UML Design Tool</h1>
-      {status === 'loading' && <p>Loading…</p>}
+    <main className="app-shell">
+      {/* unit 13e.8 — product name WITHOUT "AI", identical in both languages. */}
+      <h1 className="app-shell__title">{tr('app.title')}</h1>
+      {status === 'loading' && <p>{tr('app.loading')}</p>}
       {status === 'error' && (
         <div role="alert">
-          <p>{errorMessage ?? 'Failed to load the diagram'}</p>
+          <p>{errorMessage ?? tr('app.loadError')}</p>
         </div>
       )}
       {status === 'ready' && (
         <>
-          <div className="app-toolbar" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className="app-toolbar">
             <button type="button" onClick={handleSave}>
-              Save
+              {tr('toolbar.save')}
             </button>
             <span aria-live="polite">
-              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveMessage ?? ''}
+              {saveStatus === 'saving' ? tr('toolbar.saving') : saveStatus === 'saved' ? tr('toolbar.saved') : saveMessage ?? ''}
             </span>
             <PresenceBar names={peers} />
+            {/* unit 13e.9 — the EN/ES segmented control lives in the toolbar. */}
+            <LanguageToggle />
           </div>
-          <div className="interpreter-bar" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="interpreter-bar">
             <input
-              aria-label="Natural language command"
+              aria-label={tr('interpreter.ariaLabel')}
               value={commandDraft}
               onChange={(event) => setCommandDraft(event.target.value)}
-              placeholder='e.g. "add a class Product"'
+              placeholder={tr('interpreter.placeholder')}
               disabled={interpreter.phase === 'thinking'}
             />
             <button type="button" onClick={handleSubmitCommand} disabled={interpreter.phase === 'thinking'}>
-              Send
+              {tr('interpreter.send')}
             </button>
             {activeRecorder !== null && (
               <button
                 type="button"
                 onClick={handleToggleRecord}
                 disabled={interpreter.phase === 'thinking'}
-                aria-label={recording ? 'Stop voice command' : 'Record voice command'}
+                aria-label={recording ? tr('interpreter.stopAria') : tr('interpreter.recordAria')}
               >
-                {recording ? 'Stop' : 'Record'}
+                {recording ? tr('interpreter.stop') : tr('interpreter.record')}
               </button>
             )}
-            {interpreter.phase === 'thinking' && <span aria-live="polite">Thinking…</span>}
+            {interpreter.phase === 'thinking' && <span aria-live="polite">{tr('interpreter.thinking')}</span>}
             {interpreter.phase === 'refused' && (
               <span role="alert" className="interpreter-refusal">
-                Refused: {interpreter.reason}
+                {tr('interpreter.refused', { reason: interpreter.reason })}
               </span>
             )}
             {interpreter.phase === 'error' && (
@@ -457,7 +462,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               onReject={handleRejectDelta}
             />
           )}
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div className="app-canvas">
             <DiagramCanvas doc={doc} />
           </div>
         </>

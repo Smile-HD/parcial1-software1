@@ -100,13 +100,27 @@ describe('DiagramCanvas (renders exclusively from Y.Doc)', () => {
     expect(screen.getByText('Product')).toBeTruthy();
   });
 
-  it('adds a class node when the user clicks "Add class" (create delta)', () => {
+  it('adds a class node when the user drops the palette Class item (create delta)', () => {
+    // unit 13e.7 — the legacy "Add class" toolbar button is gone; the palette
+    // drag-and-drop is the creation path (same MouseEvent trick as the 13b
+    // onDrop wiring test — jsdom has no DragEvent with clientX).
     const diagram = makeFixture();
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
+    const dropEvent = new window.MouseEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 320,
+      clientY: 240,
+    });
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { getData: () => 'class', setData: () => {}, effectAllowed: '', dropEffect: '' },
+    });
+    act(() => {
+      container.querySelector('.react-flow')!.dispatchEvent(dropEvent);
+    });
 
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(3);
     expect(screen.getByText('Class1')).toBeTruthy();
@@ -1254,16 +1268,25 @@ describe('unit 12a — editor UI: add interface, realize + abstract in context m
     return { diagram: DiagramSchema.parse(diagram), orderId, repoId };
   }
 
-  it('toolbar "Add interface" creates a class node with kind "interface"', () => {
+  it('palette Interface drop creates a class node with kind "interface"', () => {
+    // unit 13e.7 — the legacy "Add interface" toolbar button is gone; the
+    // palette drop carries the interface kind through the same creation path.
     const { diagram } = uiFixture();
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
 
-    const addButton = Array.from(container.querySelectorAll('.diagram-canvas__toolbar button')).find(
-      (b) => b.textContent === 'Add interface',
-    );
-    expect(addButton).toBeDefined();
-    fireEvent.click(addButton!);
+    const dropEvent = new window.MouseEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 400,
+      clientY: 300,
+    });
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { getData: () => 'interface', setData: () => {}, effectAllowed: '', dropEffect: '' },
+    });
+    act(() => {
+      container.querySelector('.react-flow')!.dispatchEvent(dropEvent);
+    });
 
     const created = projectYDocToDiagram(doc).classes.find((c) => c.kind === 'interface' && c.name !== 'Repository');
     expect(created).toBeDefined();
@@ -1706,12 +1729,14 @@ describe('unit 13 — editor UI: n-ary mode, per-end multiplicity, diamond conte
     fireEvent.click(classEl);
   }
 
-  it('toolbar enters n-ary mode; picking 3 classes with per-end multiplicities creates the n-ary', () => {
+  it('palette n-ary item enters pick mode; picking 3 classes with per-end multiplicities creates the n-ary', () => {
+    // unit 13e.7 — the toolbar's "N-ary association" button is gone; the
+    // palette item drives the SAME shared mode toggle (13b wiring).
     const { diagram, ids } = naryUiFixture();
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'N-ary association' }));
+    fireEvent.click(screen.getByTestId('palette-nary'));
 
     clickClass(container, 0);
     clickClass(container, 1);
@@ -1740,7 +1765,8 @@ describe('unit 13 — editor UI: n-ary mode, per-end multiplicity, diamond conte
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'N-ary association' }));
+    // unit 13e.7 — palette n-ary item (the toolbar twin is gone).
+    fireEvent.click(screen.getByTestId('palette-nary'));
     clickClass(container, 0);
     clickClass(container, 1);
 
@@ -2062,8 +2088,8 @@ describe('unit 13b — canvas wiring: palette rail, armed-tool affordances (13b.
 
     fireEvent.click(screen.getByTestId('palette-nary'));
     expect(screen.getByTestId('palette-nary').getAttribute('aria-pressed')).toBe('true');
-    // The existing toolbar reflects the same mode (single source of truth).
-    expect(screen.getByRole('button', { name: 'Cancel n-ary' })).toBeTruthy();
+    // unit 13e.7 — the toolbar's "Cancel n-ary" twin is gone; the palette
+    // item's aria-pressed (asserted above) is the single mode reflection.
 
     for (const index of [0, 1, 2]) {
       fireEvent.click(container.querySelectorAll('.react-flow__node')[index]!.querySelector('.uml-class')!);
