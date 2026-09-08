@@ -1,0 +1,15 @@
+# Generated Spring configuration — PRODUCTION profile (task 14.6b):
+# PostgreSQL with credentials supplied purely via environment variables —
+# nothing hardcoded. Activate with SPRING_PROFILES_ACTIVE=prod.
+# Schema is managed by JPA (ddl-auto=update); Flyway can replace it later.
+# Rendered by templates/spring-backend/application-prod-properties.hbs — do not edit by hand.
+spring.application.name=generated-backend
+
+spring.datasource.url=${SPRING_DATASOURCE_URL}
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD}
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.open-in-view=false

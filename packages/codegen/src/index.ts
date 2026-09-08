@@ -33,3 +33,9 @@ export {
   type RelationshipKind,
   type Renderer,
 } from './generate.js';
+
+export {
+  createHandlebarsRenderer,
+  DEFAULT_TEMPLATES_DIR,
+  MAVEN_WRAPPER_TEMPLATE,
+} from './render.js';

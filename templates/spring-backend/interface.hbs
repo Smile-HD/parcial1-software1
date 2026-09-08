@@ -1,0 +1,20 @@
+package {{packageName}};
+
+{{#each (methodImports methods)}}
+import {{this}};
+{{/each}}
+
+/**
+ * Generated Java interface for UML interface classifier {{className}}.
+ * Rendered by templates/spring-backend/interface.hbs — do not edit by hand.
+ *
+ * 14c mapping: an interface classifier produces a PLAIN Java interface only —
+ * no JPA entity, repository, controller or service (documented decision:
+ * interfaces carry behavior, not persistence). Classes that realize it get an
+ * `implements` clause on their entity.
+ */
+public interface {{className}} {
+{{#each methods}}
+    {{returnType}} {{name}}({{#each parameters}}{{type}} {{name}}{{#unless @last}}, {{/unless}}{{/each}});
+{{/each}}
+}
