@@ -1,0 +1,60 @@
+package {{packageName}}.web;
+
+import {{packageName}}.{{className}};
+import {{packageName}}.repository.{{className}}Repository;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+/**
+ * Generated REST CRUD controller for {{className}} (codegen:R4 — create,
+ * read single, read list, update, delete).
+ * Rendered by templates/spring-backend/controller.hbs — do not edit by hand.
+ */
+@RestController
+@RequestMapping("/api/{{route className}}")
+public class {{className}}Controller {
+
+    private final {{className}}Repository repository;
+
+    public {{className}}Controller({{className}}Repository repository) {
+        this.repository = repository;
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public {{className}} create(@RequestBody {{className}} entity) {
+        return repository.save(entity);
+    }
+
+    @GetMapping("/{id}")
+    public {{className}} get(@PathVariable Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "{{className}} " + id + " not found"));
+    }
+
+    @GetMapping
+    public List<{{className}}> list() {
+        return repository.findAll();
+    }
+
+    @PutMapping("/{id}")
+    public {{className}} update(@PathVariable Long id, @RequestBody {{className}} entity) {
+        if (!repository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "{{className}} " + id + " not found");
+        }
+        entity.setId(id);
+        return repository.save(entity);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        if (!repository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "{{className}} " + id + " not found");
+        }
+        repository.deleteById(id);
+    }
+}

@@ -323,6 +323,21 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
     basePackage,
   });
 
+  // ---- 14b additive entries (mapping logic above untouched) ----
+  // Spring Boot main class: required for spring-boot-maven-plugin to produce
+  // an executable jar (the golden check starts `java -jar target/*.jar`).
+  push(`src/main/java/${packagePath}/Application.java`, 'source', 'application', {
+    basePackage,
+  });
+  // Vendored Maven wrapper assets (design decision 10 — one-command start).
+  // Raw, never-templated files served verbatim by the 14b renderer from
+  // templates/spring-backend/maven-wrapper/; the stub renderer just plans them.
+  push('mvnw', 'build', 'maven-wrapper', { asset: 'mvnw' });
+  push('mvnw.cmd', 'build', 'maven-wrapper', { asset: 'mvnw.cmd' });
+  push('.mvn/wrapper/maven-wrapper.properties', 'build', 'maven-wrapper', {
+    asset: 'maven-wrapper.properties',
+  });
+
   return { files, warnings };
 }
 

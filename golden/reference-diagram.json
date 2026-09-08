@@ -1,0 +1,76 @@
+{
+  "id": "aaaaaaaa-0000-4000-8000-000000000001",
+  "name": "Golden Reference Diagram (BASIC subset — 14b)",
+  "classes": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Customer",
+      "position": { "x": 80, "y": 80 },
+      "attributes": [
+        { "id": "11111111-1111-4111-8111-111111111112", "name": "name", "type": "String" },
+        { "id": "11111111-1111-4111-8111-111111111113", "name": "email", "type": "String" },
+        { "id": "11111111-1111-4111-8111-111111111114", "name": "active", "type": "Boolean" }
+      ],
+      "methods": []
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222221",
+      "name": "Order",
+      "position": { "x": 420, "y": 80 },
+      "attributes": [
+        { "id": "22222222-2222-4222-8222-222222222222", "name": "orderDate", "type": "Date" },
+        { "id": "22222222-2222-4222-8222-222222222223", "name": "total", "type": "BigDecimal" },
+        { "id": "22222222-2222-4222-8222-222222222224", "name": "status", "type": "String" }
+      ],
+      "methods": []
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333331",
+      "name": "Product",
+      "position": { "x": 420, "y": 420 },
+      "attributes": [
+        { "id": "33333333-3333-4333-8333-333333333332", "name": "name", "type": "String" },
+        { "id": "33333333-3333-4333-8333-333333333333", "name": "price", "type": "BigDecimal" },
+        { "id": "33333333-3333-4333-8333-333333333334", "name": "stock", "type": "Integer" }
+      ],
+      "methods": []
+    },
+    {
+      "id": "44444444-4444-4444-8444-444444444441",
+      "name": "ShippingAddress",
+      "position": { "x": 80, "y": 420 },
+      "attributes": [
+        { "id": "44444444-4444-4444-8444-444444444442", "name": "street", "type": "String" },
+        { "id": "44444444-4444-4444-8444-444444444443", "name": "zipCode", "type": "String" },
+        { "id": "44444444-4444-4444-8444-444444444444", "name": "isDefault", "type": "Boolean" }
+      ],
+      "methods": []
+    }
+  ],
+  "associations": [
+    {
+      "id": "55555555-5555-4555-8555-555555555551",
+      "sourceClassId": "11111111-1111-4111-8111-111111111111",
+      "targetClassId": "22222222-2222-4222-8222-222222222221",
+      "sourceMultiplicity": "1",
+      "targetMultiplicity": "0..*",
+      "directed": false
+    },
+    {
+      "id": "66666666-6666-4666-8666-666666666661",
+      "sourceClassId": "22222222-2222-4222-8222-222222222221",
+      "targetClassId": "33333333-3333-4333-8333-333333333331",
+      "sourceMultiplicity": "0..*",
+      "targetMultiplicity": "0..*",
+      "directed": false
+    },
+    {
+      "id": "77777777-7777-4777-8777-777777777771",
+      "sourceClassId": "11111111-1111-4111-8111-111111111111",
+      "targetClassId": "44444444-4444-4444-8444-444444444441",
+      "sourceMultiplicity": "1",
+      "targetMultiplicity": "1",
+      "directed": false
+    }
+  ]
+}

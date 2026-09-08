@@ -7,12 +7,14 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@app/core": "workspace:*"
+    "@app/core": "workspace:*",
+    "handlebars": "^4.7.9"
   },
   "scripts": {
     "test": "vitest run"
   },
   "devDependencies": {
+    "tsx": "^4.23.12",
     "vitest": "^3.0.0"
   }
 }

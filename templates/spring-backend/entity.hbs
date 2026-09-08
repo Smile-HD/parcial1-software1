@@ -1,0 +1,130 @@
+package {{packageName}};
+
+import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+{{#if relationships.length}}
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+{{/if}}
+{{#each (typeImports fields)}}
+import {{this}};
+{{/each}}
+
+/**
+ * Generated JPA entity for UML class {{className}}.
+ * Rendered by templates/spring-backend/entity.hbs — do not edit by hand.
+ *
+ * Relationship conventions (14b basic subset):
+ * - the table name is quoted so reserved SQL words (e.g. ORDER) are valid;
+ * - to-many collections fetch EAGER (documented 14b simplification — the
+ *   generated CRUD surface is small; DTOs/lazy tuning are 14d concerns);
+ * - each relationship carries @JsonIgnoreProperties for the back-reference so
+ *   bidirectional graphs serialize without Jackson recursion;
+ * - collection field names use the documented naive pluralization helper;
+ * - @ManyToMany ownership is deterministic: the lexicographically smaller
+ *   entity name owns the join table (self-referencing many-to-many is 14c);
+ * - the inverse side always carries mappedBy to the owning field.
+ */
+@Entity
+@Table(name = "\"{{className}}\"")
+public class {{className}} {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+{{#each fields}}
+    private {{javaType}} {{name}};
+
+{{/each}}
+{{#each relationships}}
+{{#if (eq kind 'OneToMany')}}
+    @JsonIgnoreProperties("{{camel ../className}}")
+    @OneToMany(mappedBy = "{{camel ../className}}", fetch = FetchType.EAGER)
+    private List<{{targetEntity}}> {{plural (camel targetEntity)}} = new ArrayList<>();
+
+{{else if (eq kind 'ManyToOne')}}
+    @JsonIgnoreProperties("{{plural (camel ../className)}}")
+    @ManyToOne
+    @JoinColumn(name = "{{snake (camel targetEntity)}}_id")
+    private {{targetEntity}} {{camel targetEntity}};
+
+{{else if (eq kind 'ManyToMany')}}
+{{#if (lt ../className targetEntity)}}
+    @JsonIgnoreProperties("{{plural (camel ../className)}}")
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "{{snake ../className}}_{{snake targetEntity}}",
+            joinColumns = @JoinColumn(name = "{{snake ../className}}_id"),
+            inverseJoinColumns = @JoinColumn(name = "{{snake targetEntity}}_id"))
+    private Set<{{targetEntity}}> {{plural (camel targetEntity)}} = new HashSet<>();
+{{else}}
+    @JsonIgnoreProperties("{{plural (camel ../className)}}")
+    @ManyToMany(mappedBy = "{{plural (camel ../className)}}", fetch = FetchType.EAGER)
+    private Set<{{targetEntity}}> {{plural (camel targetEntity)}} = new HashSet<>();
+{{/if}}
+
+{{else if (eq kind 'OneToOne')}}
+{{#if thisSideIsOwning}}
+    @JsonIgnoreProperties("{{camel ../className}}")
+    @OneToOne
+    @JoinColumn(name = "{{snake (camel targetEntity)}}_id")
+    private {{targetEntity}} {{camel targetEntity}};
+{{else}}
+    @JsonIgnoreProperties("{{camel ../className}}")
+    @OneToOne(mappedBy = "{{camel ../className}}")
+    private {{targetEntity}} {{camel targetEntity}};
+{{/if}}
+
+{{/if}}
+{{/each}}
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+{{#each fields}}
+    public {{javaType}} get{{cap name}}() {
+        return {{name}};
+    }
+
+    public void set{{cap name}}({{javaType}} {{name}}) {
+        this.{{name}} = {{name}};
+    }
+
+{{/each}}
+{{#each relationships}}
+{{#if (eq kind 'OneToMany')}}
+    public List<{{targetEntity}}> get{{cap (plural (camel targetEntity))}}() {
+        return {{plural (camel targetEntity)}};
+    }
+
+    public void set{{cap (plural (camel targetEntity))}}(List<{{targetEntity}}> {{plural (camel targetEntity)}}) {
+        this.{{plural (camel targetEntity)}} = {{plural (camel targetEntity)}};
+    }
+
+{{else if (eq kind 'ManyToMany')}}
+    public Set<{{targetEntity}}> get{{cap (plural (camel targetEntity))}}() {
+        return {{plural (camel targetEntity)}};
+    }
+
+    public void set{{cap (plural (camel targetEntity))}}(Set<{{targetEntity}}> {{plural (camel targetEntity)}}) {
+        this.{{plural (camel targetEntity)}} = {{plural (camel targetEntity)}};
+    }
+
+{{else}}
+    public {{targetEntity}} get{{cap (camel targetEntity)}}() {
+        return {{camel targetEntity}};
+    }
+
+    public void set{{cap (camel targetEntity)}}({{targetEntity}} {{camel targetEntity}}) {
+        this.{{camel targetEntity}} = {{camel targetEntity}};
+    }
+
+{{/if}}
+{{/each}}
+}

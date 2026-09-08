@@ -163,10 +163,15 @@ describe('backend-only output (codegen:R1, 14.4)', () => {
 
     expect(result.files.length).toBeGreaterThan(0);
     for (const file of result.files) {
+      // 14b additive: the Maven wrapper assets are backend BUILD files at the
+      // project root (design decision 10) — allowed alongside sources/resources/pom.
       const isBackend =
         file.path.startsWith('src/main/java/') ||
         file.path.startsWith('src/main/resources/') ||
-        file.path === 'pom.xml';
+        file.path === 'pom.xml' ||
+        file.path === 'mvnw' ||
+        file.path === 'mvnw.cmd' ||
+        file.path === '.mvn/wrapper/maven-wrapper.properties';
       expect(isBackend).toBe(true);
       expect(['source', 'resource', 'build']).toContain(file.kind);
       expect(file.path).not.toMatch(FRONTEND);
