@@ -221,6 +221,56 @@ describe('IR Schema — Association aggregationEnd (UML 2.5.1 explicit end owner
   });
 });
 
+describe('IR Schema — optional association multiplicities (unit 13d fix C)', () => {
+  it('accepts an association WITHOUT source/target multiplicity (ends may be unspecified)', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      directed: false,
+      aggregation: 'composite',
+    });
+    expect(parsed.sourceMultiplicity).toBeUndefined();
+    expect(parsed.targetMultiplicity).toBeUndefined();
+  });
+
+  it('accepts an association with ONLY ONE end specified (per-end optionality)', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      directed: false,
+      sourceMultiplicity: '1..*',
+    });
+    expect(parsed.sourceMultiplicity).toBe('1..*');
+    expect(parsed.targetMultiplicity).toBeUndefined();
+  });
+
+  it('backward compat: an association WITH multiplicities still validates with the exact values', () => {
+    const parsed = AssociationSchema.parse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      sourceMultiplicity: '0..1',
+      targetMultiplicity: '1..*',
+      directed: true,
+    });
+    expect(parsed.sourceMultiplicity).toBe('0..1');
+    expect(parsed.targetMultiplicity).toBe('1..*');
+  });
+
+  it('REJECTS garbage multiplicity when present — optional ≠ anything-goes', () => {
+    const result = AssociationSchema.safeParse({
+      id: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      directed: true,
+      sourceMultiplicity: 'abc',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('IR Schema — Generalization collection (unit 11.1)', () => {
   it('GeneralizationSchema accepts { id, subClassId, superClassId }', () => {
     const parsed = GeneralizationSchema.parse({

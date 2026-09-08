@@ -1,0 +1,483 @@
+/**
+ * unit 13e.11 — i18n: English/Spanish UI strings with a live language toggle.
+ *
+ * Design (deliberately small):
+ *  - A flat dictionary keyed by string id; `en` is the source of truth and
+ *    `es` is typed as `Record<TKey, string>` so a missing translation is a
+ *    COMPILE error, not a runtime fallback.
+ *  - A tiny external store (module state + listener set) synced with
+ *    `localStorage` under STORAGE_KEY. Default is English.
+ *  - `t(key, params)` is usable OUTSIDE components (guard-message builders,
+ *    event handlers) and reads the current language at call time.
+ *  - `useT()` subscribes the calling component to language changes via
+ *    `useSyncExternalStore`, so toggling re-renders every string live.
+ *  - `LanguageToggle` is the visible EN/ES segmented control used in the
+ *    app toolbar.
+ *
+ * Spanish copy is neutral/professional Latin-American Spanish (product UI
+ * register — no regional slang). The app title stays "UML Design Tool" in
+ * both languages (13e.8).
+ */
+import { useSyncExternalStore, type ReactElement } from 'react';
+
+export type Lang = 'en' | 'es';
+
+/** localStorage key holding the user's language choice. */
+export const LANG_STORAGE_KEY = 'uml-design-tool-lang';
+
+/** All user-facing UI strings, English (source of truth). */
+const EN = {
+  // App shell (13e.8: the title has no "AI" and is identical in both langs).
+  'app.title': 'UML Design Tool',
+  'app.loading': 'Loading…',
+  'app.loadError': 'Failed to load the diagram',
+  'app.apiConnectFailed': 'Failed to connect to the API',
+  'app.saveRetryExhausted': 'Could not save: the diagram kept changing on the server',
+  'toolbar.save': 'Save',
+  'toolbar.saving': 'Saving…',
+  'toolbar.saved': 'Saved',
+  'toolbar.language': 'Language',
+
+  // Interpreter bar.
+  'interpreter.ariaLabel': 'Natural language command',
+  'interpreter.placeholder': 'e.g. "add a class Product"',
+  'interpreter.send': 'Send',
+  'interpreter.record': 'Record',
+  'interpreter.stop': 'Stop',
+  'interpreter.recordAria': 'Record voice command',
+  'interpreter.stopAria': 'Stop voice command',
+  'interpreter.thinking': 'Thinking…',
+  'interpreter.refused': 'Refused: {reason}',
+  'interpreter.reachFailed': 'Failed to reach the interpreter',
+  'interpreter.confirmFailed': 'Failed to confirm the change',
+  'interpreter.discardFailed': 'Failed to discard the change',
+  'interpreter.applyFailed': 'The confirmed change could not be applied ({kind})',
+  'voice.micUnavailable': 'Microphone unavailable',
+  'voice.sttFailed': 'Failed to reach the speech-to-text service',
+  'voice.recordingFailed': 'Recording failed',
+
+  // Delta preview modal.
+  'preview.ariaLabel': 'AI change preview',
+  'preview.heading': 'AI proposes this change',
+  'preview.confirm': 'Confirm',
+  'preview.reject': 'Reject',
+
+  // Presence.
+  'presence.onlineUsers': 'Online users',
+
+  // Toolbox (Palette).
+  'toolbox.header': 'Toolbox',
+  'toolbox.objects': 'Objects',
+  'toolbox.relations': 'Relations',
+  'toolbox.ariaLabel': 'UML element palette',
+  'toolbox.collapse': 'Collapse toolbox',
+  'toolbox.expand': 'Expand toolbox',
+  'tool.class': 'Class',
+  'tool.interface': 'Interface',
+  'tool.association': 'Association',
+  'tool.aggregation': 'Aggregation',
+  'tool.composition': 'Composition',
+  'tool.generalization': 'Generalization',
+  'tool.realization': 'Realization',
+  'tool.dependency': 'Dependency',
+  'tool.nary': 'N-ary',
+  'palette.createClassAria': 'Create class (drag onto canvas)',
+  'palette.createInterfaceAria': 'Create interface (drag onto canvas)',
+  'palette.edgeToolAria': '{label} edge tool',
+  'palette.naryAria': 'N-ary association tool (pick 3 or more classes)',
+  'palette.dragClassTitle': 'Drag onto the canvas to create a class',
+  'palette.dragInterfaceTitle': 'Drag onto the canvas to create an interface',
+  'palette.armToolTitle': 'Click, then drag between two nodes to create a {label}',
+  'palette.naryTitle': 'Click, then pick at least three classes',
+
+  // Canvas toolbar.
+  'canvas.addClass': 'Add class',
+  'canvas.addInterface': 'Add interface',
+  'canvas.linkClasses': 'Link classes',
+  'canvas.cancelLink': 'Cancel link',
+  'canvas.naryAssociation': 'N-ary association',
+  'canvas.cancelNary': 'Cancel n-ary',
+  'canvas.directed': 'Directed',
+  'canvas.selectTarget': 'Select target class',
+  'canvas.edgeToolHint': '{tool} tool armed — drag from a source node to a target node. Press Esc to cancel.',
+
+  // N-ary pick panel.
+  'nary.panelTitle': 'N-ary association — {n} of 3+ classes selected',
+  'nary.multiplicityFor': 'Multiplicity for {name}',
+  'nary.name': 'Name',
+  'nary.nameAria': 'N-ary association name',
+  'nary.optional': 'optional',
+  'nary.create': 'Create',
+  'nary.createAria': 'Create n-ary association',
+
+  // Unified edge editor.
+  'editor.associationName': 'Association name',
+  'editor.label': 'Label',
+  'editor.labelAria': '{type} label',
+  'editor.sourceRole': 'Source role',
+  'editor.targetRole': 'Target role',
+  'editor.sourceMultiplicity': 'Source multiplicity',
+  'editor.targetMultiplicity': 'Target multiplicity',
+  'editor.diamondEnd': 'Diamond end: {end}',
+  'editor.endSource': 'Source',
+  'editor.endTarget': 'Target',
+  'editor.flipDiamondEnd': 'Flip diamond end',
+  'editor.flipDiamondEndAria': 'Flip diamond end to {end}',
+  'editor.delete': 'Delete {type}',
+  'editor.deleteAria': 'Delete {type} {id}',
+  'editor.close': 'Close',
+  'editor.closeAria': 'Close edge editor',
+
+  // N-ary diamond editor.
+  'naryEditor.title': 'N-ary association',
+  'naryEditor.nameAria': 'N-ary name',
+  'naryEditor.endMultiplicityAria': 'N-ary end multiplicity for {name}',
+  'naryEditor.delete': 'Delete n-ary association',
+  'naryEditor.deleteAria': 'Delete n-ary association {id}',
+  'naryEditor.closeAria': 'Close n-ary editor',
+
+  // Per-class relation panels.
+  'panel.generalizationsFor': 'Generalizations for {name}',
+  'panel.realizationsFor': 'Realizations for {name}',
+  'panel.dependenciesFor': 'Dependencies for {name}',
+  'panel.none': 'None',
+  'panel.inheritsFrom': 'Inherits from {name}',
+  'panel.inheritedBy': 'Inherited by {name}',
+  'panel.realizes': 'Realizes {name}',
+  'panel.realizedBy': 'Realized by {name}',
+  'panel.dependsOn': 'Depends on {name}',
+  'panel.dependencyFrom': 'Dependency from {name}',
+  'panel.removeInheritance': 'Remove inheritance',
+  'panel.removeInheritanceAria': 'Delete generalization {id}',
+  'panel.removeRealization': 'Remove realization',
+  'panel.removeRealizationAria': 'Delete realization {id}',
+  'panel.removeDependency': 'Remove dependency',
+  'panel.removeDependencyAria': 'Delete dependency {id}',
+
+  // Connection guards / engine rejections.
+  'guard.bothEndsClasses': 'Both ends of the connection must be classes.',
+  'guard.endpointsExist': 'Both endpoints must be existing classes.',
+  'guard.invalidEndpoints': '{label} rejected: invalid endpoints.',
+  'guard.rejectedReason': '{label} rejected: {reason}.',
+  'guard.noSelfInheritance': 'A class cannot inherit from itself.',
+  'guard.realizationTarget': 'A realization must target an interface («interface»).',
+  'reason.cycle': 'this inheritance would create a cycle',
+  'reason.duplicateGeneralization': 'this inheritance link already exists',
+  'reason.realizationNotInterface': 'the target must be an interface',
+  'reason.duplicateRealization': 'this realization already exists',
+  'reason.duplicateDependency': 'this dependency already exists',
+  'reason.classNotFound': 'a referenced class does not exist',
+  'reason.unknown': 'the model rejected the change and is unchanged',
+
+  // Class node (context menu + member editing).
+  'node.deleteAria': 'Delete {name}',
+  'node.noOtherClasses': 'No other classes',
+  'node.makeSubclassOf': 'Make subclass of {name}',
+  'node.realize': 'Realize {name}',
+  'node.markAbstract': 'Mark abstract',
+  'node.unmarkAbstract': 'Unmark abstract',
+  'node.close': 'Close',
+  'node.closeMenuAria': 'Close context menu',
+  'node.attrNameRequired': 'Attribute name is required',
+  'node.methodNameRequired': 'Method name is required',
+  'node.nameTypeRequired': 'Name and type are required',
+  'node.phName': 'name',
+  'node.phType': 'type',
+  'node.phReturnType': 'return type',
+  'node.phParams': 'param: type, ...',
+  'node.static': 'static',
+  'node.derived': 'derived',
+  'node.attrVisibilityAria': 'Attribute visibility',
+  'node.attrNameAria': 'Attribute name',
+  'node.attrTypeAria': 'Attribute type',
+  'node.attrMultiplicityAria': 'Attribute multiplicity',
+  'node.attrStaticAria': 'Attribute static',
+  'node.attrDerivedAria': 'Attribute derived',
+  'node.addAttrAria': 'Add attribute',
+  'node.methodVisibilityAria': 'Method visibility',
+  'node.methodNameAria': 'Method name',
+  'node.methodReturnTypeAria': 'Method return type',
+  'node.methodParamsAria': 'Method parameters',
+  'node.methodStaticAria': 'Method static',
+  'node.addMethodAria': 'Add method',
+  'node.editAttrNameAria': 'Edit attribute name',
+  'node.editAttrTypeAria': 'Edit attribute type',
+  'node.editMethodNameAria': 'Edit method name',
+  'node.editMethodReturnTypeAria': 'Edit method return type',
+  'node.editMethodParamsAria': 'Edit method parameters',
+  'node.confirmEditAria': 'Confirm edit',
+  'node.cancelEditAria': 'Cancel edit',
+  'node.editAttrAria': 'Edit attribute {name}',
+  'node.removeAttrAria': 'Remove attribute {name}',
+  'node.editMethodAria': 'Edit method {name}',
+  'node.removeMethodAria': 'Remove method {name}',
+  'node.quickLinkerTitle': 'Drag to another element to link, or to empty canvas to create and link',
+} as const;
+
+export type TKey = keyof typeof EN;
+
+/** Spanish — neutral/professional product UI register (no regional slang). */
+const ES: Record<TKey, string> = {
+  'app.title': 'UML Design Tool',
+  'app.loading': 'Cargando…',
+  'app.loadError': 'No se pudo cargar el diagrama',
+  'app.apiConnectFailed': 'No se pudo conectar con la API',
+  'app.saveRetryExhausted': 'No se pudo guardar: el diagrama siguió cambiando en el servidor',
+  'toolbar.save': 'Guardar',
+  'toolbar.saving': 'Guardando…',
+  'toolbar.saved': 'Guardado',
+  'toolbar.language': 'Idioma',
+
+  'interpreter.ariaLabel': 'Comando en lenguaje natural',
+  'interpreter.placeholder': 'p. ej. "agregar una clase Producto"',
+  'interpreter.send': 'Enviar',
+  'interpreter.record': 'Grabar',
+  'interpreter.stop': 'Detener',
+  'interpreter.recordAria': 'Grabar comando de voz',
+  'interpreter.stopAria': 'Detener comando de voz',
+  'interpreter.thinking': 'Pensando…',
+  'interpreter.refused': 'Rechazado: {reason}',
+  'interpreter.reachFailed': 'No se pudo contactar con el intérprete',
+  'interpreter.confirmFailed': 'No se pudo confirmar el cambio',
+  'interpreter.discardFailed': 'No se pudo descartar el cambio',
+  'interpreter.applyFailed': 'El cambio confirmado no se pudo aplicar ({kind})',
+  'voice.micUnavailable': 'Micrófono no disponible',
+  'voice.sttFailed': 'No se pudo contactar con el servicio de voz a texto',
+  'voice.recordingFailed': 'Error al grabar',
+
+  'preview.ariaLabel': 'Vista previa del cambio de la IA',
+  'preview.heading': 'La IA propone este cambio',
+  'preview.confirm': 'Confirmar',
+  'preview.reject': 'Rechazar',
+
+  'presence.onlineUsers': 'Usuarios en línea',
+
+  'toolbox.header': 'Caja de herramientas',
+  'toolbox.objects': 'Objetos',
+  'toolbox.relations': 'Relaciones',
+  'toolbox.ariaLabel': 'Paleta de elementos UML',
+  'toolbox.collapse': 'Contraer la caja de herramientas',
+  'toolbox.expand': 'Expandir la caja de herramientas',
+  'tool.class': 'Clase',
+  'tool.interface': 'Interfaz',
+  'tool.association': 'Asociación',
+  'tool.aggregation': 'Agregación',
+  'tool.composition': 'Composición',
+  'tool.generalization': 'Generalización',
+  'tool.realization': 'Realización',
+  'tool.dependency': 'Dependencia',
+  'tool.nary': 'N-aria',
+  'palette.createClassAria': 'Crear clase (arrastrar al lienzo)',
+  'palette.createInterfaceAria': 'Crear interfaz (arrastrar al lienzo)',
+  'palette.edgeToolAria': 'herramienta de borde {label}',
+  'palette.naryAria': 'herramienta de asociación n-aria (seleccionar 3 o más clases)',
+  'palette.dragClassTitle': 'Arrastre sobre el lienzo para crear una clase',
+  'palette.dragInterfaceTitle': 'Arrastre sobre el lienzo para crear una interfaz',
+  'palette.armToolTitle': 'Haga clic y arrastre entre dos nodos para crear una {label}',
+  'palette.naryTitle': 'Haga clic y luego seleccione al menos tres clases',
+
+  'canvas.addClass': 'Agregar clase',
+  'canvas.addInterface': 'Agregar interfaz',
+  'canvas.linkClasses': 'Vincular clases',
+  'canvas.cancelLink': 'Cancelar vínculo',
+  'canvas.naryAssociation': 'Asociación n-aria',
+  'canvas.cancelNary': 'Cancelar n-aria',
+  'canvas.directed': 'Dirigida',
+  'canvas.selectTarget': 'Seleccione la clase de destino',
+  'canvas.edgeToolHint': 'Herramienta {tool} activa — arrastre desde un nodo de origen hasta un nodo de destino. Pulse Esc para cancelar.',
+
+  'nary.panelTitle': 'Asociación n-aria — {n} de 3 o más clases seleccionadas',
+  'nary.multiplicityFor': 'Multiplicidad de {name}',
+  'nary.name': 'Nombre',
+  'nary.nameAria': 'Nombre de la asociación n-aria',
+  'nary.optional': 'opcional',
+  'nary.create': 'Crear',
+  'nary.createAria': 'Crear asociación n-aria',
+
+  'editor.associationName': 'Nombre de la asociación',
+  'editor.label': 'Etiqueta',
+  'editor.labelAria': 'Etiqueta de {type}',
+  'editor.sourceRole': 'Rol de origen',
+  'editor.targetRole': 'Rol de destino',
+  'editor.sourceMultiplicity': 'Multiplicidad de origen',
+  'editor.targetMultiplicity': 'Multiplicidad de destino',
+  'editor.diamondEnd': 'Extremo del rombo: {end}',
+  'editor.endSource': 'Origen',
+  'editor.endTarget': 'Destino',
+  'editor.flipDiamondEnd': 'Invertir extremo del rombo',
+  'editor.flipDiamondEndAria': 'Invertir el extremo del rombo hacia {end}',
+  'editor.delete': 'Eliminar {type}',
+  'editor.deleteAria': 'Eliminar {type} {id}',
+  'editor.close': 'Cerrar',
+  'editor.closeAria': 'Cerrar el editor de borde',
+
+  'naryEditor.title': 'Asociación n-aria',
+  'naryEditor.nameAria': 'Nombre n-ario',
+  'naryEditor.endMultiplicityAria': 'Multiplicidad del extremo n-ario de {name}',
+  'naryEditor.delete': 'Eliminar asociación n-aria',
+  'naryEditor.deleteAria': 'Eliminar asociación n-aria {id}',
+  'naryEditor.closeAria': 'Cerrar el editor n-ario',
+
+  'panel.generalizationsFor': 'Generalizaciones de {name}',
+  'panel.realizationsFor': 'Realizaciones de {name}',
+  'panel.dependenciesFor': 'Dependencias de {name}',
+  'panel.none': 'Ninguna',
+  'panel.inheritsFrom': 'Hereda de {name}',
+  'panel.inheritedBy': 'Heredado por {name}',
+  'panel.realizes': 'Realiza {name}',
+  'panel.realizedBy': 'Realizado por {name}',
+  'panel.dependsOn': 'Depende de {name}',
+  'panel.dependencyFrom': 'Dependencia de {name}',
+  'panel.removeInheritance': 'Quitar herencia',
+  'panel.removeInheritanceAria': 'Eliminar generalización {id}',
+  'panel.removeRealization': 'Quitar realización',
+  'panel.removeRealizationAria': 'Eliminar realización {id}',
+  'panel.removeDependency': 'Quitar dependencia',
+  'panel.removeDependencyAria': 'Eliminar dependencia {id}',
+
+  'guard.bothEndsClasses': 'Ambos extremos de la conexión deben ser clases.',
+  'guard.endpointsExist': 'Ambos extremos deben ser clases existentes.',
+  'guard.invalidEndpoints': '{label} rechazada: extremos no válidos.',
+  'guard.rejectedReason': '{label} rechazada: {reason}.',
+  'guard.noSelfInheritance': 'Una clase no puede heredar de sí misma.',
+  'guard.realizationTarget': 'Una realización debe apuntar a una interfaz («interface»).',
+  'reason.cycle': 'esta herencia crearía un ciclo',
+  'reason.duplicateGeneralization': 'este vínculo de herencia ya existe',
+  'reason.realizationNotInterface': 'el destino debe ser una interfaz',
+  'reason.duplicateRealization': 'esta realización ya existe',
+  'reason.duplicateDependency': 'esta dependencia ya existe',
+  'reason.classNotFound': 'una clase referenciada no existe',
+  'reason.unknown': 'el modelo rechazó el cambio y quedó sin cambios',
+
+  'node.deleteAria': 'Eliminar {name}',
+  'node.noOtherClasses': 'No hay otras clases',
+  'node.makeSubclassOf': 'Hacer subclase de {name}',
+  'node.realize': 'Realizar {name}',
+  'node.markAbstract': 'Marcar como abstracta',
+  'node.unmarkAbstract': 'Quitar abstracta',
+  'node.close': 'Cerrar',
+  'node.closeMenuAria': 'Cerrar menú contextual',
+  'node.attrNameRequired': 'El nombre del atributo es obligatorio',
+  'node.methodNameRequired': 'El nombre del método es obligatorio',
+  'node.nameTypeRequired': 'El nombre y el tipo son obligatorios',
+  'node.phName': 'nombre',
+  'node.phType': 'tipo',
+  'node.phReturnType': 'tipo de retorno',
+  'node.phParams': 'param: tipo, ...',
+  'node.static': 'estático',
+  'node.derived': 'derivado',
+  'node.attrVisibilityAria': 'Visibilidad del atributo',
+  'node.attrNameAria': 'Nombre del atributo',
+  'node.attrTypeAria': 'Tipo del atributo',
+  'node.attrMultiplicityAria': 'Multiplicidad del atributo',
+  'node.attrStaticAria': 'Atributo estático',
+  'node.attrDerivedAria': 'Atributo derivado',
+  'node.addAttrAria': 'Agregar atributo',
+  'node.methodVisibilityAria': 'Visibilidad del método',
+  'node.methodNameAria': 'Nombre del método',
+  'node.methodReturnTypeAria': 'Tipo de retorno del método',
+  'node.methodParamsAria': 'Parámetros del método',
+  'node.methodStaticAria': 'Método estático',
+  'node.addMethodAria': 'Agregar método',
+  'node.editAttrNameAria': 'Editar nombre del atributo',
+  'node.editAttrTypeAria': 'Editar tipo del atributo',
+  'node.editMethodNameAria': 'Editar nombre del método',
+  'node.editMethodReturnTypeAria': 'Editar tipo de retorno del método',
+  'node.editMethodParamsAria': 'Editar parámetros del método',
+  'node.confirmEditAria': 'Confirmar edición',
+  'node.cancelEditAria': 'Cancelar edición',
+  'node.editAttrAria': 'Editar atributo {name}',
+  'node.removeAttrAria': 'Quitar atributo {name}',
+  'node.editMethodAria': 'Editar método {name}',
+  'node.removeMethodAria': 'Quitar método {name}',
+  'node.quickLinkerTitle': 'Arrastre hasta otro elemento para vincular, o hasta un lienzo vacío para crear y vincular',
+};
+
+const STRINGS: Record<Lang, Record<TKey, string>> = { en: EN, es: ES };
+
+function readStoredLang(): Lang {
+  if (typeof window === 'undefined' || window.localStorage === undefined) {
+    return 'en';
+  }
+  try {
+    const stored = window.localStorage.getItem(LANG_STORAGE_KEY);
+    return stored === 'es' ? 'es' : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
+let current: Lang = readStoredLang();
+const listeners = new Set<() => void>();
+
+export function getLang(): Lang {
+  return current;
+}
+
+/** Switch the UI language live and persist the choice. */
+export function setLang(lang: Lang): void {
+  current = lang;
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch {
+    // Private-mode / disabled storage: the session still switches, it just
+    // does not survive a reload. Never break the UI over persistence.
+  }
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/**
+ * Translate a UI string, reading the CURRENT language at call time (usable
+ * outside React). `{param}` placeholders are filled from `params`.
+ */
+export function t(key: TKey, params?: Record<string, string | number>): string {
+  let value: string = STRINGS[current][key] ?? STRINGS.en[key] ?? key;
+  if (params !== undefined) {
+    for (const [name, replacement] of Object.entries(params)) {
+      value = value.split(`{${name}}`).join(String(replacement));
+    }
+  }
+  return value;
+}
+
+/** Reactive accessor: re-renders the component when the language changes. */
+export function useT(): { t: typeof t; lang: Lang; setLang: (lang: Lang) => void } {
+  const lang = useSyncExternalStore(subscribe, getLang, getLang);
+  return { t, lang, setLang };
+}
+
+/** EN/ES segmented control — the visible language toggle (13e.11). */
+export function LanguageToggle(): ReactElement {
+  const { lang, setLang: choose } = useT();
+  return (
+    <span className="lang-toggle" role="group" aria-label="Language">
+      <button
+        type="button"
+        data-testid="lang-en"
+        className={`lang-toggle__option${lang === 'en' ? ' lang-toggle__option--active' : ''}`}
+        aria-pressed={lang === 'en'}
+        onClick={() => choose('en')}
+      >
+        EN
+      </button>
+      <button
+        type="button"
+        data-testid="lang-es"
+        className={`lang-toggle__option${lang === 'es' ? ' lang-toggle__option--active' : ''}`}
+        aria-pressed={lang === 'es'}
+        onClick={() => choose('es')}
+      >
+        ES
+      </button>
+    </span>
+  );
+}

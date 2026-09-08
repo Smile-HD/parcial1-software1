@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 
 import { buildYDocFromDiagram, DiagramSchema, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
 
-import { computeNaryCentroid, DiagramCanvas, handleConnectWithTool, type ConnectGuardResult, handleCreateAssociation, handleCreateDependency, handleCreateGeneralization, handleCreateNaryAssociation, handleCreateRealization, handleDeleteDependency, handleDeleteGeneralization, handleDeleteNaryAssociation, handleDeleteRealization, handleNodeDragStop, handlePaletteDrop, handleSetAbstract, handleUpdateMultiplicity } from './DiagramCanvas';
+import { computeNaryCentroid, DiagramCanvas, handleConnectWithTool, type ConnectGuardResult, handleCreateAssociation, handleCreateDependency, handleCreateGeneralization, handleCreateNaryAssociation, handleCreateRealization, handleDeleteDependency, handleDeleteGeneralization, handleDeleteNaryAssociation, handleDeleteRealization, handleNodeDragStop, handlePaletteDrop, handleSetAbstract, handleUpdateMultiplicity, handleUpdateNaryAssociation } from './DiagramCanvas';
 import { PALETTE_DND_MIME } from './Palette';
 import { applyDeltaToYDoc } from './applyDeltaToYDoc';
 
@@ -100,13 +100,27 @@ describe('DiagramCanvas (renders exclusively from Y.Doc)', () => {
     expect(screen.getByText('Product')).toBeTruthy();
   });
 
-  it('adds a class node when the user clicks "Add class" (create delta)', () => {
+  it('adds a class node when the user drops the palette Class item (create delta)', () => {
+    // unit 13e.7 — the legacy "Add class" toolbar button is gone; the palette
+    // drag-and-drop is the creation path (same MouseEvent trick as the 13b
+    // onDrop wiring test — jsdom has no DragEvent with clientX).
     const diagram = makeFixture();
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add class' }));
+    const dropEvent = new window.MouseEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 320,
+      clientY: 240,
+    });
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { getData: () => 'class', setData: () => {}, effectAllowed: '', dropEffect: '' },
+    });
+    act(() => {
+      container.querySelector('.react-flow')!.dispatchEvent(dropEvent);
+    });
 
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(3);
     expect(screen.getByText('Class1')).toBeTruthy();
@@ -821,6 +835,50 @@ describe('aggregation/composition render (unit 10.3)', () => {
     expect(projectYDocToDiagram(doc).associations[0]!.aggregation).toBe('composite');
   });
 
+  it('flip diamond end control toggles aggregationEnd between source and target for composition/aggregation', async () => {
+    const doc = buildYDocFromDiagram(
+      assocFixture({ aggregation: 'composite', directed: false, aggregationEnd: 'source' }),
+    );
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.click(edge);
+
+    // The flip diamond end control should be present for aggregation !== 'none'
+    const flipButton = screen.getByRole('button', { name: /flip diamond end/i });
+    expect(flipButton).toBeTruthy();
+
+    // Initial state: aggregationEnd='source'
+    expect(projectYDocToDiagram(doc).associations[0]!.aggregationEnd).toBe('source');
+
+    // Click flip button → changes to 'target'
+    fireEvent.click(flipButton);
+    expect(projectYDocToDiagram(doc).associations[0]!.aggregationEnd).toBe('target');
+
+    // Click again → changes back to 'source'
+    fireEvent.click(flipButton);
+    expect(projectYDocToDiagram(doc).associations[0]!.aggregationEnd).toBe('source');
+  });
+
+  it('flip diamond end control is ABSENT for plain associations (aggregation === none)', async () => {
+    const doc = buildYDocFromDiagram(assocFixture({ aggregation: 'none', directed: false }));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.click(edge);
+
+    // The flip diamond end control should NOT be present for plain associations
+    expect(screen.queryByRole('button', { name: /flip diamond end/i })).toBeNull();
+  });
+
   it('deletes the association when the panel delete button is clicked (association delete delta)', async () => {
     const fixture = assocFixture({});
     const doc = buildYDocFromDiagram(fixture);
@@ -1210,16 +1268,25 @@ describe('unit 12a — editor UI: add interface, realize + abstract in context m
     return { diagram: DiagramSchema.parse(diagram), orderId, repoId };
   }
 
-  it('toolbar "Add interface" creates a class node with kind "interface"', () => {
+  it('palette Interface drop creates a class node with kind "interface"', () => {
+    // unit 13e.7 — the legacy "Add interface" toolbar button is gone; the
+    // palette drop carries the interface kind through the same creation path.
     const { diagram } = uiFixture();
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
 
-    const addButton = Array.from(container.querySelectorAll('.diagram-canvas__toolbar button')).find(
-      (b) => b.textContent === 'Add interface',
-    );
-    expect(addButton).toBeDefined();
-    fireEvent.click(addButton!);
+    const dropEvent = new window.MouseEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 400,
+      clientY: 300,
+    });
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { getData: () => 'interface', setData: () => {}, effectAllowed: '', dropEffect: '' },
+    });
+    act(() => {
+      container.querySelector('.react-flow')!.dispatchEvent(dropEvent);
+    });
 
     const created = projectYDocToDiagram(doc).classes.find((c) => c.kind === 'interface' && c.name !== 'Repository');
     expect(created).toBeDefined();
@@ -1662,12 +1729,14 @@ describe('unit 13 — editor UI: n-ary mode, per-end multiplicity, diamond conte
     fireEvent.click(classEl);
   }
 
-  it('toolbar enters n-ary mode; picking 3 classes with per-end multiplicities creates the n-ary', () => {
+  it('palette n-ary item enters pick mode; picking 3 classes with per-end multiplicities creates the n-ary', () => {
+    // unit 13e.7 — the toolbar's "N-ary association" button is gone; the
+    // palette item drives the SAME shared mode toggle (13b wiring).
     const { diagram, ids } = naryUiFixture();
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'N-ary association' }));
+    fireEvent.click(screen.getByTestId('palette-nary'));
 
     clickClass(container, 0);
     clickClass(container, 1);
@@ -1696,7 +1765,8 @@ describe('unit 13 — editor UI: n-ary mode, per-end multiplicity, diamond conte
     const doc = buildYDocFromDiagram(diagram);
     const { container } = render(<DiagramCanvas doc={doc} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'N-ary association' }));
+    // unit 13e.7 — palette n-ary item (the toolbar twin is gone).
+    fireEvent.click(screen.getByTestId('palette-nary'));
     clickClass(container, 0);
     clickClass(container, 1);
 
@@ -1914,14 +1984,18 @@ describe('unit 13b — drag-to-connect emits the armed edge tool delta (13b.3)',
     expect(projectYDocToDiagram(doc).realizations ?? []).toHaveLength(0);
   });
 
-  it('association guard: the same class on both ends is rejected', () => {
+  it('association guard: self-association is now ALLOWED (valid UML — e.g., Employee→manages→Employee)', () => {
     const { diagram, doc, aId } = connectFixture();
     const result = handleConnectWithTool(
       doc, diagram.id, 'association', { source: aId, target: aId }, classifiersOf(diagram),
     );
-    expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/distinct/i);
-    expect(projectYDocToDiagram(doc).associations).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(result.message).toBeUndefined();
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.associations).toHaveLength(1);
+    const assoc = projected.associations[0]!;
+    expect(assoc.sourceClassId).toBe(aId);
+    expect(assoc.targetClassId).toBe(aId);
   });
 
   it('unknown endpoint guard: a connection referencing a missing class is rejected', () => {
@@ -2014,8 +2088,8 @@ describe('unit 13b — canvas wiring: palette rail, armed-tool affordances (13b.
 
     fireEvent.click(screen.getByTestId('palette-nary'));
     expect(screen.getByTestId('palette-nary').getAttribute('aria-pressed')).toBe('true');
-    // The existing toolbar reflects the same mode (single source of truth).
-    expect(screen.getByRole('button', { name: 'Cancel n-ary' })).toBeTruthy();
+    // unit 13e.7 — the toolbar's "Cancel n-ary" twin is gone; the palette
+    // item's aria-pressed (asserted above) is the single mode reflection.
 
     for (const index of [0, 1, 2]) {
       fireEvent.click(container.querySelectorAll('.react-flow__node')[index]!.querySelector('.uml-class')!);
@@ -2421,8 +2495,10 @@ describe('unit 13c — aggregation/composition palette tools create preset assoc
     expect(assoc.sourceClassId).toBe(aId);
     expect(assoc.targetClassId).toBe(bId);
     expect(assoc.directed).toBe(false);
-    expect(assoc.sourceMultiplicity).toBe('1');
-    expect(assoc.targetMultiplicity).toBe('1');
+    // unit 13d fix C — aggregation/composition no longer default multiplicities
+    // to '1': both ends start UNSPECIFIED (empty).
+    expect(assoc.sourceMultiplicity).toBeUndefined();
+    expect(assoc.targetMultiplicity).toBeUndefined();
   });
 
   it('Composition tool: association with aggregation=composite', () => {
@@ -2443,14 +2519,20 @@ describe('unit 13c — aggregation/composition palette tools create preset assoc
     expect(projectYDocToDiagram(doc).associations[0]!.aggregation).toBe('none');
   });
 
-  it('Aggregation tool reuses the association distinct-endpoint guard', () => {
+it('Aggregation tool allows self-aggregation (valid UML — e.g., TreeNode composed of TreeNode)', () => {
     const { diagram, doc, aId } = kindFixture();
     const result = handleConnectWithTool(
       doc, diagram.id, 'aggregation', { source: aId, target: aId }, classifiersOf(diagram),
     );
-    expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/distinct/i);
-    expect(projectYDocToDiagram(doc).associations).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(result.message).toBeUndefined();
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.associations).toHaveLength(1);
+    const assoc = projected.associations[0]!;
+    expect(assoc.sourceClassId).toBe(aId);
+    expect(assoc.targetClassId).toBe(aId);
+    expect(assoc.aggregation).toBe('shared');
+    expect(assoc.aggregationEnd).toBe('source');
   });
 
   it('the aggregation kind survives later unrelated deltas (bridge carries it)', () => {
@@ -2524,5 +2606,706 @@ describe('unit 13c — node-wide drag-to-connect affordances', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(container.querySelectorAll('[data-testid="node-connect-overlay"]')).toHaveLength(0);
+  });
+});
+
+describe('unit 13d — EA-style Quick Linker: corner arrow + drag-to-menu gesture', () => {
+  // A(0,0) class, B(300,0) class, R(600,0) interface. jsdom never measures
+  // nodes (no ResizeObserver), so every node occupies the DEFAULT box
+  // 180x120 from its position: A=[0..180]x[0..120], B=[300..480]x[0..120],
+  // R=[600..780]x[0..120]. (900,400) is empty canvas.
+  function quickLinkerFixture(): { diagram: Diagram; doc: Y.Doc; aId: string; bId: string; rId: string } {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const rId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'QuickLink',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: bId, name: 'B', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: rId, name: 'R', position: { x: 600, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    return { diagram, doc, aId, bId, rId };
+  }
+
+  const clickNode = (container: HTMLElement, index: number): void => {
+    fireEvent.click(container.querySelectorAll('.react-flow__node')[index]!.querySelector('.uml-class')!);
+  };
+
+  // jsdom has no PointerEvent constructor: carry real coordinates on a
+  // MouseEvent typed as the pointer event (same trick as the 13b drop test).
+  const dispatchPointer = (target: EventTarget, type: 'pointerdown' | 'pointerup', x: number, y: number): void => {
+    const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+  };
+
+  /** Select node `index`, drag its Quick Linker arrow, release at `drop`. */
+  const quickLinkGesture = (container: HTMLElement, index: number, drop: { x: number; y: number }): void => {
+    clickNode(container, index);
+    const arrow = container.querySelector('[data-testid="quicklinker-arrow"]');
+    expect(arrow).not.toBeNull();
+    dispatchPointer(arrow!, 'pointerdown', 175, 2);
+    dispatchPointer(window, 'pointerup', drop.x, drop.y);
+  };
+
+  const menuOptionIds = (): string[] =>
+    Array.from(screen.getByTestId('quicklinker-menu').querySelectorAll('button')).map(
+      (b) => b.getAttribute('data-testid') ?? '',
+    );
+
+  it('the corner arrow renders ONLY on the selected node', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    expect(container.querySelectorAll('[data-testid="quicklinker-arrow"]')).toHaveLength(0);
+    clickNode(container, 0);
+    const arrows = container.querySelectorAll('[data-testid="quicklinker-arrow"]');
+    expect(arrows).toHaveLength(1);
+    expect(arrows[0]!.getAttribute('aria-label')).toBe('Quick Linker');
+  });
+
+  it('drop on an existing CLASS opens the connector menu WITHOUT Realization', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+
+    expect(menuOptionIds()).toEqual([
+      'quicklinker-option-association',
+      'quicklinker-option-aggregation',
+      'quicklinker-option-composition',
+      'quicklinker-option-generalization',
+      'quicklinker-option-dependency',
+    ]);
+    expect(projectYDocToDiagram(doc).associations).toHaveLength(0); // menu alone creates nothing
+  });
+
+  it('drop on an INTERFACE adds Realization to the menu (metamodel filter)', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 640, y: 40 });
+
+    expect(menuOptionIds()).toContain('quicklinker-option-realization');
+    expect(menuOptionIds()).toHaveLength(6);
+  });
+
+  it('choosing Association creates the source→target association and closes the menu', async () => {
+    const { diagram, doc, aId, bId } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+    fireEvent.click(screen.getByTestId('quicklinker-option-association'));
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.associations).toHaveLength(1);
+    expect(projected.associations[0]).toMatchObject({ sourceClassId: aId, targetClassId: bId });
+    expect(screen.queryByTestId('quicklinker-menu')).toBeNull();
+    await waitFor(() => {
+      expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(1);
+    });
+    expect(diagram.classes).toHaveLength(3);
+  });
+
+  it('choosing Generalization makes the source the subClass of the target', () => {
+    const { doc, aId, bId } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+    fireEvent.click(screen.getByTestId('quicklinker-option-generalization'));
+
+    expect(projectYDocToDiagram(doc).generalizations[0]).toMatchObject({ subClassId: aId, superClassId: bId });
+  });
+
+  it('choosing Composition presets aggregation=composite through the shared guard', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+    fireEvent.click(screen.getByTestId('quicklinker-option-composition'));
+
+    const assoc = projectYDocToDiagram(doc).associations[0]!;
+    expect(assoc.aggregation).toBe('composite');
+    // unit 13d fix C — the quick-linker composition path shares the empty
+    // multiplicity default: both ends start unspecified.
+    expect(assoc.sourceMultiplicity).toBeUndefined();
+    expect(assoc.targetMultiplicity).toBeUndefined();
+  });
+
+  it('EMPTY-CANVAS gesture creates the element AND the connector in one flow', () => {
+    const { doc, aId } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    // Drop on empty canvas → element menu (Class / Interface).
+    quickLinkGesture(container, 0, { x: 900, y: 400 });
+    expect(menuOptionIds()).toEqual(['quicklinker-option-class', 'quicklinker-option-interface']);
+
+    // Pick Interface → the node is created AT the drop point and the
+    // connector menu chains open immediately (source class → new interface).
+    fireEvent.click(screen.getByTestId('quicklinker-option-interface'));
+    const created = projectYDocToDiagram(doc).classes.find((c) => c.name === 'Interface1');
+    expect(created).toBeDefined();
+    expect(created!.position).toEqual({ x: 900, y: 400 });
+    expect(created!.kind).toBe('interface');
+    expect(menuOptionIds()).toContain('quicklinker-option-realization');
+
+    // Pick Realization → the connector lands between source and the new element.
+    fireEvent.click(screen.getByTestId('quicklinker-option-realization'));
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.realizations).toHaveLength(1);
+    expect(projected.realizations![0]).toMatchObject({ clientClassId: aId, supplierInterfaceId: created!.id });
+    expect(screen.queryByTestId('quicklinker-menu')).toBeNull();
+  });
+
+  it('empty-canvas drop with CLASS chains a connector menu WITHOUT Realization', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 900, y: 400 });
+    fireEvent.click(screen.getByTestId('quicklinker-option-class'));
+
+    const created = projectYDocToDiagram(doc).classes.find((c) => c.name === 'Class1');
+    expect(created).toBeDefined();
+    expect(menuOptionIds()).not.toContain('quicklinker-option-realization');
+  });
+
+  it('Escape closes the connector menu with NO model change', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByTestId('quicklinker-menu')).toBeNull();
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.associations).toHaveLength(0);
+    expect(projected.generalizations ?? []).toHaveLength(0);
+    expect(projected.realizations ?? []).toHaveLength(0);
+    expect(projected.dependencies ?? []).toHaveLength(0);
+  });
+
+  it('click-away closes the element menu with NO model change', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 900, y: 400 });
+    dispatchPointer(document.body, 'pointerdown', 5, 600);
+
+    expect(screen.queryByTestId('quicklinker-menu')).toBeNull();
+    expect(projectYDocToDiagram(doc).classes).toHaveLength(3); // nothing created
+  });
+
+  it('dropping the arrow back on the source itself opens the connector menu with self-valid connectors (excludes generalization)', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 100, y: 60 }); // inside A's own box
+
+    // Menu opens with self-valid connectors: association, aggregation, composition, dependency (NO generalization)
+    const menu = screen.getByTestId('quicklinker-menu');
+    expect(menu).not.toBeNull();
+    expect(screen.getByTestId('quicklinker-option-association')).toBeTruthy();
+    expect(screen.getByTestId('quicklinker-option-aggregation')).toBeTruthy();
+    expect(screen.getByTestId('quicklinker-option-composition')).toBeTruthy();
+    expect(screen.getByTestId('quicklinker-option-dependency')).toBeTruthy();
+    expect(screen.queryByTestId('quicklinker-option-generalization')).toBeNull();
+    expect(screen.queryByTestId('quicklinker-option-realization')).toBeNull();
+    // No model change until a connector is picked
+    expect(projectYDocToDiagram(doc).associations).toHaveLength(0);
+  });
+
+  it('a thin rubber band follows the cursor during the drag and disappears on drop', () => {
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    clickNode(container, 0);
+    const arrow = container.querySelector('[data-testid="quicklinker-arrow"]')!;
+    dispatchPointer(arrow, 'pointerdown', 175, 2);
+    expect(container.querySelector('[data-testid="quicklinker-rubberband"]')).not.toBeNull();
+
+    dispatchPointer(window, 'pointermove', 250, 90);
+    const line = container.querySelector('.quicklinker-rubberband line')!;
+    expect(line.getAttribute('x2')).toBe('250');
+
+    dispatchPointer(window, 'pointerup', 340, 40);
+    expect(container.querySelector('[data-testid="quicklinker-rubberband"]')).toBeNull();
+  });
+
+  it('coexists with the 13c arm-tool path: quick link works while a tool is armed', () => {
+    const { doc, aId, bId } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    fireEvent.click(screen.getByTestId('palette-dependency')); // 13c path armed
+    expect(container.querySelectorAll('[data-testid="node-connect-overlay"]').length).toBeGreaterThan(0);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+    fireEvent.click(screen.getByTestId('quicklinker-option-dependency'));
+
+    expect(projectYDocToDiagram(doc).dependencies![0]).toMatchObject({ clientClassId: aId, supplierClassId: bId });
+  });
+
+  it('handlePaletteDrop returns the created classId (element+connector chaining)', () => {
+    const { diagram, doc } = quickLinkerFixture();
+    let newId = '';
+    act(() => {
+      newId = handlePaletteDrop(doc, diagram.id, {
+        kind: 'class',
+        position: { x: 10, y: 20 },
+        existingNames: diagram.classes.map((c) => c.name),
+      });
+    });
+    expect(newId).toBeTruthy();
+    expect(projectYDocToDiagram(doc).classes.some((c) => c.id === newId)).toBe(true);
+  });
+
+  it('a rejected Quick Linker connector surfaces the guard message with the model unchanged', () => {
+    // The menu reuses handleConnectWithTool verbatim, so engine rejections
+    // flow through the same message channel: A→B generalization first, then
+    // B→A generalization closes a cycle and must be refused.
+    const { doc } = quickLinkerFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    quickLinkGesture(container, 0, { x: 340, y: 40 });
+    fireEvent.click(screen.getByTestId('quicklinker-option-generalization'));
+    expect(projectYDocToDiagram(doc).generalizations).toHaveLength(1);
+
+    quickLinkGesture(container, 1, { x: 100, y: 40 }); // B → A (inside A's box)
+    fireEvent.click(screen.getByTestId('quicklinker-option-generalization'));
+
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.generalizations).toHaveLength(1); // cycle refused
+    expect(screen.getByTestId('palette-validation').textContent).toMatch(/cycle/i);
+    expect(screen.queryByTestId('quicklinker-menu')).toBeNull();
+  });
+});
+
+/**
+ * unit 13d fix A — the n-ary diamond must be selectable + editable: clicking
+ * it opens an editor panel (name + one multiplicity input per member end +
+ * delete), and every edit flows through the core naryAssociation `update`
+ * delta via the bridge.
+ */
+describe('unit 13d — n-ary diamond selectable + editable (fix A)', () => {
+  function naryEditableFixture(): { diagram: Diagram; doc: Y.Doc; naryId: string; ids: Record<string, string> } {
+    const supplierId = crypto.randomUUID();
+    const partId = crypto.randomUUID();
+    const projectId = crypto.randomUUID();
+    const naryId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'NaryEdit',
+      classes: [
+        { id: supplierId, name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: partId, name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: projectId, name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      naryAssociations: [
+        {
+          id: naryId,
+          name: 'supply',
+          memberEnds: [
+            { classId: supplierId, multiplicity: '1', role: 'supplier' },
+            { classId: partId, multiplicity: '0..*' },
+            { classId: projectId, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    return { diagram, doc, naryId, ids: { Supplier: supplierId, Part: partId, Project: projectId } };
+  }
+
+  async function openNaryEditor(container: HTMLElement): Promise<HTMLElement> {
+    const diamond = await waitFor(() => {
+      const el = container.querySelector('.uml-nary-diamond');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(diamond);
+    return screen.getByTestId('nary-editor');
+  }
+
+  it('clicking the diamond opens the n-ary editor with name + per-end multiplicity inputs + delete', async () => {
+    const { doc, naryId } = naryEditableFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const editor = await openNaryEditor(container);
+    expect(editor.querySelector('input[aria-label="N-ary name"]')).not.toBeNull();
+    expect(editor.querySelector('input[aria-label="N-ary end multiplicity for Supplier"]')).not.toBeNull();
+    expect(editor.querySelector('input[aria-label="N-ary end multiplicity for Part"]')).not.toBeNull();
+    expect(editor.querySelector('input[aria-label="N-ary end multiplicity for Project"]')).not.toBeNull();
+    expect(editor.querySelector(`button[aria-label="Delete n-ary association ${naryId}"]`)).not.toBeNull();
+  });
+
+  it('the editor prefills the current name and each end multiplicity', async () => {
+    const { doc } = naryEditableFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const editor = await openNaryEditor(container);
+    expect((editor.querySelector('input[aria-label="N-ary name"]') as HTMLInputElement).value).toBe('supply');
+    expect((editor.querySelector('input[aria-label="N-ary end multiplicity for Supplier"]') as HTMLInputElement).value).toBe('1');
+    expect((editor.querySelector('input[aria-label="N-ary end multiplicity for Part"]') as HTMLInputElement).value).toBe('0..*');
+  });
+
+  it('editing the name updates the model through the update delta', async () => {
+    const { doc, naryId } = naryEditableFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const editor = await openNaryEditor(container);
+    const nameInput = editor.querySelector('input[aria-label="N-ary name"]') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'delivers' } });
+    fireEvent.blur(nameInput);
+
+    const nary = projectYDocToDiagram(doc).naryAssociations.find((n) => n.id === naryId);
+    expect(nary!.name).toBe('delivers');
+    // Ends untouched by a name-only update.
+    expect(nary!.memberEnds).toHaveLength(3);
+  });
+
+  it('editing an end multiplicity updates THAT end only; roles and other ends survive', async () => {
+    const { doc, naryId, ids } = naryEditableFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const editor = await openNaryEditor(container);
+    const partInput = editor.querySelector('input[aria-label="N-ary end multiplicity for Part"]') as HTMLInputElement;
+    fireEvent.change(partInput, { target: { value: '2' } });
+    fireEvent.blur(partInput);
+
+    const ends = projectYDocToDiagram(doc).naryAssociations.find((n) => n.id === naryId)!.memberEnds;
+    expect(ends.find((e) => e.classId === ids.Part)!.multiplicity).toBe('2');
+    expect(ends.find((e) => e.classId === ids.Supplier)!.multiplicity).toBe('1');
+    expect(ends.find((e) => e.classId === ids.Supplier)!.role).toBe('supplier');
+    expect(ends.find((e) => e.classId === ids.Project)!.multiplicity).toBe('1');
+  });
+
+  it('an invalid end multiplicity is rejected: no delta, previous value retained', async () => {
+    const { doc, naryId, ids } = naryEditableFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const editor = await openNaryEditor(container);
+    const partInput = editor.querySelector('input[aria-label="N-ary end multiplicity for Part"]') as HTMLInputElement;
+    fireEvent.change(partInput, { target: { value: 'abc' } });
+    fireEvent.blur(partInput);
+
+    const ends = projectYDocToDiagram(doc).naryAssociations.find((n) => n.id === naryId)!.memberEnds;
+    expect(ends.find((e) => e.classId === ids.Part)!.multiplicity).toBe('0..*');
+  });
+
+  it('the Delete button removes the n-ary and closes the editor', async () => {
+    const { doc, naryId } = naryEditableFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const editor = await openNaryEditor(container);
+    fireEvent.click(editor.querySelector(`button[aria-label="Delete n-ary association ${naryId}"]`)!);
+
+    expect(projectYDocToDiagram(doc).naryAssociations).toHaveLength(0);
+    expect(screen.queryByTestId('nary-editor')).toBeNull();
+  });
+
+  it('handleUpdateNaryAssociation writes name + ends through the bridge and guards bad input', () => {
+    const { diagram, doc, naryId, ids } = naryEditableFixture();
+
+    act(() => {
+      handleUpdateNaryAssociation(doc, diagram.id, naryId, { name: 'delivers' });
+    });
+    expect(projectYDocToDiagram(doc).naryAssociations[0]!.name).toBe('delivers');
+
+    act(() => {
+      handleUpdateNaryAssociation(doc, diagram.id, naryId, {
+        memberEnds: [
+          { classId: ids.Supplier, multiplicity: '*' },
+          { classId: ids.Part, multiplicity: '2' },
+          { classId: ids.Project, multiplicity: '1' },
+        ],
+      });
+    });
+    let ends = projectYDocToDiagram(doc).naryAssociations[0]!.memberEnds;
+    expect(ends.find((e) => e.classId === ids.Part)!.multiplicity).toBe('2');
+    expect(ends.find((e) => e.classId === ids.Supplier)!.multiplicity).toBe('*');
+
+    // Guards: <3 ends and garbage multiplicity emit NOTHING.
+    act(() => {
+      handleUpdateNaryAssociation(doc, diagram.id, naryId, {
+        memberEnds: [{ classId: ids.Supplier, multiplicity: '1' }],
+      });
+      handleUpdateNaryAssociation(doc, diagram.id, naryId, {
+        memberEnds: [
+          { classId: ids.Supplier, multiplicity: '1' },
+          { classId: ids.Part, multiplicity: 'nope' },
+          { classId: ids.Project, multiplicity: '1' },
+        ],
+      });
+    });
+    ends = projectYDocToDiagram(doc).naryAssociations[0]!.memberEnds;
+    expect(ends.find((e) => e.classId === ids.Part)!.multiplicity).toBe('2');
+  });
+});
+
+/**
+ * unit 13d fix C — composition/aggregation must NOT default to a multiplicity:
+ * creation leaves both ends unspecified, the renderer draws no multiplicity
+ * label, and the editor can clear a multiplicity back to empty.
+ */
+describe('unit 13d — composition/aggregation start with EMPTY multiplicities (fix C)', () => {
+  function pairFixture(): { diagram: Diagram; doc: Y.Doc; aId: string; bId: string } {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'EmptyMults',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: bId, name: 'B', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    return { diagram, doc, aId, bId };
+  }
+  const classifiersOf = (diagram: Diagram) =>
+    diagram.classes.map((c) => ({ id: c.id, kind: c.kind ?? 'class' }));
+
+  it('Composition tool: multiplicities are unspecified (empty), NOT "1"', () => {
+    const { diagram, doc, aId, bId } = pairFixture();
+    const result = handleConnectWithTool(
+      doc, diagram.id, 'composition', { source: aId, target: bId }, classifiersOf(diagram),
+    );
+    expect(result.ok).toBe(true);
+    const assoc = projectYDocToDiagram(doc).associations[0]!;
+    expect(assoc.aggregation).toBe('composite');
+    expect(assoc.sourceMultiplicity).toBeUndefined();
+    expect(assoc.targetMultiplicity).toBeUndefined();
+  });
+
+  it('plain Association tool KEEPS its documented 1/1 defaults', () => {
+    const { diagram, doc, aId, bId } = pairFixture();
+    const result = handleConnectWithTool(
+      doc, diagram.id, 'association', { source: aId, target: bId }, classifiersOf(diagram),
+    );
+    expect(result.ok).toBe(true);
+    const assoc = projectYDocToDiagram(doc).associations[0]!;
+    expect(assoc.sourceMultiplicity).toBe('1');
+    expect(assoc.targetMultiplicity).toBe('1');
+  });
+
+  it('a composition edge renders NO multiplicity label (unspecified ≠ "1")', async () => {
+    const { diagram, doc, aId, bId } = pairFixture();
+    handleConnectWithTool(doc, diagram.id, 'composition', { source: aId, target: bId }, classifiersOf(diagram));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge-association');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const texts = Array.from(edge.querySelectorAll('text')).map((t) => t.textContent ?? '');
+    expect(texts.some((t) => t.includes('·'))).toBe(false);
+    expect(texts.some((t) => t.trim() === '1')).toBe(false);
+  });
+
+  it('a named composition edge shows ONLY the name — no multiplicity fragment', async () => {
+    const { diagram, doc, aId, bId } = pairFixture();
+    handleConnectWithTool(doc, diagram.id, 'composition', { source: aId, target: bId }, classifiersOf(diagram));
+    const assocId = projectYDocToDiagram(doc).associations[0]!.id;
+    act(() => {
+      applyDeltaToYDoc(doc, {
+        kind: 'association',
+        op: 'updateMultiplicity',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        associationId: assocId,
+        name: 'owns',
+      });
+    });
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge-association');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const texts = Array.from(edge.querySelectorAll('text')).map((t) => t.textContent ?? '');
+    expect(texts.some((t) => t.includes('owns'))).toBe(true);
+    expect(texts.some((t) => t.includes('·'))).toBe(false);
+  });
+
+  it('editor: unspecified multiplicities render as EMPTY inputs and can be set', async () => {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const assocId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'UnspecAssoc',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: bId, name: 'B', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [{ id: assocId, sourceClassId: aId, targetClassId: bId, directed: false, aggregation: 'composite' }],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge-association');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(edge);
+
+    const editor = screen.getByTestId('edge-editor');
+    const source = editor.querySelector('input[aria-label="Source multiplicity"]') as HTMLInputElement;
+    const target = editor.querySelector('input[aria-label="Target multiplicity"]') as HTMLInputElement;
+    expect(source.value).toBe('');
+    expect(target.value).toBe('');
+
+    fireEvent.change(source, { target: { value: '2' } });
+    fireEvent.blur(source);
+    expect(projectYDocToDiagram(doc).associations[0]!.sourceMultiplicity).toBe('2');
+  });
+
+  it('editor: clearing a multiplicity to empty makes it unspecified', async () => {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const assocId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'ClearMult',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: bId, name: 'B', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [{ id: assocId, sourceClassId: aId, targetClassId: bId, sourceMultiplicity: '1', targetMultiplicity: '1', directed: false }],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge-association');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(edge);
+
+    const editor = screen.getByTestId('edge-editor');
+    const source = editor.querySelector('input[aria-label="Source multiplicity"]') as HTMLInputElement;
+    expect(source.value).toBe('1');
+    fireEvent.change(source, { target: { value: '' } });
+    fireEvent.blur(source);
+
+    const assoc = projectYDocToDiagram(doc).associations[0]!;
+    expect(assoc.sourceMultiplicity).toBeUndefined();
+    expect(assoc.targetMultiplicity).toBe('1'); // other end untouched
+  });
+});
+
+/**
+ * unit 13d fix D — clicking empty canvas deselects: clears the selected node,
+ * closes the edge/n-ary editor, and disarms any armed edge tool (the click
+ * equivalent of Escape).
+ */
+describe('unit 13d — clicking empty canvas deselects (fix D)', () => {
+  function paneFixture(): { diagram: Diagram; doc: Y.Doc } {
+    const diagram = makeFixture();
+    diagram.associations = [{
+      id: crypto.randomUUID(),
+      sourceClassId: diagram.classes[0]!.id,
+      targetClassId: diagram.classes[1]!.id,
+      sourceMultiplicity: '1',
+      targetMultiplicity: '1',
+      directed: false,
+    }];
+    const doc = buildYDocFromDiagram(diagram);
+    return { diagram, doc };
+  }
+
+  const clickPane = (container: HTMLElement): void => {
+    const pane = container.querySelector('.react-flow__pane');
+    expect(pane).not.toBeNull();
+    fireEvent.click(pane!);
+  };
+
+  it('pane click closes the edge editor', async () => {
+    const { doc } = paneFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const edge = await waitFor(() => {
+      const el = container.querySelector('.react-flow__edge-association');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(edge);
+    expect(screen.getByTestId('edge-editor')).toBeDefined();
+
+    clickPane(container);
+    expect(screen.queryByTestId('edge-editor')).toBeNull();
+  });
+
+  it('pane click disarms the armed edge tool (connect overlays gone)', () => {
+    const { doc } = paneFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    fireEvent.click(screen.getByTestId('palette-association'));
+    expect(container.querySelectorAll('[data-testid="node-connect-overlay"]').length).toBeGreaterThan(0);
+
+    clickPane(container);
+    expect(container.querySelectorAll('[data-testid="node-connect-overlay"]')).toHaveLength(0);
+  });
+
+  it('pane click deselects the selected class (Quick Linker arrow hidden)', () => {
+    const { doc } = paneFixture();
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    fireEvent.click(container.querySelectorAll('.react-flow__node')[0]!.querySelector('.uml-class')!);
+    expect(container.querySelectorAll('[data-testid="quicklinker-arrow"]')).toHaveLength(1);
+
+    clickPane(container);
+    expect(container.querySelectorAll('[data-testid="quicklinker-arrow"]')).toHaveLength(0);
+  });
+
+  it('pane click closes the n-ary editor', async () => {
+    const supplierId = crypto.randomUUID();
+    const partId = crypto.randomUUID();
+    const projectId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'NaryPane',
+      classes: [
+        { id: supplierId, name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: partId, name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: projectId, name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      naryAssociations: [
+        {
+          id: crypto.randomUUID(),
+          memberEnds: [
+            { classId: supplierId, multiplicity: '1' },
+            { classId: partId, multiplicity: '1' },
+            { classId: projectId, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const diamond = await waitFor(() => {
+      const el = container.querySelector('.uml-nary-diamond');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(diamond);
+    expect(screen.getByTestId('nary-editor')).toBeDefined();
+
+    clickPane(container);
+    expect(screen.queryByTestId('nary-editor')).toBeNull();
   });
 });

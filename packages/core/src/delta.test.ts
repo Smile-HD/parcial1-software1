@@ -129,6 +129,59 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     const result = DeltaSchema.safeParse(invalidAssociationDelta);
     expect(result.success).toBe(false);
   });
+
+  it('accepts an association create delta WITHOUT multiplicities (unit 13d fix C)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      directed: false,
+      aggregation: 'composite' as const,
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.sourceMultiplicity).toBeUndefined();
+      expect(result.data.targetMultiplicity).toBeUndefined();
+    }
+  });
+
+  it('accepts null in updateMultiplicity to CLEAR an end to unspecified (unit 13d fix C)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: crypto.randomUUID(),
+      newSourceMultiplicity: null,
+      newTargetMultiplicity: '0..*',
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.newSourceMultiplicity).toBeNull();
+      expect(result.data.newTargetMultiplicity).toBe('0..*');
+    }
+  });
+
+  it('still REJECTS garbage (non-null, non-multiplicity) values in updateMultiplicity', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: crypto.randomUUID(),
+      newSourceMultiplicity: 'abc',
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
 });
 
 describe('Delta Schema — Association aggregationEnd (UML 2.5.1 explicit end ownership)', () => {
@@ -668,14 +721,63 @@ describe('Delta Schema — NaryAssociation kind (unit 13.1)', () => {
     expect(DeltaSchema.safeParse(delta).success).toBe(true);
   });
 
-  it('REJECTS unknown ops for naryAssociation deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for naryAssociation deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'naryAssociation' as const,
-      op: 'update',
+      op: 'rename',
       naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('validates an naryAssociation UPDATE delta — name-only, ends-only and both (unit 13d fix A)', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: crypto.randomUUID(),
+    };
+    const ends = [
+      { classId: crypto.randomUUID(), multiplicity: '1' },
+      { classId: crypto.randomUUID(), multiplicity: '0..*' },
+      { classId: crypto.randomUUID(), multiplicity: '*', role: 'supplier' },
+    ];
+
+    expect(DeltaSchema.safeParse({ ...base, name: 'renamed' }).success).toBe(true);
+    expect(DeltaSchema.safeParse({ ...base, memberEnds: ends }).success).toBe(true);
+    expect(DeltaSchema.safeParse({ ...base, name: 'renamed', memberEnds: ends }).success).toBe(true);
+  });
+
+  it('REJECTS an naryAssociation update carrying neither name nor memberEnds (schema gate)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS an naryAssociation update with garbage end multiplicity (schema gate)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: crypto.randomUUID(),
+      memberEnds: [
+        { classId: crypto.randomUUID(), multiplicity: 'abc' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+      ],
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
   });

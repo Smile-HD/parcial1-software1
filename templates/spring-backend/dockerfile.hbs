@@ -1,0 +1,9 @@
+# Generated container image (maintainer decision 2026-09-07 — zip extras):
+# runs the packaged Spring Boot jar on a minimal Java 21 runtime.
+# Build the jar first (`./mvnw -DskipTests package`), then `docker build .`.
+# Rendered by templates/spring-backend/dockerfile.hbs — do not edit by hand.
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
