@@ -7,7 +7,7 @@
  * plain lines in UML notation) — and per the PR 10 lesson, any marker
  * reference stays a `url(#id)` string, never a MarkerType object.
  */
-import { type EdgeProps, getBezierPath, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
 
 import type { NaryMemberEnd } from '@app/core';
 
@@ -19,8 +19,8 @@ export interface NaryEndEdgeData {
 export function NaryEndEdge(props: EdgeProps<NaryEndEdgeData>) {
   const { data, sourceX, sourceY, targetX, targetY } = props;
 
-  // v12 returns a [path, labelX, labelY] tuple — take the path string.
-  const [path, labelX, labelY] = getBezierPath(props);
+  // unit 13e — EA-style orthogonal routing (diamond → member class).
+  const [path, labelX, labelY] = getSmoothStepPath(props);
 
   // Fallback for edges without end data (defensive).
   if (!data?.end) {

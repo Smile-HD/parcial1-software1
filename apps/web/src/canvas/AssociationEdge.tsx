@@ -1,25 +1,44 @@
 /**
- * Custom edge component for UML associations with aggregation/composition diamonds,
- * association name label, and role labels at each end.
+ * Custom edge component for UML associations with aggregation/composition
+ * diamonds, association name label, and role labels at each end.
+ *
+ * unit 13e:
+ *  - Non-self edges route with getSmoothStepPath (EA-style orthogonal
+ *    connectors) instead of getBezierPath. Markers stay `url(#id)` strings
+ *    referencing per-edge defs (PR 10 lesson).
+ *  - Self-edges (source === target — recursive associations, valid since
+ *    13d) render a visible rounded loop via getSelfLoopPath instead of a
+ *    degenerate/hidden bezier. The loop is sized from the node's measured
+ *    dimensions, read from the React Flow store (v12 EdgeProps does not
+ *    carry them), with a default-box fallback before measurement.
  */
-import { type EdgeProps, getBezierPath, BaseEdge } from '@xyflow/react';
-import { useRef, useEffect } from 'react';
+import { type EdgeProps, getSmoothStepPath, useStore, BaseEdge } from '@xyflow/react';
 
 import type { Association } from '@app/core';
+
+import { getSelfLoopGeometry } from './selfLoop';
 
 interface AssociationEdgeData {
   association: Association;
 }
 
 export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
-  const { data, id, sourceX, sourceY, targetX, targetY } = props;
+  const { data, id, source, target, sourceX, sourceY, targetX, targetY } = props;
+
+  // unit 13e — measured size of the (shared) node for the self-loop.
+  // Primitive selectors keep useStore stable (no object identity churn).
+  const sourceWidth = useStore((s) => s.nodeLookup.get(source)?.measured?.width ?? 0);
+  const sourceHeight = useStore((s) => s.nodeLookup.get(source)?.measured?.height ?? 0);
+
   const association = data?.association;
 
   // Fallback for edges without association data (backward compat)
   if (!association) {
-    const [fallbackPath] = getBezierPath(props);
+    const [fallbackPath] = getSmoothStepPath(props);
     return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
   }
+
+  const isSelf = source === target;
 
   const isComposite = association.aggregation === 'composite';
   const isShared = association.aggregation === 'shared';
@@ -56,40 +75,42 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
     }
   }
 
-  // Label for association name + multiplicities (centered).
-  // unit 13d fix C — only DEFINED multiplicities are drawn: an unspecified
-  // end renders NO phantom '1'. With both ends set the label is byte-identical
-  // to the previous format; with none set and no name, no center label at all.
-  const multParts = [association.sourceMultiplicity, association.targetMultiplicity].filter(
-    (m): m is string => m !== undefined,
-  );
-  const multLabel = multParts.length > 0 ? multParts.join(' · ') : undefined;
-  const centerLabel = association.name
-    ? (multLabel ? `${association.name} | ${multLabel}` : association.name)
-    : multLabel;
+  // Multiplicities: only DEFINED ends are drawn (unit 13d fix C — no phantom
+  // '1'). unit 13e — EA placement: each end carries its own multiplicity (and
+  // role below it); the association name is centered on the connector. With
+  // nothing set there is no label at all.
+  const sourceMult = association.sourceMultiplicity;
+  const targetMult = association.targetMultiplicity;
+  const sourceRole = association.sourceRole;
+  const targetRole = association.targetRole;
 
-  // Role labels at ends
-  const sourceLabel = association.sourceRole;
-  const targetLabel = association.targetRole;
+  // unit 13e — path generator: visible rounded loop for self-edges, EA-style
+  // orthogonal routing for everything else.
+  const loop = isSelf
+    ? getSelfLoopGeometry({ sourceX, sourceY, targetX, targetY, width: sourceWidth, height: sourceHeight })
+    : null;
+  const [path] = loop ? [loop.path] : getSmoothStepPath(props);
 
-  // Compute center for labels (midpoint of source/target)
+  // Label anchors: on the arch for self-edges (13e.7: exit stub left of
+  // top-center, return stub right of it — so the source label sits to the
+  // LEFT of its run and the target label to the RIGHT); midpoint / per-end
+  // offsets along the chord for regular edges (unchanged geometry from 13d).
   const cx = (sourceX + targetX) / 2;
   const cy = (sourceY + targetY) / 2;
-
-  // Compute source/target label positions (offset from endpoints along edge)
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
   const offset = 20;
-  const sourceLx = sourceX + ux * offset;
-  const sourceLy = sourceY + uy * offset;
-  const targetLx = targetX - ux * offset;
-  const targetLy = targetY - uy * offset;
-
-  // v12 returns a [path, labelX, labelY] tuple — take the path string
-  const [path] = getBezierPath(props);
+  const nameX = loop ? loop.labelX : cx;
+  const nameY = loop ? loop.labelY : cy - 8;
+  const srcX = loop ? loop.sourceLabelX : sourceX + ux * offset;
+  const srcY = loop ? loop.sourceLabelY : sourceY + uy * offset - 8;
+  const tgtX = loop ? loop.targetLabelX : targetX - ux * offset;
+  const tgtY = loop ? loop.targetLabelY : targetY - uy * offset - 8;
+  const srcAnchor: 'start' | 'end' = loop ? 'end' : 'middle';
+  const tgtAnchor: 'start' | 'end' = loop ? 'start' : 'middle';
 
   return (
     <>
@@ -142,11 +163,14 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
         stroke="#1a1a2e"
       />
 
-      {/* Center label (association name + multiplicities) - absolute coordinates */}
-      {centerLabel && (
+      {/* unit 13e — EA-style labels: the association name centered on the
+          connector (on the loop's top run for self-edges), each end's
+          multiplicity beside it and the role just below. Only DEFINED
+          multiplicities are drawn (unit 13d fix C). */}
+      {association.name && (
         <text
-          x={cx}
-          y={cy - 8}
+          x={nameX}
+          y={nameY}
           dominantBaseline="middle"
           textAnchor="middle"
           fontSize="10"
@@ -155,17 +179,30 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
           stroke="white"
           strokeWidth="3"
         >
-          {centerLabel}
+          {association.name}
         </text>
       )}
-
-      {/* Source role label - absolute coordinates near source */}
-      {sourceLabel && (
+      {sourceMult !== undefined && (
         <text
-          x={sourceLx}
-          y={sourceLy - 8}
+          x={srcX}
+          y={sourceRole ? srcY - 6 : srcY}
           dominantBaseline="middle"
-          textAnchor="middle"
+          textAnchor={srcAnchor}
+          fontSize="10"
+          fill="#333"
+          paintOrder="stroke"
+          stroke="white"
+          strokeWidth="3"
+        >
+          {sourceMult}
+        </text>
+      )}
+      {sourceRole && (
+        <text
+          x={srcX}
+          y={sourceMult !== undefined ? srcY + 8 : srcY}
+          dominantBaseline="middle"
+          textAnchor={srcAnchor}
           fontSize="9"
           fill="#555"
           fontStyle="italic"
@@ -173,17 +210,30 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
           stroke="white"
           strokeWidth="3"
         >
-          {sourceLabel}
+          {sourceRole}
         </text>
       )}
-
-      {/* Target role label - absolute coordinates near target */}
-      {targetLabel && (
+      {targetMult !== undefined && (
         <text
-          x={targetLx}
-          y={targetLy - 8}
+          x={tgtX}
+          y={targetRole ? tgtY - 6 : tgtY}
           dominantBaseline="middle"
-          textAnchor="middle"
+          textAnchor={tgtAnchor}
+          fontSize="10"
+          fill="#333"
+          paintOrder="stroke"
+          stroke="white"
+          strokeWidth="3"
+        >
+          {targetMult}
+        </text>
+      )}
+      {targetRole && (
+        <text
+          x={tgtX}
+          y={targetMult !== undefined ? tgtY + 8 : tgtY}
+          dominantBaseline="middle"
+          textAnchor={tgtAnchor}
           fontSize="9"
           fill="#555"
           fontStyle="italic"
@@ -191,7 +241,7 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
           stroke="white"
           strokeWidth="3"
         >
-          {targetLabel}
+          {targetRole}
         </text>
       )}
     </>
