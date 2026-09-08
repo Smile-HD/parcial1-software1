@@ -157,8 +157,10 @@ function buildYAssociation(assoc: Association): Y.Map<unknown> {
   yAssoc.set('id', assoc.id);
   yAssoc.set('sourceClassId', assoc.sourceClassId);
   yAssoc.set('targetClassId', assoc.targetClassId);
-  yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
-  yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
+  // Unit 13d fix C: optional multiplicities — an unspecified end stores NO
+  // key (absence ≠ '1'), mirroring core's ydoc codec.
+  if (assoc.sourceMultiplicity !== undefined) yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
+  if (assoc.targetMultiplicity !== undefined) yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
   yAssoc.set('directed', assoc.directed);
   // Unit 10: aggregation/name/roles must round-trip through the Y.Doc bridge
   yAssoc.set('aggregation', assoc.aggregation ?? 'none');
@@ -174,6 +176,9 @@ function buildYGeneralization(gen: Generalization): Y.Map<unknown> {
   yGen.set('id', gen.id);
   yGen.set('subClassId', gen.subClassId);
   yGen.set('superClassId', gen.superClassId);
+  // Unit 13c: the optional label must survive the bridge's full rewrite,
+  // otherwise any unrelated delta would silently drop edge names.
+  if (gen.name !== undefined) yGen.set('name', gen.name);
   return yGen;
 }
 
@@ -182,6 +187,7 @@ function buildYRealization(real: Realization): Y.Map<unknown> {
   yReal.set('id', real.id);
   yReal.set('clientClassId', real.clientClassId);
   yReal.set('supplierInterfaceId', real.supplierInterfaceId);
+  if (real.name !== undefined) yReal.set('name', real.name);
   return yReal;
 }
 
@@ -190,6 +196,7 @@ function buildYDependency(dep: Dependency): Y.Map<unknown> {
   yDep.set('id', dep.id);
   yDep.set('clientClassId', dep.clientClassId);
   yDep.set('supplierClassId', dep.supplierClassId);
+  if (dep.name !== undefined) yDep.set('name', dep.name);
   return yDep;
 }
 

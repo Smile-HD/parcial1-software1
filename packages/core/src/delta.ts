@@ -65,6 +65,9 @@ export type MemberDelta = z.infer<typeof MemberDeltaSchema>;
 /**
  * Association-level operations: create, update multiplicities, delete.
  * Aggregation, name, roles, and aggregationEnd are optional so legacy deltas stay valid.
+ * Unit 13d fix C: create multiplicities are optional (an end may start
+ * unspecified), and the update carriers are NULLABLE — `null` CLEARS an end
+ * back to unspecified, a string sets it, and `undefined` keeps it (tri-state).
  */
 export const AssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('association'),
@@ -82,24 +85,28 @@ export const AssociationDeltaSchema = DeltaBase.extend({
   name: z.string().optional(),
   sourceRole: z.string().optional(),
   targetRole: z.string().optional(),
-  // For updateMultiplicity
-  newSourceMultiplicity: MultiplicitySchema.optional(),
-  newTargetMultiplicity: MultiplicitySchema.optional(),
+  // For updateMultiplicity (null = clear to unspecified)
+  newSourceMultiplicity: MultiplicitySchema.nullable().optional(),
+  newTargetMultiplicity: MultiplicitySchema.nullable().optional(),
 }).strict();
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 
 /**
- * Generalization-level operations: create (subclass → superclass) and delete.
- * A `create` must carry both ends (schema gate); engine invariants (both
- * classes exist, no duplicates, no cycles) are enforced by applyDelta — unit 11.2.
+ * Generalization-level operations: create (subclass → superclass), update
+ * (editable label — unit 13c) and delete. A `create` must carry both ends
+ * (schema gate); an `update` must carry `name` (schema gate, mirroring the
+ * class-update gate). Engine invariants (both classes exist, no duplicates,
+ * no cycles) are enforced by applyDelta — unit 11.2.
  */
 export const GeneralizationDeltaSchema = DeltaBase.extend({
   kind: z.literal('generalization'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   generalizationId: z.string().uuid(),
   // For create: both ends required (enforced by the refinement below)
   subClassId: z.string().uuid().optional(),
   superClassId: z.string().uuid().optional(),
+  // For update: the optional edge label (unit 13c)
+  name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.subClassId || !delta.superClassId)) {
     ctx.addIssue({
@@ -107,22 +114,31 @@ export const GeneralizationDeltaSchema = DeltaBase.extend({
       message: 'Generalization create requires subClassId and superClassId',
     });
   }
+  if (delta.op === 'update' && delta.name === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Generalization update requires name',
+    });
+  }
 });
 export type GeneralizationDelta = z.infer<typeof GeneralizationDeltaSchema>;
 
 /**
- * Realization-level operations: create (client class → supplier interface)
- * and delete. A `create` must carry both ends (schema gate); engine
+ * Realization-level operations: create (client class → supplier interface),
+ * update (editable label — unit 13c) and delete. A `create` must carry both
+ * ends (schema gate); an `update` must carry `name` (schema gate). Engine
  * invariants (both exist, supplier is an interface, no duplicates) are
  * enforced by applyDelta — unit 12.2.
  */
 export const RealizationDeltaSchema = DeltaBase.extend({
   kind: z.literal('realization'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   realizationId: z.string().uuid(),
   // For create: both ends required (enforced by the refinement below)
   clientClassId: z.string().uuid().optional(),
   supplierInterfaceId: z.string().uuid().optional(),
+  // For update: the optional edge label (unit 13c)
+  name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierInterfaceId)) {
     ctx.addIssue({
@@ -130,23 +146,32 @@ export const RealizationDeltaSchema = DeltaBase.extend({
       message: 'Realization create requires clientClassId and supplierInterfaceId',
     });
   }
+  if (delta.op === 'update' && delta.name === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Realization update requires name',
+    });
+  }
 });
 export type RealizationDelta = z.infer<typeof RealizationDeltaSchema>;
 
 /**
  * Dependency-level operations: create (client class → supplier class or
- * interface) and delete. A `create` must carry both ends (schema gate);
- * engine invariants (both exist, no duplicates) are enforced by
- * applyDelta — unit 12.2 (12b half). The supplier may be ANY classifier
- * (no interface requirement) and there is NO multiplicity.
+ * interface), update (editable label — unit 13c) and delete. A `create`
+ * must carry both ends (schema gate); an `update` must carry `name`
+ * (schema gate). Engine invariants (both exist, no duplicates) are
+ * enforced by applyDelta — unit 12.2 (12b half). The supplier may be ANY
+ * classifier (no interface requirement) and there is NO multiplicity.
  */
 export const DependencyDeltaSchema = DeltaBase.extend({
   kind: z.literal('dependency'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   dependencyId: z.string().uuid(),
   // For create: both ends required (enforced by the refinement below)
   clientClassId: z.string().uuid().optional(),
   supplierClassId: z.string().uuid().optional(),
+  // For update: the optional edge label (unit 13c)
+  name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierClassId)) {
     ctx.addIssue({
@@ -154,22 +179,31 @@ export const DependencyDeltaSchema = DeltaBase.extend({
       message: 'Dependency create requires clientClassId and supplierClassId',
     });
   }
+  if (delta.op === 'update' && delta.name === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Dependency update requires name',
+    });
+  }
 });
 export type DependencyDelta = z.infer<typeof DependencyDeltaSchema>;
 
 /**
- * N-ary association-level operations: create (>=3 member ends) and delete.
- * A `create` must carry memberEnds (schema gate); the engine invariants —
- * every member class exists, >=3 ends, no duplicate classId within one
- * association — are enforced by applyDelta (unit 13.1). The ≥3 floor is
- * deliberately NOT a schema gate so a 2-end create surfaces as a typed
- * engine error (NaryAssociationMinEndsError) instead of a thrown ZodError.
+ * N-ary association-level operations: create (>=3 member ends), update
+ * (name and/or member ends — unit 13d fix A) and delete. A `create` must
+ * carry memberEnds (schema gate); an `update` must carry at least one of
+ * `name` / `memberEnds` (schema gate, mirroring the class-update gate). The
+ * engine invariants — every member class exists, >=3 ends, no duplicate
+ * classId within one association — are enforced by applyDelta for BOTH
+ * create and update (unit 13.1 / 13d). The ≥3 floor is deliberately NOT a
+ * schema gate so a 2-end payload surfaces as a typed engine error
+ * (NaryAssociationMinEndsError) instead of a thrown ZodError.
  */
 export const NaryAssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('naryAssociation'),
-  op: z.enum(['create', 'delete']),
+  op: z.enum(['create', 'update', 'delete']),
   naryAssociationId: z.string().uuid(),
-  // For create: member ends required (enforced by the refinement below)
+  // For create (required) and update (optional replacement): member ends.
   memberEnds: z.array(z.object({
     classId: z.string().uuid(),
     multiplicity: MultiplicitySchema,
@@ -181,6 +215,12 @@ export const NaryAssociationDeltaSchema = DeltaBase.extend({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'NaryAssociation create requires memberEnds',
+    });
+  }
+  if (delta.op === 'update' && delta.name === undefined && delta.memberEnds === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'NaryAssociation update requires name or memberEnds',
     });
   }
 });

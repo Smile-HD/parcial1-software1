@@ -9,6 +9,7 @@ import {
   validateYDocProjection,
 } from './ydoc.js';
 import { DiagramSchema, type Diagram } from './ir.js';
+import { applyDelta } from './apply.js';
 
 /**
  * Creates a valid test diagram with classes, attributes, methods, associations, and positions.
@@ -584,5 +585,184 @@ describe('ydoc codec — NaryAssociation round-trip (unit 13.1/13.5)', () => {
 
     const projected = projectYDocToDiagram(doc);
     expect(projected.naryAssociations).toEqual([]);
+  });
+});
+
+describe('ydoc codec — Edge label (name) round-trip (unit 13c)', () => {
+  function diagramWithLabeledEdges(): Diagram {
+    return DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Edge Labels',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ItemType', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'Repository', position: { x: 600, y: 0 }, attributes: [], methods: [], kind: 'interface' },
+      ],
+      associations: [],
+      generalizations: [
+        { id: '550e8400-e29b-41d4-a716-446655440004', subClassId: '550e8400-e29b-41d4-a716-446655440001', superClassId: '550e8400-e29b-41d4-a716-446655440002', name: 'inherits' },
+      ],
+      realizations: [
+        { id: '550e8400-e29b-41d4-a716-446655440005', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierInterfaceId: '550e8400-e29b-41d4-a716-446655440003', name: 'implements' },
+      ],
+      dependencies: [
+        { id: '550e8400-e29b-41d4-a716-446655440006', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierClassId: '550e8400-e29b-41d4-a716-446655440002', name: 'uses' },
+      ],
+    });
+  }
+
+  it('buildYDocFromDiagram → projectYDocToDiagram preserves names on generalization/realization/dependency', () => {
+    const original = diagramWithLabeledEdges();
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.generalizations[0]!.name).toBe('inherits');
+    expect(projected.realizations[0]!.name).toBe('implements');
+    expect(projected.dependencies[0]!.name).toBe('uses');
+  });
+
+  it('round-trip through encode/load preserves edge names (blob-authoritative path)', () => {
+    const original = diagramWithLabeledEdges();
+    const doc = buildYDocFromDiagram(original);
+    const update = encodeYDoc(doc);
+    const loadedDoc = loadYDocFromUpdate(update);
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.generalizations[0]!.name).toBe('inherits');
+    expect(projected.realizations[0]!.name).toBe('implements');
+    expect(projected.dependencies[0]!.name).toBe('uses');
+  });
+
+  it('backward compat: edges without a name key project name undefined (no phantom field)', () => {
+    const original = DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'No Labels',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ItemType', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [{ id: '550e8400-e29b-41d4-a716-446655440003', subClassId: '550e8400-e29b-41d4-a716-446655440001', superClassId: '550e8400-e29b-41d4-a716-446655440002' }],
+      dependencies: [{ id: '550e8400-e29b-41d4-a716-446655440004', clientClassId: '550e8400-e29b-41d4-a716-446655440001', supplierClassId: '550e8400-e29b-41d4-a716-446655440002' }],
+    });
+
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.generalizations[0]!.name).toBeUndefined();
+    expect(projected.dependencies[0]!.name).toBeUndefined();
+    // The projected object must deep-equal the original entry (no undefined-key drift).
+    expect(projected.generalizations[0]).toEqual(original.generalizations[0]);
+  });
+});
+
+describe('ydoc codec — optional association multiplicities (unit 13d fix C)', () => {
+  function diagramWithUnspecifiedAssoc(): Diagram {
+    return DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Empty Mults',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Item', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [
+        { id: '550e8400-e29b-41d4-a716-446655440003', sourceClassId: '550e8400-e29b-41d4-a716-446655440001', targetClassId: '550e8400-e29b-41d4-a716-446655440002', directed: false, aggregation: 'composite' },
+      ],
+    });
+  }
+
+  it('buildYDocFromDiagram → projectYDocToDiagram keeps omitted multiplicities UNDEFINED (unspecified ≠ "1")', () => {
+    const original = diagramWithUnspecifiedAssoc();
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    const assoc = projected.associations[0]!;
+    expect(assoc.sourceMultiplicity).toBeUndefined();
+    expect(assoc.targetMultiplicity).toBeUndefined();
+    expect(assoc.aggregation).toBe('composite');
+    // No phantom '1' anywhere in the stored Y.Map.
+    const yAssoc = doc.getMap('associations').get('550e8400-e29b-41d4-a716-446655440003') as Y.Map<unknown>;
+    expect(yAssoc.has('sourceMultiplicity')).toBe(false);
+    expect(yAssoc.has('targetMultiplicity')).toBe(false);
+  });
+
+  it('round-trip through encode/load preserves unspecified multiplicities (blob path)', () => {
+    const original = diagramWithUnspecifiedAssoc();
+    const doc = buildYDocFromDiagram(original);
+    const loadedDoc = loadYDocFromUpdate(encodeYDoc(doc));
+    const projected = projectYDocToDiagram(loadedDoc);
+
+    expect(projected.associations[0]!.sourceMultiplicity).toBeUndefined();
+    expect(projected.associations[0]!.targetMultiplicity).toBeUndefined();
+  });
+
+  it('backward compat: associations WITH multiplicities still round-trip exactly', () => {
+    const original = DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'Full Mults',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Order', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Item', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [
+        { id: '550e8400-e29b-41d4-a716-446655440003', sourceClassId: '550e8400-e29b-41d4-a716-446655440001', targetClassId: '550e8400-e29b-41d4-a716-446655440002', sourceMultiplicity: '1', targetMultiplicity: '0..*', directed: false },
+      ],
+    });
+    const doc = buildYDocFromDiagram(original);
+    const projected = projectYDocToDiagram(doc);
+
+    expect(projected.associations[0]!.sourceMultiplicity).toBe('1');
+    expect(projected.associations[0]!.targetMultiplicity).toBe('0..*');
+  });
+});
+
+describe('ydoc codec — n-ary update round-trip (unit 13d fix A)', () => {
+  it('an applied n-ary update (name + end multiplicities) survives build → project', () => {
+    const original = DiagramSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      name: 'NaryUpdate',
+      classes: [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Supplier', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Part', position: { x: 300, y: 0 }, attributes: [], methods: [] },
+        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'Project', position: { x: 150, y: 300 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      naryAssociations: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440004',
+          name: 'supply',
+          memberEnds: [
+            { classId: '550e8400-e29b-41d4-a716-446655440001', multiplicity: '1', role: 'supplier' },
+            { classId: '550e8400-e29b-41d4-a716-446655440002', multiplicity: '0..*' },
+            { classId: '550e8400-e29b-41d4-a716-446655440003', multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+
+    const updated = applyDelta(original, {
+      id: '550e8400-e29b-41d4-a716-446655440099',
+      diagramId: original.id,
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: '550e8400-e29b-41d4-a716-446655440004',
+      name: 'delivers',
+      memberEnds: [
+        { classId: '550e8400-e29b-41d4-a716-446655440001', multiplicity: '*', role: 'supplier' },
+        { classId: '550e8400-e29b-41d4-a716-446655440002', multiplicity: '0..1' },
+        { classId: '550e8400-e29b-41d4-a716-446655440003', multiplicity: '1' },
+      ],
+    });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+
+    const doc = buildYDocFromDiagram(updated.value);
+    const projected = projectYDocToDiagram(doc);
+    const nary = projected.naryAssociations[0]!;
+    expect(nary.name).toBe('delivers');
+    expect(nary.memberEnds[0]).toMatchObject({ multiplicity: '*', role: 'supplier' });
+    expect(nary.memberEnds[1]!.multiplicity).toBe('0..1');
+    expect(nary.memberEnds[2]!.multiplicity).toBe('1');
   });
 });

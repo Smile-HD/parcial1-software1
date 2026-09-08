@@ -2014,4 +2014,465 @@ describe('applyDelta — N-ary association invariants (unit 13.1, editor:R N-ary
     expect(state.naryAssociations).toHaveLength(0);
     expect(state.classes[0]!.name).toBe('Supplier');
   });
+
+  // ── unit 13d fix A: n-ary `update` delta (diamond editing) ───────────────
+  function updateNaryDelta(
+    state: Diagram,
+    naryAssociationId: string,
+    updates: {
+      name?: string;
+      memberEnds?: { classId: string; multiplicity: string; role?: string }[];
+    },
+  ) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId,
+      ...(updates.name !== undefined ? { name: updates.name } : {}),
+      ...(updates.memberEnds !== undefined ? { memberEnds: updates.memberEnds } : {}),
+    };
+  }
+
+  function ternaryState(): { state: Diagram; naryId: string; ids: [string, string, string] } {
+    const [supplier, part, project] = shopState().classes;
+    const naryId = uuidv4();
+    const state = createDiagram({
+      classes: [supplier!, part!, project!],
+      naryAssociations: [
+        {
+          id: naryId,
+          name: 'supply',
+          memberEnds: [
+            { classId: supplier!.id, multiplicity: '1', role: 'supplier' },
+            { classId: part!.id, multiplicity: '0..*' },
+            { classId: project!.id, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+    return { state, naryId, ids: [supplier!.id, part!.id, project!.id] };
+  }
+
+  it('UPDATE sets the n-ary name; member ends untouched', () => {
+    const { state, naryId, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, { name: 'delivers' }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const nary = result.value.naryAssociations[0]!;
+      expect(nary.name).toBe('delivers');
+      expect(nary.memberEnds).toEqual([
+        { classId: ids[0], multiplicity: '1', role: 'supplier' },
+        { classId: ids[1], multiplicity: '0..*' },
+        { classId: ids[2], multiplicity: '1' },
+      ]);
+    }
+    // Input state untouched (immutability)
+    expect(state.naryAssociations[0]!.name).toBe('supply');
+  });
+
+  it('UPDATE with an empty name clears it (mirrors edge label semantics)', () => {
+    const { state, naryId } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, { name: '' }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.naryAssociations[0]!.name).toBeUndefined();
+  });
+
+  it('UPDATE replaces memberEnds — an end multiplicity edit round-trips', () => {
+    const { state, naryId, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, {
+      memberEnds: [
+        { classId: ids[0], multiplicity: '*', role: 'supplier' },
+        { classId: ids[1], multiplicity: '0..*' },
+        { classId: ids[2], multiplicity: '1' },
+      ],
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const ends = result.value.naryAssociations[0]!.memberEnds;
+      expect(ends[0]).toMatchObject({ classId: ids[0], multiplicity: '*', role: 'supplier' });
+      expect(ends[1]!.multiplicity).toBe('0..*');
+      // Name survives an ends-only update.
+      expect(result.value.naryAssociations[0]!.name).toBe('supply');
+    }
+  });
+
+  it('UPDATE REJECTS fewer than 3 ends (same invariant as create); model unchanged', () => {
+    const { state, naryId, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, {
+      memberEnds: [
+        { classId: ids[0], multiplicity: '1' },
+        { classId: ids[1], multiplicity: '1' },
+      ],
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('NaryAssociationMinEndsError');
+    expect(state.naryAssociations[0]!.memberEnds).toHaveLength(3);
+  });
+
+  it('UPDATE REJECTS an unknown member class; model unchanged', () => {
+    const { state, naryId, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, {
+      memberEnds: [
+        { classId: ids[0], multiplicity: '1' },
+        { classId: ids[1], multiplicity: '1' },
+        { classId: uuidv4(), multiplicity: '1' }, // ghost member
+      ],
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('ClassNotFoundError');
+    expect(state.naryAssociations[0]!.memberEnds[2]!.classId).toBe(ids[2]);
+  });
+
+  it('UPDATE REJECTS duplicate ends; model unchanged', () => {
+    const { state, naryId, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, {
+      memberEnds: [
+        { classId: ids[0], multiplicity: '1' },
+        { classId: ids[0], multiplicity: '0..*' }, // duplicate member
+        { classId: ids[2], multiplicity: '1' },
+      ],
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('DuplicateNaryMemberError');
+    expect(state.naryAssociations[0]!.memberEnds).toHaveLength(3);
+  });
+
+  it('UPDATE of an unknown n-ary association → NaryAssociationNotFoundError', () => {
+    const { state, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, uuidv4(), {
+      memberEnds: [
+        { classId: ids[0], multiplicity: '1' },
+        { classId: ids[1], multiplicity: '1' },
+        { classId: ids[2], multiplicity: '1' },
+      ],
+    }));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('NaryAssociationNotFoundError');
+  });
+
+  it('UPDATE carrying name AND memberEnds applies both in one delta', () => {
+    const { state, naryId, ids } = ternaryState();
+
+    const result = applyDelta(state, updateNaryDelta(state, naryId, {
+      name: 'renamed',
+      memberEnds: [
+        { classId: ids[0], multiplicity: '2' },
+        { classId: ids[1], multiplicity: '1' },
+        { classId: ids[2], multiplicity: '1' },
+      ],
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.naryAssociations[0]!.name).toBe('renamed');
+      expect(result.value.naryAssociations[0]!.memberEnds[0]!.multiplicity).toBe('2');
+    }
+  });
+});
+
+describe('applyDelta — Edge label updates (unit 13c, unified edge editing)', () => {
+  function edgeState(): Diagram {
+    const orderId = uuidv4();
+    const itemTypeId = uuidv4();
+    const repoId = uuidv4();
+    return createDiagram({
+      classes: [
+        createClass({ id: orderId, name: 'Order' }),
+        createClass({ id: itemTypeId, name: 'ItemType' }),
+        createClass({ id: repoId, name: 'Repository', kind: 'interface' }),
+      ],
+      generalizations: [{ id: uuidv4(), subClassId: orderId, superClassId: itemTypeId }],
+      realizations: [{ id: uuidv4(), clientClassId: orderId, supplierInterfaceId: repoId }],
+      dependencies: [{ id: uuidv4(), clientClassId: orderId, supplierClassId: itemTypeId }],
+    });
+  }
+
+  function updateEdgeDelta(
+    state: Diagram,
+    kind: 'generalization' | 'realization' | 'dependency',
+    idField: 'generalizationId' | 'realizationId' | 'dependencyId',
+    edgeId: string,
+    name: string,
+  ) {
+    return {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: kind as const,
+      op: 'update' as const,
+      [idField]: edgeId,
+      name,
+    };
+  }
+
+  it('UPDATES a generalization name; endpoints untouched; delete still works afterwards', () => {
+    const state = edgeState();
+    const gen = state.generalizations[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'generalization', 'generalizationId', gen.id, 'inherits'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const updated = result.value.generalizations[0]!;
+      expect(updated.name).toBe('inherits');
+      expect(updated.subClassId).toBe(gen.subClassId);
+      expect(updated.superClassId).toBe(gen.superClassId);
+      // Input state untouched (immutability)
+      expect(state.generalizations[0]!.name).toBeUndefined();
+
+      // Delete still works on an edge that carries a name.
+      const deleted = applyDelta(result.value, {
+        id: uuidv4(),
+        diagramId: result.value.id,
+        timestamp: new Date().toISOString(),
+        kind: 'generalization' as const,
+        op: 'delete' as const,
+        generalizationId: gen.id,
+      });
+      expect(deleted.ok).toBe(true);
+      if (deleted.ok) expect(deleted.value.generalizations).toHaveLength(0);
+    }
+  });
+
+  it('UPDATES a realization name', () => {
+    const state = edgeState();
+    const real = state.realizations[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'realization', 'realizationId', real.id, 'implements'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.realizations[0]!.name).toBe('implements');
+      expect(result.value.realizations[0]!.clientClassId).toBe(real.clientClassId);
+    }
+  });
+
+  it('UPDATES a dependency name', () => {
+    const state = edgeState();
+    const dep = state.dependencies[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'dependency', 'dependencyId', dep.id, 'uses'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.dependencies[0]!.name).toBe('uses');
+      expect(result.value.dependencies[0]!.clientClassId).toBe(dep.clientClassId);
+    }
+  });
+
+  it('an EMPTY name clears the label (back to undefined)', () => {
+    const state = edgeState();
+    const gen = state.generalizations[0]!;
+
+    const named = applyDelta(state, updateEdgeDelta(state, 'generalization', 'generalizationId', gen.id, 'inherits'));
+    expect(named.ok).toBe(true);
+    if (named.ok) {
+      const cleared = applyDelta(named.value, updateEdgeDelta(named.value, 'generalization', 'generalizationId', gen.id, ''));
+      expect(cleared.ok).toBe(true);
+      if (cleared.ok) expect(cleared.value.generalizations[0]!.name).toBeUndefined();
+    }
+  });
+
+  it('REJECTS update of an unknown edge with the matching NotFound error; model unchanged', () => {
+    const state = edgeState();
+
+    const cases: {
+      kind: 'generalization' | 'realization' | 'dependency';
+      idField: 'generalizationId' | 'realizationId' | 'dependencyId';
+      error: string;
+    }[] = [
+      { kind: 'generalization', idField: 'generalizationId', error: 'GeneralizationNotFoundError' },
+      { kind: 'realization', idField: 'realizationId', error: 'RealizationNotFoundError' },
+      { kind: 'dependency', idField: 'dependencyId', error: 'DependencyNotFoundError' },
+    ];
+
+    for (const { kind, idField, error } of cases) {
+      const result = applyDelta(state, updateEdgeDelta(state, kind, idField, uuidv4(), 'ghost'));
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe(error);
+    }
+    // Nothing leaked
+    expect(state.generalizations[0]!.name).toBeUndefined();
+    expect(state.realizations[0]!.name).toBeUndefined();
+    expect(state.dependencies[0]!.name).toBeUndefined();
+  });
+
+  it('update on one edge kind does not touch the other collections', () => {
+    const state = edgeState();
+    const gen = state.generalizations[0]!;
+
+    const result = applyDelta(state, updateEdgeDelta(state, 'generalization', 'generalizationId', gen.id, 'inherits'));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.realizations[0]!.name).toBeUndefined();
+      expect(result.value.dependencies[0]!.name).toBeUndefined();
+      expect(result.value.associations).toEqual(state.associations);
+    }
+  });
+});
+
+describe('applyDelta — optional association multiplicities (unit 13d fix C: comp/aggregation start unspecified)', () => {
+  function pairState(): { state: Diagram; aId: string; bId: string } {
+    const aId = uuidv4();
+    const bId = uuidv4();
+    const state = createDiagram({
+      classes: [createClass({ id: aId, name: 'Order' }), createClass({ id: bId, name: 'Item' })],
+    });
+    return { state, aId, bId };
+  }
+
+  it('CREATES an association WITHOUT multiplicities — both ends stay unspecified (undefined, NOT "1")', () => {
+    const { state, aId, bId } = pairState();
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: aId,
+      targetClassId: bId,
+      directed: false,
+      aggregation: 'composite',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const assoc = result.value.associations[0]!;
+      expect(assoc.sourceMultiplicity).toBeUndefined();
+      expect(assoc.targetMultiplicity).toBeUndefined();
+      expect(assoc.aggregation).toBe('composite');
+    }
+  });
+
+  it('updateMultiplicity with NULL clears an end to unspecified; the other end is untouched', () => {
+    const { state, aId, bId } = pairState();
+    const associationId = uuidv4();
+    const created = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId,
+      sourceClassId: aId,
+      targetClassId: bId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '0..*' as const,
+      directed: false,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const cleared = applyDelta(created.value, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId,
+      newSourceMultiplicity: null,
+    });
+
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok) {
+      const assoc = cleared.value.associations[0]!;
+      expect(assoc.sourceMultiplicity).toBeUndefined();
+      expect(assoc.targetMultiplicity).toBe('0..*');
+    }
+  });
+
+  it('updateMultiplicity carrying ONLY a null clear passes the at-least-one guard', () => {
+    const { state, aId, bId } = pairState();
+    const associationId = uuidv4();
+    const created = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId,
+      sourceClassId: aId,
+      targetClassId: bId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '1' as const,
+      directed: false,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const cleared = applyDelta(created.value, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId,
+      newTargetMultiplicity: null,
+    });
+
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok) expect(cleared.value.associations[0]!.targetMultiplicity).toBeUndefined();
+  });
+
+  it('create still REJECTS missing endpoints/directed — optionality did not loosen the rest', () => {
+    const { state, aId } = pairState();
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: aId,
+      // targetClassId missing, directed missing
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe('InvalidOperationError');
+  });
+
+  it('backward compat: create WITH multiplicities still stores the exact values', () => {
+    const { state, aId, bId } = pairState();
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: uuidv4(),
+      sourceClassId: aId,
+      targetClassId: bId,
+      sourceMultiplicity: '1' as const,
+      targetMultiplicity: '0..*' as const,
+      directed: true,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.associations[0]!.sourceMultiplicity).toBe('1');
+      expect(result.value.associations[0]!.targetMultiplicity).toBe('0..*');
+    }
+  });
 });

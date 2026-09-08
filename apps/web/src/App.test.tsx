@@ -296,7 +296,9 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('button', { name: 'Add class' })).toBeTruthy();
+    // unit 13e.7 — readiness signal: the legacy "Add class" toolbar button is
+    // gone; the palette rail mounts with the canvas, so wait for its Class item.
+    expect(await screen.findByTestId('palette-class')).toBeTruthy();
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.method).toBe('POST');
     // The App generates its own diagram id; assert shape + that the recorded

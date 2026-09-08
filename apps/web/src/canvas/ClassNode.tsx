@@ -4,11 +4,18 @@
  *
  * editor:R2 — inline rename: double-click the title to edit; commit on
  * blur/Enter (via the onRename callback, which emits a rename delta).
+ *
+ * unit 13e — EA-style classifier box: three 1px-ruled compartments (name /
+ * attributes / operations, empty ones kept as thin bands), the stereotype
+ * above the centered bold name, and the signature folded-corner tab at the
+ * top-right. `uml-class--selected` drives the EA blue selection border.
  */
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 
 import type { Attribute, ClassKind, Method, Parameter, Visibility } from '@app/core';
+
+import { useT } from '../i18n';
 
 /** UML adornments carried by member add/edit operations (unit 9). */
 export interface MemberAdornments {
@@ -47,6 +54,24 @@ export type ClassNodeData = Record<string, unknown> & {
   onDependOn: (supplierClassId: string) => void;
   /** Unit 11.4: select this class to show its generalization list in the panel. */
   onSelect: () => void;
+  /**
+   * Unit 13c — node-wide drag-to-connect: when an edge tool is armed the
+   * canvas renders a full-node transparent source handle so a connection can
+   * START anywhere on the body, not just on the small handle dots. When not
+   * armed the overlay does not exist, so node dragging is untouched.
+   */
+  connectArmed?: boolean;
+  /**
+   * Unit 13d — EA-style Quick Linker: true when this node is the canvas's
+   * selected element. The corner arrow renders ONLY then (hidden otherwise).
+   */
+  selected?: boolean;
+  /**
+   * Unit 13d — pointer-down on the Quick Linker arrow starts the quick-link
+   * drag; the canvas tracks the cursor and resolves the drop (connector menu
+   * over an element, element menu over empty canvas).
+   */
+  onQuickLinkStart?: (clientX: number, clientY: number) => void;
 };
 
 export type ClassFlowNode = import('@xyflow/react').Node<ClassNodeData, 'class'>;
@@ -88,6 +113,9 @@ export function renderMethod(method: Method): string {
 }
 
 export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
+  // unit 13e.10 — every context-menu/member-editing string goes through the
+  // i18n dictionary; useT() re-renders this node live on language toggle.
+  const { t } = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.name);
   const doneRef = useRef(false);
@@ -150,7 +178,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
     // editor:R3 — blank-name attributes are rejected before any delta is emitted,
     // so the model (Y.Doc) stays unchanged.
     if (name.length === 0) {
-      setAttrError('Attribute name is required');
+      setAttrError(t('node.attrNameRequired'));
       return;
     }
     setAttrError(null);
@@ -173,7 +201,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
     // so the model (Y.Doc) stays unchanged. A blank return type defaults to
     // `void` so the emitted delta always satisfies MemberDeltaSchema (min 1).
     if (name.length === 0) {
-      setMethodError('Method name is required');
+      setMethodError(t('node.methodNameRequired'));
       return;
     }
     setMethodError(null);
@@ -229,7 +257,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
     const name = editName.trim();
     const type = editType.trim();
     if (name.length === 0 || type.length === 0) {
-      setEditError('Name and type are required');
+      setEditError(t('node.nameTypeRequired'));
       return;
     }
     if (editingMember.kind === 'attribute') {
@@ -261,7 +289,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
   return (
     <div
-      className={`uml-class${isInterface ? ' uml-class--interface' : ''}`}
+      className={`uml-class${isInterface ? ' uml-class--interface' : ''}${data.selected === true ? ' uml-class--selected' : ''}`}
       onClick={data.onSelect}
       onContextMenu={(event) => {
         // editor:R Generalization (unit 11.4) — right-click opens the
@@ -274,21 +302,21 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       {menuOpen && (
         <div className="uml-class__context-menu" role="menu" data-testid="class-context-menu">
           {data.otherClasses.length === 0 ? (
-            <span className="uml-class__context-empty">No other classes</span>
+            <span className="uml-class__context-empty">{t('node.noOtherClasses')}</span>
           ) : (
             data.otherClasses.map((other) => (
               <button
                 key={other.id}
                 type="button"
                 role="menuitem"
-                aria-label={`Make subclass of ${other.name}`}
+                aria-label={t('node.makeSubclassOf', { name: other.name })}
                 onClick={(event) => {
                   event.stopPropagation();
                   data.onMakeSubclass(other.id);
                   setMenuOpen(false);
                 }}
               >
-                Make subclass of {other.name}
+                {t('node.makeSubclassOf', { name: other.name })}
               </button>
             ))
           )}
@@ -299,31 +327,32 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
               key={iface.id}
               type="button"
               role="menuitem"
-              aria-label={`Realize ${iface.name}`}
+              aria-label={t('node.realize', { name: iface.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 data.onRealize(iface.id);
                 setMenuOpen(false);
               }}
             >
-              Realize {iface.name}
+              {t('node.realize', { name: iface.name })}
             </button>
           ))}
           {/* Unit 12.4 (12b) — depends on (client = this class). The supplier may
-              be ANY other classifier (class or interface) — unlike realization. */}
+              be ANY other classifier (class or interface) — unlike realization.
+              13e.10: reuses panel.dependsOn — byte-identical EN/ES wording. */}
           {data.otherClasses.map((other) => (
             <button
               key={`dep-${other.id}`}
               type="button"
               role="menuitem"
-              aria-label={`Depends on ${other.name}`}
+              aria-label={t('panel.dependsOn', { name: other.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 data.onDependOn(other.id);
                 setMenuOpen(false);
               }}
             >
-              Depends on {other.name}
+              {t('panel.dependsOn', { name: other.name })}
             </button>
           ))}
           {/* Unit 12.4 — abstract toggle (interfaces are implicitly abstract; hide it there). */}
@@ -331,71 +360,113 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
             <button
               type="button"
               role="menuitem"
-              aria-label={data.isAbstract ? 'Unmark abstract' : 'Mark abstract'}
+              aria-label={data.isAbstract ? t('node.unmarkAbstract') : t('node.markAbstract')}
               onClick={(event) => {
                 event.stopPropagation();
                 data.onToggleAbstract(!data.isAbstract);
                 setMenuOpen(false);
               }}
             >
-              {data.isAbstract ? 'Unmark abstract' : 'Mark abstract'}
+              {data.isAbstract ? t('node.unmarkAbstract') : t('node.markAbstract')}
             </button>
           )}
           <button
             type="button"
-            aria-label="Close context menu"
+            aria-label={t('node.closeMenuAria')}
             onClick={(event) => {
               event.stopPropagation();
               setMenuOpen(false);
             }}
           >
-            Close
+            {t('node.close')}
           </button>
         </div>
       )}
-      {editing ? (
-        <input
-          className="uml-class__title-input"
-          value={draft}
-          autoFocus
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') cancel();
+      {/* unit 13d — EA-style Quick Linker: the corner arrow at the TOP-RIGHT
+          of the SELECTED element. Pointer-down starts a quick-link drag
+          (connector menu over a target element, element menu over empty
+          canvas). Hidden when the node is not selected; `nodrag` keeps React
+          Flow from turning the gesture into a node move. */}
+      {data.selected === true && (
+        <button
+          type="button"
+          className="uml-class__quicklinker nodrag nopan"
+          data-testid="quicklinker-arrow"
+          aria-label="Quick Linker"
+          title={t('node.quickLinkerTitle')}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            data.onQuickLinkStart?.(event.clientX, event.clientY);
           }}
-        />
-      ) : (
-        <div className="uml-class__title" onDoubleClick={startEditing}>
-          {/* Unit 12.1 — UML stereotype header for interfaces. */}
-          {isInterface && <div className="uml-class__stereotype">«interface»</div>}
-          <span className={`uml-class__name${isItalicName ? ' uml-class__name--italic' : ''}`}>{data.name}</span>
-          <button
-            type="button"
-            className="uml-class__delete"
-            aria-label={`Delete ${data.name}`}
-            onClick={data.onDelete}
-          >
-            ×
-          </button>
-        </div>
+          onClick={(event) => event.stopPropagation()}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path
+              d="M 2 12 L 12 2 M 12 2 L 5.5 2 M 12 2 L 12 8.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
       )}
+      {/* unit 13e — EA signature: the folded-corner tab at the top-right of
+          every classifier box (the most recognizable Sparx-EA cue). Purely
+          decorative; the Quick Linker arrow (13d) floats over it when the
+          node is selected. */}
+      <span className="uml-class__corner-tab" aria-hidden="true" />
+      {/* unit 13e — compartment 1/3: the name (stereotype above, bold, centered). */}
+      <div className="uml-class__compartment uml-class__compartment--name">
+        {editing ? (
+          <input
+            className="uml-class__title-input"
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') cancel();
+            }}
+          />
+        ) : (
+          <div className="uml-class__title" onDoubleClick={startEditing}>
+            {/* Unit 12.1 — UML stereotype header for interfaces. */}
+            {isInterface && <div className="uml-class__stereotype">«interface»</div>}
+            <span className={`uml-class__name${isItalicName ? ' uml-class__name--italic' : ''}`}>{data.name}</span>
+            <button
+              type="button"
+              className="uml-class__delete"
+              aria-label={t('node.deleteAria', { name: data.name })}
+              onClick={data.onDelete}
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
 
-      {data.attributes.length > 0 && (
-        <div className="uml-class__section">
+      {/* unit 13e — compartment 2/3: attributes. Always present (empty ones
+          render as a thin band — the consistent three-box EA look); the
+          member-add row lives inside it. */}
+      <div className="uml-class__compartment uml-class__compartment--attributes">
+        {data.attributes.length > 0 && (
+          <div className="uml-class__section">
           {data.attributes.map((attr) =>
             editingMember?.kind === 'attribute' && editingMember.id === attr.id ? (
               <div key={attr.id} className="uml-class__member uml-class__edit">
                 <input
                   className="uml-class__add-input"
-                  aria-label="Edit attribute name"
+                  aria-label={t('node.editAttrNameAria')}
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   {...editKeyHandlers}
                 />
                 <input
                   className="uml-class__add-input"
-                  aria-label="Edit attribute type"
+                  aria-label={t('node.editAttrTypeAria')}
                   value={editType}
                   onChange={(e) => setEditType(e.target.value)}
                   {...editKeyHandlers}
@@ -403,7 +474,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <button
                   type="button"
                   className="uml-class__add-button"
-                  aria-label="Confirm edit"
+                  aria-label={t('node.confirmEditAria')}
                   onClick={commitEdit}
                 >
                   ✓
@@ -411,7 +482,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <button
                   type="button"
                   className="uml-class__remove"
-                  aria-label="Cancel edit"
+                  aria-label={t('node.cancelEditAria')}
                   onClick={cancelEdit}
                 >
                   ×
@@ -433,7 +504,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <button
                   type="button"
                   className="uml-class__edit-button"
-                  aria-label={`Edit attribute ${attr.name}`}
+                  aria-label={t('node.editAttrAria', { name: attr.name })}
                   onClick={() => startEditAttribute(attr)}
                 >
                   ✎
@@ -441,7 +512,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <button
                   type="button"
                   className="uml-class__remove"
-                  aria-label={`Remove attribute ${attr.name}`}
+                  aria-label={t('node.removeAttrAria', { name: attr.name })}
                   onClick={() => data.onRemoveAttribute(attr.id)}
                 >
                   ×
@@ -455,7 +526,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       <div className="uml-class__section uml-class__add">
         <select
           className="uml-class__add-input"
-          aria-label="Attribute visibility"
+          aria-label={t('node.attrVisibilityAria')}
           value={attrVisibility}
           onChange={(e) => setAttrVisibility(e.target.value as Visibility)}
         >
@@ -466,37 +537,37 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
         </select>
         <input
           className="uml-class__add-input"
-          aria-label="Attribute name"
-          placeholder="name"
+          aria-label={t('node.attrNameAria')}
+          placeholder={t('node.phName')}
           value={attrName}
           onChange={(e) => setAttrName(e.target.value)}
         />
         <input
           className="uml-class__add-input"
-          aria-label="Attribute type"
-          placeholder="type"
+          aria-label={t('node.attrTypeAria')}
+          placeholder={t('node.phType')}
           value={attrType}
           onChange={(e) => setAttrType(e.target.value)}
         />
         <input
           className="uml-class__add-input"
-          aria-label="Attribute multiplicity"
+          aria-label={t('node.attrMultiplicityAria')}
           placeholder="[0..*]"
           value={attrMultiplicity}
           onChange={(e) => setAttrMultiplicity(e.target.value)}
         />
         <label className="uml-class__toggle">
-          <input type="checkbox" aria-label="Attribute static" checked={attrStatic} onChange={(e) => setAttrStatic(e.target.checked)} />
-          static
+          <input type="checkbox" aria-label={t('node.attrStaticAria')} checked={attrStatic} onChange={(e) => setAttrStatic(e.target.checked)} />
+          {t('node.static')}
         </label>
         <label className="uml-class__toggle">
-          <input type="checkbox" aria-label="Attribute derived" checked={attrDerived} onChange={(e) => setAttrDerived(e.target.checked)} />
-          derived
+          <input type="checkbox" aria-label={t('node.attrDerivedAria')} checked={attrDerived} onChange={(e) => setAttrDerived(e.target.checked)} />
+          {t('node.derived')}
         </label>
         <button
           type="button"
           className="uml-class__add-button"
-          aria-label="Add attribute"
+          aria-label={t('node.addAttrAria')}
           onClick={submitAttribute}
         >
           +
@@ -507,7 +578,10 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           </p>
         )}
       </div>
+      </div>
 
+      {/* unit 13e — compartment 3/3: operations (methods). Always present. */}
+      <div className="uml-class__compartment uml-class__compartment--operations">
       {data.methods.length > 0 && (
         <div className="uml-class__section">
           {data.methods.map((method) => {
@@ -516,22 +590,22 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <div key={method.id} className="uml-class__member uml-class__edit">
                   <input
                     className="uml-class__add-input"
-                    aria-label="Edit method name"
+                    aria-label={t('node.editMethodNameAria')}
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     {...editKeyHandlers}
                   />
                   <input
                     className="uml-class__add-input"
-                    aria-label="Edit method return type"
+                    aria-label={t('node.editMethodReturnTypeAria')}
                     value={editType}
                     onChange={(e) => setEditType(e.target.value)}
                     {...editKeyHandlers}
                   />
                   <input
                     className="uml-class__add-input"
-                    aria-label="Edit method parameters"
-                    placeholder="param: type, ..."
+                    aria-label={t('node.editMethodParamsAria')}
+                    placeholder={t('node.phParams')}
                     value={editParams}
                     onChange={(e) => setEditParams(e.target.value)}
                     {...editKeyHandlers}
@@ -539,7 +613,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                   <button
                     type="button"
                     className="uml-class__add-button"
-                    aria-label="Confirm edit"
+                    aria-label={t('node.confirmEditAria')}
                     onClick={commitEdit}
                   >
                     ✓
@@ -547,7 +621,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                   <button
                     type="button"
                     className="uml-class__remove"
-                    aria-label="Cancel edit"
+                    aria-label={t('node.cancelEditAria')}
                     onClick={cancelEdit}
                   >
                     ×
@@ -572,7 +646,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <button
                   type="button"
                   className="uml-class__edit-button"
-                  aria-label={`Edit method ${method.name}`}
+                  aria-label={t('node.editMethodAria', { name: method.name })}
                   onClick={() => startEditMethod(method)}
                 >
                   ✎
@@ -580,7 +654,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 <button
                   type="button"
                   className="uml-class__remove"
-                  aria-label={`Remove method ${method.name}`}
+                  aria-label={t('node.removeMethodAria', { name: method.name })}
                   onClick={() => data.onRemoveMethod(method.id)}
                 >
                   ×
@@ -594,7 +668,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       <div className="uml-class__section uml-class__add">
         <select
           className="uml-class__add-input"
-          aria-label="Method visibility"
+          aria-label={t('node.methodVisibilityAria')}
           value={methodVisibility}
           onChange={(e) => setMethodVisibility(e.target.value as Visibility)}
         >
@@ -605,33 +679,33 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
         </select>
         <input
           className="uml-class__add-input"
-          aria-label="Method name"
-          placeholder="name"
+          aria-label={t('node.methodNameAria')}
+          placeholder={t('node.phName')}
           value={methodName}
           onChange={(e) => setMethodName(e.target.value)}
         />
         <input
           className="uml-class__add-input"
-          aria-label="Method return type"
-          placeholder="return type"
+          aria-label={t('node.methodReturnTypeAria')}
+          placeholder={t('node.phReturnType')}
           value={methodReturnType}
           onChange={(e) => setMethodReturnType(e.target.value)}
         />
         <input
           className="uml-class__add-input"
-          aria-label="Method parameters"
-          placeholder="param: type, ..."
+          aria-label={t('node.methodParamsAria')}
+          placeholder={t('node.phParams')}
           value={methodParams}
           onChange={(e) => setMethodParams(e.target.value)}
         />
         <label className="uml-class__toggle">
-          <input type="checkbox" aria-label="Method static" checked={methodStatic} onChange={(e) => setMethodStatic(e.target.checked)} />
-          static
+          <input type="checkbox" aria-label={t('node.methodStaticAria')} checked={methodStatic} onChange={(e) => setMethodStatic(e.target.checked)} />
+          {t('node.static')}
         </label>
         <button
           type="button"
           className="uml-class__add-button"
-          aria-label="Add method"
+          aria-label={t('node.addMethodAria')}
           onClick={submitMethod}
         >
           +
@@ -642,9 +716,41 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           </p>
         )}
       </div>
+      </div>
 
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
+      {/* unit 13c — node-wide drag-to-connect: while an edge tool is armed,
+          this transparent full-node source handle makes the whole body a
+          valid connection start (and, in loose mode, a valid end). It is NOT
+          rendered when no tool is armed, so node dragging and in-node
+          editing behave exactly as before. */}
+      {data.connectArmed === true && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="connect-body"
+          data-testid="node-connect-overlay"
+          className="uml-class__connect-overlay"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100%',
+            height: '100%',
+            minWidth: 0,
+            minHeight: 0,
+            transform: 'none',
+            borderRadius: 0,
+            border: 'none',
+            background: 'transparent',
+            boxShadow: 'none',
+            zIndex: 5,
+          }}
+        />
+      )}
     </div>
   );
 }

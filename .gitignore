@@ -31,5 +31,9 @@ Thumbs.db
 # CodeGraph index (only if one is ever created)
 .codegraph/
 
+# SDD runtime state (regenerated per change instance; local only)
+.gentle-ai-instance
+
 # Private report documentation (user-owned, goes to Word manually)
-docs/informe/
+docs
+    

@@ -129,6 +129,59 @@ describe('Delta Schema — JSON Schema Generation (design D3)', () => {
     const result = DeltaSchema.safeParse(invalidAssociationDelta);
     expect(result.success).toBe(false);
   });
+
+  it('accepts an association create delta WITHOUT multiplicities (unit 13d fix C)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'create' as const,
+      associationId: crypto.randomUUID(),
+      sourceClassId: crypto.randomUUID(),
+      targetClassId: crypto.randomUUID(),
+      directed: false,
+      aggregation: 'composite' as const,
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.sourceMultiplicity).toBeUndefined();
+      expect(result.data.targetMultiplicity).toBeUndefined();
+    }
+  });
+
+  it('accepts null in updateMultiplicity to CLEAR an end to unspecified (unit 13d fix C)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: crypto.randomUUID(),
+      newSourceMultiplicity: null,
+      newTargetMultiplicity: '0..*',
+    };
+    const result = DeltaSchema.safeParse(delta);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.newSourceMultiplicity).toBeNull();
+      expect(result.data.newTargetMultiplicity).toBe('0..*');
+    }
+  });
+
+  it('still REJECTS garbage (non-null, non-multiplicity) values in updateMultiplicity', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'association' as const,
+      op: 'updateMultiplicity' as const,
+      associationId: crypto.randomUUID(),
+      newSourceMultiplicity: 'abc',
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
 });
 
 describe('Delta Schema — Association aggregationEnd (UML 2.5.1 explicit end ownership)', () => {
@@ -250,13 +303,13 @@ describe('Delta Schema — Generalization kind (unit 11.1)', () => {
     expect(result.success).toBe(true);
   });
 
-  it('REJECTS unknown ops for generalization deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for generalization deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'generalization' as const,
-      op: 'update',
+      op: 'rename',
       generalizationId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
@@ -326,13 +379,13 @@ describe('Delta Schema — Realization kind (unit 12.2)', () => {
     expect(DeltaSchema.safeParse(delta).success).toBe(true);
   });
 
-  it('REJECTS unknown ops for realization deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for realization deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'realization' as const,
-      op: 'update',
+      op: 'rename',
       realizationId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
@@ -471,13 +524,13 @@ describe('Delta Schema — Dependency kind (unit 12.2 — 12b half)', () => {
     expect(DeltaSchema.safeParse(delta).success).toBe(true);
   });
 
-  it('REJECTS unknown ops for dependency deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for dependency deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'dependency' as const,
-      op: 'update',
+      op: 'rename',
       dependencyId: crypto.randomUUID(),
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
@@ -525,6 +578,113 @@ describe('Delta Schema — Dependency kind (unit 12.2 — 12b half)', () => {
   });
 });
 
+describe('Delta Schema — Edge label update ops (unit 13c, unified edge editing)', () => {
+  const base = () => ({
+    id: crypto.randomUUID(),
+    diagramId: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+  });
+
+  it('generalization update delta with a name validates through the union', () => {
+    const result = DeltaSchema.safeParse({
+      ...base(),
+      kind: 'generalization' as const,
+      op: 'update' as const,
+      generalizationId: crypto.randomUUID(),
+      name: 'inherits',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.op).toBe('update');
+    }
+  });
+
+  it('generalization update delta WITHOUT a name is REJECTED (schema gate)', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'generalization' as const,
+        op: 'update' as const,
+        generalizationId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('realization update delta with a name validates; without a name it is rejected', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'realization' as const,
+        op: 'update' as const,
+        realizationId: crypto.randomUUID(),
+        name: 'implements',
+      }).success,
+    ).toBe(true);
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'realization' as const,
+        op: 'update' as const,
+        realizationId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('dependency update delta with a name validates; without a name it is rejected', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'dependency' as const,
+        op: 'update' as const,
+        dependencyId: crypto.randomUUID(),
+        name: 'uses',
+      }).success,
+    ).toBe(true);
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'dependency' as const,
+        op: 'update' as const,
+        dependencyId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('create and delete deltas stay valid unchanged (backward compat)', () => {
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'generalization' as const,
+        op: 'create' as const,
+        generalizationId: crypto.randomUUID(),
+        subClassId: crypto.randomUUID(),
+        superClassId: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      DeltaSchema.safeParse({
+        ...base(),
+        kind: 'realization' as const,
+        op: 'delete' as const,
+        realizationId: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('batch delta accepts edge label update inner deltas', () => {
+    const batch = {
+      ...base(),
+      kind: 'batch' as const,
+      deltas: [
+        { ...base(), kind: 'generalization' as const, op: 'update' as const, generalizationId: crypto.randomUUID(), name: 'a' },
+        { ...base(), kind: 'realization' as const, op: 'update' as const, realizationId: crypto.randomUUID(), name: 'b' },
+        { ...base(), kind: 'dependency' as const, op: 'update' as const, dependencyId: crypto.randomUUID(), name: 'c' },
+      ],
+    };
+    expect(DeltaSchema.safeParse(batch).success).toBe(true);
+  });
+});
+
 describe('Delta Schema — NaryAssociation kind (unit 13.1)', () => {
   it('validates an naryAssociation create delta through the union', () => {
     const delta = {
@@ -561,14 +721,63 @@ describe('Delta Schema — NaryAssociation kind (unit 13.1)', () => {
     expect(DeltaSchema.safeParse(delta).success).toBe(true);
   });
 
-  it('REJECTS unknown ops for naryAssociation deltas (only create|delete)', () => {
+  it('REJECTS unknown ops for naryAssociation deltas (only create|update|delete)', () => {
     const delta = {
       id: crypto.randomUUID(),
       diagramId: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       kind: 'naryAssociation' as const,
-      op: 'update',
+      op: 'rename',
       naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('validates an naryAssociation UPDATE delta — name-only, ends-only and both (unit 13d fix A)', () => {
+    const base = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: crypto.randomUUID(),
+    };
+    const ends = [
+      { classId: crypto.randomUUID(), multiplicity: '1' },
+      { classId: crypto.randomUUID(), multiplicity: '0..*' },
+      { classId: crypto.randomUUID(), multiplicity: '*', role: 'supplier' },
+    ];
+
+    expect(DeltaSchema.safeParse({ ...base, name: 'renamed' }).success).toBe(true);
+    expect(DeltaSchema.safeParse({ ...base, memberEnds: ends }).success).toBe(true);
+    expect(DeltaSchema.safeParse({ ...base, name: 'renamed', memberEnds: ends }).success).toBe(true);
+  });
+
+  it('REJECTS an naryAssociation update carrying neither name nor memberEnds (schema gate)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: crypto.randomUUID(),
+    };
+    expect(DeltaSchema.safeParse(delta).success).toBe(false);
+  });
+
+  it('REJECTS an naryAssociation update with garbage end multiplicity (schema gate)', () => {
+    const delta = {
+      id: crypto.randomUUID(),
+      diagramId: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: 'naryAssociation' as const,
+      op: 'update' as const,
+      naryAssociationId: crypto.randomUUID(),
+      memberEnds: [
+        { classId: crypto.randomUUID(), multiplicity: 'abc' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+        { classId: crypto.randomUUID(), multiplicity: '1' },
+      ],
     };
     expect(DeltaSchema.safeParse(delta).success).toBe(false);
   });
