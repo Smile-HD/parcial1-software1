@@ -1,0 +1,45 @@
+package {{packageName}}.service;
+
+import {{packageName}}.{{className}};
+import {{packageName}}.repository.{{className}}Repository;
+import jakarta.persistence.EntityNotFoundException;
+import java.util.List;
+import org.springframework.stereotype.Service;
+
+/**
+ * Generated thin service layer for {{className}} (maintainer decision
+ * 2026-09-07 — 3+1 architecture): constructor-injects the Spring Data
+ * repository and exposes pass-through CRUD. Controllers depend on this
+ * service, never on the repository directly. Interfaces get no service.
+ * Rendered by templates/spring-backend/service.hbs — do not edit by hand.
+ */
+@Service
+public class {{className}}Service {
+
+    private final {{className}}Repository repository;
+
+    public {{className}}Service({{className}}Repository repository) {
+        this.repository = repository;
+    }
+
+    public List<{{className}}> findAll() {
+        return repository.findAll();
+    }
+
+    public {{className}} findById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "{{className}} " + id + " not found"));
+    }
+
+    public {{className}} save({{className}} entity) {
+        return repository.save(entity);
+    }
+
+    public void deleteById(Long id) {
+        if (!repository.existsById(id)) {
+            throw new EntityNotFoundException("{{className}} " + id + " not found");
+        }
+        repository.deleteById(id);
+    }
+}

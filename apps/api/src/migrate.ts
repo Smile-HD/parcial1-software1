@@ -6,8 +6,8 @@
 
 import { Pool } from 'pg';
 import { readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
-import { fileURLToPath } from 'url';
+import { join, resolve } from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, '..', 'migrations');
@@ -78,7 +78,7 @@ export async function runMigrations(): Promise<void> {
 }
 
 // CLI entry point
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   runMigrations().catch(err => {
     console.error('Migration failed:', err);
     process.exit(1);

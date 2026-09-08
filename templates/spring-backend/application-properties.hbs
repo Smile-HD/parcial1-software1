@@ -1,0 +1,13 @@
+# Generated Spring configuration — H2 FILE mode (design decision 10:
+# data survives restarts under ./data, offline-friendly).
+# Rendered by templates/spring-backend/application-properties.hbs — do not edit by hand.
+spring.application.name=generated-backend
+server.port=8080
+
+spring.datasource.url=jdbc:h2:file:./data/generated-db
+spring.datasource.driver-class-name=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.open-in-view=false
