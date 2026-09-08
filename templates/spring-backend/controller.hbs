@@ -1,60 +1,64 @@
 package {{packageName}}.web;
 
 import {{packageName}}.{{className}};
-import {{packageName}}.repository.{{className}}Repository;
+import {{packageName}}.service.{{className}}Service;
+import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Generated REST CRUD controller for {{className}} (codegen:R4 — create,
  * read single, read list, update, delete).
+ *
+ * 14c maintainer decision: the controller delegates to the thin service
+ * layer and NEVER touches the repository directly (3+1 architecture).
+ * A missing entity surfaces as jakarta.persistence.EntityNotFoundException
+ * from the service and is translated to HTTP 404 below.
  * Rendered by templates/spring-backend/controller.hbs — do not edit by hand.
  */
 @RestController
 @RequestMapping("/api/{{route className}}")
 public class {{className}}Controller {
 
-    private final {{className}}Repository repository;
+    private final {{className}}Service service;
 
-    public {{className}}Controller({{className}}Repository repository) {
-        this.repository = repository;
+    public {{className}}Controller({{className}}Service service) {
+        this.service = service;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public {{className}} create(@RequestBody {{className}} entity) {
-        return repository.save(entity);
+        return service.save(entity);
     }
 
     @GetMapping("/{id}")
     public {{className}} get(@PathVariable Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "{{className}} " + id + " not found"));
+        return service.findById(id);
     }
 
     @GetMapping
     public List<{{className}}> list() {
-        return repository.findAll();
+        return service.findAll();
     }
 
     @PutMapping("/{id}")
     public {{className}} update(@PathVariable Long id, @RequestBody {{className}} entity) {
-        if (!repository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "{{className}} " + id + " not found");
-        }
+        service.findById(id); // 404 when the row is absent
         entity.setId(id);
-        return repository.save(entity);
+        return service.save(entity);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
-        if (!repository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "{{className}} " + id + " not found");
-        }
-        repository.deleteById(id);
+        service.deleteById(id);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public void notFound(EntityNotFoundException ex) {
+        // Empty 404 body — same contract as the pre-14c ResponseStatusException.
     }
 }

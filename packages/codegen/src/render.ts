@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import Handlebars from 'handlebars';
 
-import type { EntityFieldModel, Renderer } from './generate.js';
+import type { EntityFieldModel, InterfaceMethodModel, Renderer } from './generate.js';
 
 /**
  * Handlebars renderer for the Spring backend templates (unit 14b).
@@ -89,6 +89,19 @@ function registerHelpers(hb: typeof Handlebars): void {
     for (const field of fields ?? []) {
       const fqcn = TYPE_IMPORTS[field.javaType];
       if (fqcn !== undefined) imports.add(fqcn);
+    }
+    return [...imports].sort();
+  });
+  // 14c: java imports for interface method signatures (return + parameter types).
+  hb.registerHelper('methodImports', (methods: InterfaceMethodModel[] | undefined) => {
+    const imports = new Set<string>();
+    for (const method of methods ?? []) {
+      const fqcn = TYPE_IMPORTS[method.returnType];
+      if (fqcn !== undefined) imports.add(fqcn);
+      for (const param of method.parameters ?? []) {
+        const paramFqcn = TYPE_IMPORTS[param.type];
+        if (paramFqcn !== undefined) imports.add(paramFqcn);
+      }
     }
     return [...imports].sort();
   });

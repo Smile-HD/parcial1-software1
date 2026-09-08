@@ -16,7 +16,7 @@ import {{this}};
  * Generated JPA entity for UML class {{className}}.
  * Rendered by templates/spring-backend/entity.hbs — do not edit by hand.
  *
- * Relationship conventions (14b basic subset):
+ * Relationship conventions (14b basic subset + 14c UML 2.5.1 mappings):
  * - the table name is quoted so reserved SQL words (e.g. ORDER) are valid;
  * - to-many collections fetch EAGER (documented 14b simplification — the
  *   generated CRUD surface is small; DTOs/lazy tuning are 14d concerns);
@@ -25,60 +25,88 @@ import {{this}};
  * - collection field names use the documented naive pluralization helper;
  * - @ManyToMany ownership is deterministic: the lexicographically smaller
  *   entity name owns the join table (self-referencing many-to-many is 14c);
- * - the inverse side always carries mappedBy to the owning field.
+ * - the inverse side always carries mappedBy to the owning field;
+ * - composition (14c): the container-side collection declares
+ *   cascade = CascadeType.ALL + orphanRemoval = true; shared aggregation is a
+ *   plain association WITHOUT cascade (documented decision — shared members
+ *   have independent lifecycles);
+ * - generalization (14c): the hierarchy root declares
+ *   @Inheritance(SINGLE_TABLE) + @DiscriminatorColumn; subclasses `extends`
+ *   the root and declare NO @Table (single table stores the whole hierarchy)
+ *   and never redeclare inherited fields;
+ * - realization (14c): realized interfaces appear in an `implements` clause;
+ * - abstract classes (14c) render as `abstract` entities;
+ * - member visibility (14c): `-`/`+` → private, `#` → protected, `~` →
+ *   package-private field modifiers (accessors stay public per JPA style);
+ * - attribute multiplicity >1 (14c): `List<T>` with
+ *   @ElementCollection(fetch = EAGER) (same lazy-JSON rationale as to-many).
  */
 @Entity
+{{#unless extendsClass}}
 @Table(name = "\"{{className}}\"")
-public class {{className}} {
+{{/unless}}
+{{#if inheritanceRoot}}
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn(name = "DTYPE")
+{{/if}}
+public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}} extends {{extendsClass}}{{/if}}{{#if implementsInterfaces.length}} implements {{#each implementsInterfaces}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}{{/if}} {
 
+{{#unless extendsClass}}
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+{{/unless}}
 {{#each fields}}
-    private {{javaType}} {{name}};
+{{#if isCollection}}
+    @ElementCollection(fetch = FetchType.EAGER)
+    {{#if fieldModifier}}{{fieldModifier}} {{/if}}List<{{javaType}}> {{name}} = new ArrayList<>();
+{{else}}
+    {{#if fieldModifier}}{{fieldModifier}} {{/if}}{{javaType}} {{name}};
+{{/if}}
 
 {{/each}}
 {{#each relationships}}
 {{#if (eq kind 'OneToMany')}}
     @JsonIgnoreProperties("{{camel ../className}}")
-    @OneToMany(mappedBy = "{{camel ../className}}", fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "{{camel ../className}}", fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL, orphanRemoval = true{{/if}})
     private List<{{targetEntity}}> {{plural (camel targetEntity)}} = new ArrayList<>();
 
 {{else if (eq kind 'ManyToOne')}}
     @JsonIgnoreProperties("{{plural (camel ../className)}}")
-    @ManyToOne
+    @ManyToOne{{#if cascade}} (cascade = CascadeType.ALL){{/if}}
     @JoinColumn(name = "{{snake (camel targetEntity)}}_id")
     private {{targetEntity}} {{camel targetEntity}};
 
 {{else if (eq kind 'ManyToMany')}}
 {{#if (lt ../className targetEntity)}}
     @JsonIgnoreProperties("{{plural (camel ../className)}}")
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL, orphanRemoval = true{{/if}})
     @JoinTable(name = "{{snake ../className}}_{{snake targetEntity}}",
             joinColumns = @JoinColumn(name = "{{snake ../className}}_id"),
             inverseJoinColumns = @JoinColumn(name = "{{snake targetEntity}}_id"))
     private Set<{{targetEntity}}> {{plural (camel targetEntity)}} = new HashSet<>();
 {{else}}
     @JsonIgnoreProperties("{{plural (camel ../className)}}")
-    @ManyToMany(mappedBy = "{{plural (camel ../className)}}", fetch = FetchType.EAGER)
+    @ManyToMany(mappedBy = "{{plural (camel ../className)}}", fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL, orphanRemoval = true{{/if}})
     private Set<{{targetEntity}}> {{plural (camel targetEntity)}} = new HashSet<>();
 {{/if}}
 
 {{else if (eq kind 'OneToOne')}}
 {{#if thisSideIsOwning}}
     @JsonIgnoreProperties("{{camel ../className}}")
-    @OneToOne
+    @OneToOne{{#if cascade}} (cascade = CascadeType.ALL, orphanRemoval = true){{/if}}
     @JoinColumn(name = "{{snake (camel targetEntity)}}_id")
     private {{targetEntity}} {{camel targetEntity}};
 {{else}}
     @JsonIgnoreProperties("{{camel ../className}}")
-    @OneToOne(mappedBy = "{{camel ../className}}")
+    @OneToOne(mappedBy = "{{camel ../className}}"{{#if cascade}}, cascade = CascadeType.ALL, orphanRemoval = true{{/if}})
     private {{targetEntity}} {{camel targetEntity}};
 {{/if}}
 
 {{/if}}
 {{/each}}
+{{#unless extendsClass}}
     public Long getId() {
         return id;
     }
@@ -87,7 +115,17 @@ public class {{className}} {
         this.id = id;
     }
 
+{{/unless}}
 {{#each fields}}
+{{#if isCollection}}
+    public List<{{javaType}}> get{{cap name}}() {
+        return {{name}};
+    }
+
+    public void set{{cap name}}(List<{{javaType}}> {{name}}) {
+        this.{{name}} = {{name}};
+    }
+{{else}}
     public {{javaType}} get{{cap name}}() {
         return {{name}};
     }
@@ -95,6 +133,7 @@ public class {{className}} {
     public void set{{cap name}}({{javaType}} {{name}}) {
         this.{{name}} = {{name}};
     }
+{{/if}}
 
 {{/each}}
 {{#each relationships}}

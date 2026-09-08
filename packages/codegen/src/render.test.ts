@@ -109,9 +109,16 @@ describe('controller template (CRUD endpoints — codegen:R4)', () => {
     expect(java).toContain('@GetMapping');
     expect(java).toContain('@PutMapping("/{id}")');
     expect(java).toContain('@DeleteMapping("/{id}")');
-    expect(java).toContain('repository.save');
-    expect(java).toContain('repository.findAll');
-    expect(java).toContain('repository.deleteById');
+  });
+
+  it('delegates to the service and never touches the repository (14c decision C)', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/web/CustomerController.java`);
+    expect(java).toContain('CustomerService service');
+    expect(java).toContain('service.save');
+    expect(java).toContain('service.findAll');
+    expect(java).toContain('service.findById');
+    expect(java).toContain('service.deleteById');
+    expect(java).not.toContain('Repository');
   });
 });
 
@@ -157,8 +164,11 @@ describe('maven-wrapper raw assets (vendored, never edited)', () => {
 describe('golden reference diagram (codegen:R5 fixture)', () => {
   it('parses and validates against the core IR schema', () => {
     const d = goldenDiagram();
-    expect(d.classes).toHaveLength(4);
-    expect(d.associations).toHaveLength(3);
+    expect(d.classes).toHaveLength(8);
+    expect(d.associations).toHaveLength(4);
+    expect(d.generalizations).toHaveLength(1);
+    expect(d.realizations).toHaveLength(1);
+    expect(d.naryAssociations).toHaveLength(1);
   });
 
   it('generates with the real renderer: zero warnings + expected file set', () => {
@@ -166,18 +176,39 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(result.warnings).toEqual([]);
 
     const paths = result.files.map((f) => f.path).sort();
-    for (const name of ['Customer', 'Order', 'Product', 'ShippingAddress']) {
+    for (const name of [
+      'Customer',
+      'Order',
+      'Product',
+      'ShippingAddress',
+      'OrderLine',
+      'Item',
+      'Payment',
+      'CustomerOrderProductLink',
+    ]) {
       expect(paths).toContain(`src/main/java/${PKG_PATH}/${name}.java`);
       expect(paths).toContain(`src/main/java/${PKG_PATH}/repository/${name}Repository.java`);
       expect(paths).toContain(`src/main/java/${PKG_PATH}/web/${name}Controller.java`);
+      expect(paths).toContain(`src/main/java/${PKG_PATH}/service/${name}Service.java`);
     }
+    // Interface: plain file only — no repository/controller/service.
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/Sellable.java`);
+    expect(paths.some((p) => p.includes('SellableRepository'))).toBe(false);
+    expect(paths.some((p) => p.includes('SellableController'))).toBe(false);
+    expect(paths.some((p) => p.includes('SellableService'))).toBe(false);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/Application.java`);
     expect(paths).toContain('pom.xml');
     expect(paths).toContain('src/main/resources/application.properties');
+    expect(paths).toContain('src/main/resources/application-prod.properties');
     expect(paths).toContain('mvnw');
     expect(paths).toContain('mvnw.cmd');
     expect(paths).toContain('.mvn/wrapper/maven-wrapper.properties');
-    expect(paths).toHaveLength(18);
+    expect(paths).toContain('Dockerfile');
+    expect(paths).toContain('docker-compose.yml');
+    expect(paths).toContain('README.md');
+    // 8 entities × 4 files + 1 interface + Application + pom + 2 properties
+    // + 3 wrapper assets + Dockerfile + compose + README = 43.
+    expect(paths).toHaveLength(43);
   });
 
   it('every generated file has non-stub content from a real template', () => {
@@ -197,5 +228,148 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
       'OneToMany',
       'OneToOne',
     ]);
+  });
+});
+
+// ---------- unit 14c: UML v2 mappings in the rendered Java (task 14.5) ----------
+
+describe('composition cascade (14.5)', () => {
+  it('Order ◆— OrderLine renders cascade=ALL + orphanRemoval on the container collection', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/Order.java`);
+    expect(java).toContain(
+      '@OneToMany(mappedBy = "order", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)',
+    );
+    expect(java).toContain('private List<OrderLine> orderLines');
+    // The child side stays a plain owning ManyToOne (no back-cascade).
+    const line = fileAt(`src/main/java/${PKG_PATH}/OrderLine.java`);
+    expect(line).toContain('@ManyToOne');
+    expect(line).not.toMatch(/@ManyToOne\s*\(/);
+    expect(line).not.toMatch(/@OneToMany[^)]*orphanRemoval/);
+  });
+});
+
+describe('generalization → single-table inheritance (14.5)', () => {
+  it('root Item declares @Inheritance + @DiscriminatorColumn', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/Item.java`);
+    expect(java).toContain('@Inheritance(strategy = InheritanceType.SINGLE_TABLE)');
+    expect(java).toContain('@DiscriminatorColumn(name = "DTYPE")');
+    expect(java).toContain('public class Item {');
+  });
+
+  it('Product extends Item + implements Sellable without redeclaring inherited fields', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/Product.java`);
+    expect(java).toContain('public class Product extends Item implements Sellable {');
+    // Subclasses carry no @Table annotation — the root's single table stores
+    // the whole hierarchy (asserted on the annotation, not the doc comment).
+    expect(java).not.toContain('@Table(name');
+    expect(java).toContain('private BigDecimal price;');
+    expect(java).not.toContain('label'); // Item's field must not be redeclared
+  });
+});
+
+describe('interface classifier (14.5)', () => {
+  it('Sellable renders as a plain Java interface with method signatures', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/Sellable.java`);
+    expect(java).toContain(`package ${PKG};`);
+    expect(java).toContain('public interface Sellable {');
+    expect(java).toContain('BigDecimal getPrice();');
+    expect(java).toContain('import java.math.BigDecimal;');
+    expect(java).not.toContain('@Entity');
+  });
+});
+
+describe('abstract class entity (14.5)', () => {
+  it('Payment renders as an abstract JPA entity', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/Payment.java`);
+    expect(java).toContain('@Entity');
+    expect(java).toContain('public abstract class Payment {');
+  });
+});
+
+describe('member visibility + attribute multiplicity (14.5)', () => {
+  it('renders private/protected field modifiers from -/# visibility', () => {
+    expect(fileAt(`src/main/java/${PKG_PATH}/Order.java`)).toContain('private String note;');
+    expect(fileAt(`src/main/java/${PKG_PATH}/Product.java`)).toContain('protected String category;');
+  });
+
+  it('renders a many-valued basic attribute as @ElementCollection List<T>', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/Customer.java`);
+    expect(java).toContain('@ElementCollection');
+    expect(java).toContain('private List<String> nicknames = new ArrayList<>();');
+    expect(java).toContain('public List<String> getNicknames()');
+  });
+});
+
+describe('n-ary join entity (14.5)', () => {
+  it('CustomerOrderProductLink carries one owning @ManyToOne per member', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/CustomerOrderProductLink.java`);
+    expect(java).toContain('@Entity');
+    for (const [decl, column] of [
+      ['private Customer customer;', 'customer_id'],
+      ['private Order order;', 'order_id'],
+      ['private Product product;', 'product_id'],
+    ]) {
+      expect(java).toContain(`@JoinColumn(name = "${column}")`);
+      expect(java).toContain(decl);
+    }
+    expect(java).toContain('public class CustomerOrderProductLink {');
+  });
+});
+
+describe('service template (maintainer decision C — thin 3+1 service layer)', () => {
+  it('renders a @Service with repository injection and the four pass-through methods', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/service/CustomerService.java`);
+    expect(java).toContain(`package ${PKG}.service;`);
+    expect(java).toContain('import jakarta.persistence.EntityNotFoundException;');
+    expect(java).toContain('@Service');
+    expect(java).toContain('public CustomerService(CustomerRepository repository)');
+    expect(java).toContain('public List<Customer> findAll()');
+    expect(java).toContain('public Customer findById(Long id)');
+    expect(java).toContain('new EntityNotFoundException(');
+    expect(java).toContain('public Customer save(Customer entity)');
+    expect(java).toContain('public void deleteById(Long id)');
+  });
+});
+
+describe('production profile + zip extras (14.6b + maintainer decision D)', () => {
+  it('application-prod.properties wires PostgreSQL purely through env vars', () => {
+    const props = fileAt('src/main/resources/application-prod.properties');
+    expect(props).toContain('spring.datasource.url=${SPRING_DATASOURCE_URL}');
+    expect(props).toContain('spring.datasource.username=${SPRING_DATASOURCE_USERNAME}');
+    expect(props).toContain('spring.datasource.password=${SPRING_DATASOURCE_PASSWORD}');
+    expect(props).toContain('org.postgresql.Driver');
+    // Nothing hardcoded: no literal jdbc url, user or password value
+    // (env-var placeholders start with `$`, so `[^$]` catches literals only).
+    expect(props).not.toMatch(/jdbc:postgresql:\/\//);
+    expect(props).not.toMatch(/password=[^$]/);
+  });
+
+  it('pom adds the PostgreSQL driver at runtime scope', () => {
+    const pom = fileAt('pom.xml');
+    expect(pom).toContain('<artifactId>postgresql</artifactId>');
+  });
+
+  it('Dockerfile runs the boot jar on a 21 JRE alpine image', () => {
+    const docker = fileAt('Dockerfile');
+    expect(docker).toContain('FROM eclipse-temurin:21-jre-alpine');
+    expect(docker).toContain('COPY target/*.jar');
+    expect(docker).toContain('ENTRYPOINT');
+  });
+
+  it('docker-compose wires app (prod profile) to postgres:16-alpine with a volume', () => {
+    const compose = fileAt('docker-compose.yml');
+    expect(compose).toContain('build: .');
+    expect(compose).toContain('SPRING_PROFILES_ACTIVE: prod');
+    expect(compose).toContain('jdbc:postgresql://db:5432/');
+    expect(compose).toContain('image: postgres:16-alpine');
+    expect(compose).toContain('volumes:');
+  });
+
+  it('README documents local run, prod run and the AWS deploy path', () => {
+    const readme = fileAt('README.md');
+    expect(readme).toContain('./mvnw spring-boot:run');
+    expect(readme).toContain('SPRING_PROFILES_ACTIVE=prod');
+    expect(readme).toContain('EC2');
+    expect(readme).toContain('RDS');
   });
 });

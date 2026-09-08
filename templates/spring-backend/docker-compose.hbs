@@ -1,0 +1,29 @@
+# Generated local orchestration (maintainer decision 2026-09-07 — zip extras):
+# app on the `prod` profile + PostgreSQL 16 with a persistent volume.
+# The datasource env vars below are LOCAL development defaults; real
+# deployments override them (see README — AWS path: EC2 + RDS PostgreSQL).
+# Rendered by templates/spring-backend/docker-compose.hbs — do not edit by hand.
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/appdb
+      SPRING_DATASOURCE_USERNAME: appuser
+      SPRING_DATASOURCE_PASSWORD: apppassword
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
