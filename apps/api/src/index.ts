@@ -24,6 +24,9 @@ import {
 import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { pathToFileURL } from 'node:url';
+import { generate, createHandlebarsRenderer, DEFAULT_TEMPLATES_DIR, type GeneratedFile } from '@app/codegen';
+import { jobRegistry } from './jobs.js';
+import * as yazl from 'yazl';
 
 // Load apps/api/.env when present so the OpenAI-compatible provider config
 // (OPENAI_API_KEY / OPENAI_BASE_URL / LLM_MODEL / WHISPER_MODEL) and
@@ -43,6 +46,9 @@ const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
 export async function closePool(): Promise<void> {
   await pool.end();
 }
+
+/** Exported for tests that need to insert corrupt rows. */
+export { pool };
 
 // Interpreter LLM wiring: an injected llm (tests) wins over env config
 // (OpenAI-compatible when OPENAI_API_KEY is set), with the deterministic
@@ -199,6 +205,66 @@ async function loadDiagramFromRow(row: {
   } catch {
     // Both blob and doc are invalid — explicit load error per editor:R5
     throw new Error('Diagram load failed: corrupt yjs_state blob and invalid stored doc');
+  }
+}
+
+/** Thrown by loadDiagramById when the diagram id has no row in the DB.
+ *  Distinct from corruption errors thrown by loadDiagramFromRow so handlers
+ *  can return 404 instead of 500. */
+export class DiagramNotFoundError extends Error {
+  override readonly name = 'DiagramNotFoundError';
+  constructor(id: string) {
+    super(`Diagram not found: ${id}`);
+  }
+}
+
+// Helper: load diagram by id (returns row and diagram)
+async function loadDiagramById(id: string): Promise<{ row: any; diagram: Diagram; version: number }> {
+  const result = await pool.query(
+    'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
+    [id]
+  );
+  if (result.rows.length === 0) {
+    throw new DiagramNotFoundError(id);
+  }
+  const row = result.rows[0];
+  const { diagram, version } = await loadDiagramFromRow({
+    id: row.id,
+    name: row.name,
+    doc: row.doc,
+    yjs_state: row.yjs_state,
+    version: row.version,
+  });
+  return { row, diagram, version };
+}
+
+// Helper: build a zip from GeneratedFile entries
+function buildZipFromFiles(files: GeneratedFile[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const zip = new yazl.ZipFile();
+    for (const file of files) {
+      zip.addBuffer(Buffer.from(file.content, 'utf8'), file.path);
+    }
+    zip.end();
+    const chunks: Buffer[] = [];
+    zip.outputStream.on('data', (chunk) => chunks.push(chunk));
+    zip.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    zip.outputStream.on('error', reject);
+  });
+}
+
+// Background generation job
+async function runGeneration(jobId: string, diagramId: string): Promise<void> {
+  try {
+    jobRegistry.setRunning(jobId);
+    const { diagram } = await loadDiagramById(diagramId);
+    const outputRoot = process.cwd() + '/generated'; // dummy root for containment check
+    const render = createHandlebarsRenderer(DEFAULT_TEMPLATES_DIR);
+    const result = generate(diagram, { outputRoot, basePackage: 'com.example.generated', render });
+    const zipBuffer = await buildZipFromFiles(result.files);
+    jobRegistry.setSucceeded(jobId, zipBuffer);
+  } catch (error) {
+    jobRegistry.setFailed(jobId, error instanceof Error ? error.message : 'Generation failed');
   }
 }
 
@@ -510,6 +576,86 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         }
         throw error;
       }
+    }
+  );
+
+  // ---- Unit 14d: generate-over-HTTP job API ----
+
+  // POST /diagrams/:id/generate — kick off async generation, return jobId.
+  // 404 if the diagram id has no row; 500 if the row exists but the blob
+  // is corrupt. 409 if a job is already in flight for the same diagram
+  // (backpressure: prevent N concurrent generations of the same model).
+  app.post<{ Params: { id: string } }>(
+    '/diagrams/:id/generate',
+    async (request, reply) => {
+      const { id } = request.params;
+      try {
+        await loadDiagramById(id); // validates existence + blob integrity
+      } catch (error) {
+        if (error instanceof DiagramNotFoundError) {
+          return reply.status(404).send({ error: 'Diagram not found' });
+        }
+        return reply
+          .status(500)
+          .send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
+      }
+      // Backpressure: dedup by diagramId. A queued/running job for the
+      // same diagram blocks new jobs (return 409 with the existing id).
+      const existing = jobRegistry.findActiveByDiagramId(id);
+      if (existing) {
+        return reply.status(409).send({
+          error: 'Job already in progress for this diagram',
+          jobId: existing.id,
+        });
+      }
+      const job = jobRegistry.create(id);
+      // Run generation in background (do not await)
+      setImmediate(() => void runGeneration(job.id, id));
+      return reply.status(202).send({ jobId: job.id });
+    }
+  );
+
+  // GET /jobs/:id — get job status
+  app.get<{ Params: { id: string } }>(
+    '/jobs/:id',
+    async (request, reply) => {
+      const job = jobRegistry.get(request.params.id);
+      if (!job) {
+        return reply.status(404).send({ error: 'Job not found' });
+      }
+      return {
+        id: job.id,
+        status: job.status,
+        diagramId: job.diagramId,
+        createdAt: job.createdAt.toISOString(),
+        updatedAt: job.updatedAt.toISOString(),
+        error: job.error ?? null,
+        artifactReady: job.status === 'succeeded',
+      };
+    }
+  );
+
+  // GET /jobs/:id/artifact — download the generated zip
+  app.get<{ Params: { id: string } }>(
+    '/jobs/:id/artifact',
+    async (request, reply) => {
+      const job = jobRegistry.get(request.params.id);
+      if (!job) {
+        return reply.status(404).send({ error: 'Job not found' });
+      }
+      if (job.status === 'failed') {
+        return reply.status(500).send({ error: `Generation failed: ${job.error ?? 'unknown error'}` });
+      }
+      if (job.status !== 'succeeded' || !job.artifact) {
+        return reply.status(409).send({ error: 'Artifact not ready yet' });
+      }
+      // Defense in depth: UUIDs are already safe, but sanitize the
+      // filename before it lands in a Content-Disposition header.
+      const safeName = String(job.diagramId).replace(/[^a-zA-Z0-9-]/g, '_');
+      return reply
+        .header('Content-Type', 'application/zip')
+        .header('Content-Disposition', `attachment; filename="generated-${safeName}.zip"`)
+        .send(job.artifact);
     }
   );
 

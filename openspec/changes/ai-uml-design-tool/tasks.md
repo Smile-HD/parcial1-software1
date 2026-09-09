@@ -236,7 +236,7 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 
 ### Unit 14d: Generate-over-HTTP job API (PR 14d — split 2026-09-07)
 
-- [ ] 14.7 `POST /diagrams/:id/generate` → `{jobId}`; `GET /jobs/:id`; artifact download — in-process job registry (design D8).
+- [x] 14.7 `POST /diagrams/:id/generate` → `{jobId}`; `GET /jobs/:id`; artifact download — in-process job registry (design D8).
 - [ ] 15.1 [P] RED: unsupported XMI version rejected naming supported version; current diagram unchanged (xmi:R1).
 - [ ] 15.2 RED: truncated/malformed XML ⇒ parse error, pre-import state intact (xmi:R4).
 - [ ] 15.3 Create `packages/adapters-import/src/xmi21.ts` (`fast-xml-parser`): classes/attrs/operations/associations+multiplicities, visibility from member name prefixes, aggregation kinds from memberEnd (`aggregation="shared"|"composite"`), generalization elements, interface/abstract classifiers, realization/dependency + n-ary membership (xmi:R1 + v2 subset).

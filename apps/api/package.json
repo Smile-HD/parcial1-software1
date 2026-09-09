@@ -14,16 +14,19 @@
   "dependencies": {
     "@app/adapters-ai": "workspace:*",
     "@app/core": "workspace:*",
+    "@app/codegen": "workspace:*",
     "@fastify/cors": "^11.3.0",
     "fastify": "^5.0.0",
     "pg": "^8.12.0",
     "uuid": "^11.0.0",
+    "yazl": "^2.5.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "@types/uuid": "^11.0.0",
+    "@types/yazl": "^2.4.5",
     "tsx": "^4.23.12",
     "vitest": "^3.0.0"
   }
