@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<UML:Model xmi:version="2.1">
+  <UML:Class>
+    <UML:Attribute name="x" type="int"/>
+  </UML:Class
+</UML:Model>

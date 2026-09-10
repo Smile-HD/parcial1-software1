@@ -29,6 +29,7 @@ import {
 export const PACKAGE_NAME = '@app/adapters-ai' as const;
 
 export * from './stt.js';
+export * from './retry-repairing-llm.js';
 
 // ── shared helpers ─────────────────────────────────────────────────────────
 
@@ -588,13 +589,30 @@ export class OpenAiLlm implements LlmPort {
         '- "remove dependency between X and Y" / "X does not depend on Y" → dependency delete using the EXACT dependencyId from currentIr.dependencies.',
         '- Duplicate dependencies (same client + supplier) are rejected.',
         '',
-        'N-ARY ASSOCIATION GUIDANCE (unit 13):',
-        '- "ternary association between A, B and C" / "n-ary association between A, B, C and D" → naryAssociation create with one memberEnd per class (in the order named), each carrying its own multiplicity (default "1") and optional role.',
-        '- An n-ary association connects THREE OR MORE classes through a central diamond. A create with fewer than three member ends is REJECTED by the engine.',
-        '- Every memberEnds[].classId must reference an EXISTING class uuid; duplicate classes within one association are rejected.',
-        '- "remove n-ary association" / "delete ternary association" → naryAssociation delete using the EXACT naryAssociationId from currentIr.naryAssociations.',
-        '- N-ary associations live in their OWN collection; they never touch the binary associations array.',
-        '',
+      'N-ARY ASSOCIATION GUIDANCE (unit 13):',
+      '- "ternary association between A, B and C" / "n-ary association between A, B, C and D" → naryAssociation create with one memberEnd per class (in the order named), each carrying its own multiplicity (default "1") and optional role.',
+      '- An n-ary association connects THREE OR MORE classes through a central diamond. A create with fewer than three member ends is REJECTED by the engine.',
+      '- Every memberEnds[].classId must reference an EXISTING class uuid; duplicate classes within one association are rejected.',
+      '- "remove n-ary association" / "delete ternary association" → naryAssociation delete using the EXACT naryAssociationId from currentIr.naryAssociations.',
+      '- N-ary associations live in their OWN collection; they never touch the binary associations array.',
+      '',
+      'BATCH (multi-command) GUIDANCE (interpreter-llm-resilience R4):',
+      '- When the user asks for SEVERAL operations in one utterance ("create classes Supplier, Part, Project" / "create class A and add attribute x: int to it"), wrap them in a SINGLE "kind":"batch" envelope — the editor applies them atomically. The interpreter NEVER splits a batch on the client side.',
+      '- Shape: {"kind":"batch", ...base, "deltas":[<delta1>, <delta2>, ...]} where every sub-delta carries the full BASE FIELDS (id, diagramId, timestamp) plus its own kind-specific payload. ALL sub-deltas must validate against their respective DeltaSchema members; the engine rejects the whole batch if any sub-delta is invalid.',
+      '- For a single n-ary association (or any single operation) emit the matching kind directly — do NOT wrap a single delta in a "kind":"batch" envelope. Batch is for COMBINING operations, not for wrapping a single one.',
+      '- Cross-references INSIDE a batch (a class-create in slot 0 referenced by an attribute in slot 1 and an association in slot 2) MUST use a PLACEHOLDER (NEW_CLASS_1, NEW_CLASS_2, ...) consistently — the system regenerates coherent UUIDs for every occurrence of the same placeholder string.',
+      '- Example: "create classes Supplier, Part, Project" →',
+      '   {"kind":"batch", ...base, "deltas":[',
+      '     {"kind":"class","op":"create", ...base, "classId":"NEW_CLASS_1","name":"Supplier","position":{"x":0,"y":0}},',
+      '     {"kind":"class","op":"create", ...base, "classId":"NEW_CLASS_2","name":"Part","position":{"x":120,"y":0}},',
+      '     {"kind":"class","op":"create", ...base, "classId":"NEW_CLASS_3","name":"Project","position":{"x":240,"y":0}}',
+      '   ]}',
+      '- Example: "create class A and add attribute x: int to it" →',
+      '   {"kind":"batch", ...base, "deltas":[',
+      '     {"kind":"class","op":"create", ...base, "classId":"NEW_CLASS_1","name":"A","position":{"x":0,"y":0}},',
+      '     {"kind":"member","op":"addAttribute", ...base, "classId":"NEW_CLASS_1","memberId":"NEW_ATTR_1","name":"x","type":"int"}',
+      '   ]}',
+      '',
       'AGGREGATION END GUIDANCE:',
       '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',
       '- It is INDEPENDENT of drawing direction (source/target class order) and multiplicities.',

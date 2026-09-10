@@ -21,8 +21,9 @@ import {
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
-import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt } from '@app/adapters-ai';
+import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
+import { registerXmiImportRoutes } from './xmi-import.js';
 import { pathToFileURL } from 'node:url';
 import { generate, createHandlebarsRenderer, DEFAULT_TEMPLATES_DIR, type GeneratedFile } from '@app/codegen';
 import { jobRegistry } from './jobs.js';
@@ -59,7 +60,7 @@ export interface AppOptions {
   stt?: SttPort;
 }
 
-const pendingDeltas = new PendingDeltaStore();
+export const pendingDeltas = new PendingDeltaStore();
 
 // Request/Response schemas.
 // `yjsState` (base64 Yjs update) is the authoritative persisted state: clients
@@ -219,7 +220,7 @@ export class DiagramNotFoundError extends Error {
 }
 
 // Helper: load diagram by id (returns row and diagram)
-async function loadDiagramById(id: string): Promise<{ row: any; diagram: Diagram; version: number }> {
+export async function loadDiagramById(id: string): Promise<{ row: any; diagram: Diagram; version: number }> {
   const result = await pool.query(
     'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
     [id]
@@ -268,10 +269,31 @@ async function runGeneration(jobId: string, diagramId: string): Promise<void> {
   }
 }
 
+/** Reads `OPENAI_LLM_MAX_ATTEMPTS` (default 2, clamp 3) for the retry+repair wrapper. */
+function readMaxAttemptsFromEnv(): number {
+  const raw = process.env.OPENAI_LLM_MAX_ATTEMPTS;
+  if (raw === undefined || raw === '') return 2;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 2;
+  if (n < 1) return 1;
+  if (n > 3) return 3;
+  return Math.floor(n);
+}
+
 /** Builds the Fastify app (routes registered, not listening). Exported for smoke tests. */
 export function buildApp(options?: AppOptions): FastifyInstance {
   const app = Fastify({ logger: options?.logger ?? true });
-  const llm: LlmPort = options?.llm ?? OpenAiLlm.fromEnv() ?? new FakeLlm();
+  // Wiring (interpreter-llm-resilience, R2/R5): the production LLM path —
+  // any OpenAiLlm picked via env or a direct injection that IS an OpenAiLlm
+  // instance — is wrapped in RetryRepairingLlmPort so a Zod-invalid model
+  // output is recovered with a repair prompt rather than surfaced as a
+  // generic schema error to the user. Test-injected LlmPort instances that
+  // are NOT OpenAiLlm (e.g. FakeLlm in offline tests) are left untouched
+  // (R2: FakeLlm must keep its deterministic behaviour).
+  const baseLlm: LlmPort = options?.llm ?? OpenAiLlm.fromEnv() ?? new FakeLlm();
+  const llm: LlmPort = baseLlm instanceof OpenAiLlm
+    ? new RetryRepairingLlmPort(baseLlm, { maxAttempts: readMaxAttemptsFromEnv() })
+    : baseLlm;
   // Voice (PR 8): injected stt (tests) wins over env config (Whisper when an
   // API key is present), with the deterministic FakeStt as offline default.
   const stt: SttPort = options?.stt ?? WhisperStt.fromEnv() ?? new FakeStt();
@@ -514,6 +536,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
     return { status: 'rejected' };
   });
+
+  registerXmiImportRoutes(app);
 
   // POST /diagrams/:id/voice — speech → transcript → SAME interpret pipeline.
   // voice:R1 — transcription via an existing STT API; an outage is an explicit

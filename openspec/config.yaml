@@ -2,22 +2,31 @@
 schema: spec-driven
 
 context: |
-  Project: parcial1 (university exam project)
-  Status: greenfield — no source code, no git repo, no package manifests
-  Product intent: collaborative UML class-diagram design tool with AI assistance and code generation
-  Tech stack: NOT YET CHOSEN — decision deferred to design phase (do not assume a stack)
-  Testing: no test runner detected; re-detect after stack selection
+  Project: parcial1 (university exam project) — ai-uml-design-tool
+  Stack: pnpm monorepo, Node >=22, TypeScript strict, ESM, Yjs, Zod, Fastify, React 19, Vite 6
+  Workspaces: apps/{api,web,collab-server}, packages/{core,adapters-ai,adapters-import,codegen}
+  Testing: vitest 3 in every workspace, RTL+jsdom in web, golden build check via tools/golden-check.mjs (Maven+Spring)
+  Status: mid-implementation — openspec/changes/ai-uml-design-tool is the active change with 10 specs
   Session: interactive, artifact_store=both, delivery=ask-on-risk, review_budget=400 lines
 
-strict_tdd: false
+strict_tdd: true
 
 testing:
-  runner: none
-  unit: false
-  integration: false
+  runner: vitest
+  unit: true
+  integration: true
   e2e: false
   coverage: false
-  note: No test runner present. Re-detect capabilities after stack selection in design phase.
+  framework: vitest@^3.0.0
+  unit_tool: vitest
+  integration_tool: "vitest + @testing-library/react + jsdom (web); vitest + node:test-like helpers (api/collab-server/adapters)"
+  e2e_tool: "tools/golden-check.mjs — full Maven build + Spring boot + HTTP CRUD round-trip"
+  coverage_tool: none
+  type_check: tsc --noEmit (tsconfig.base.json strict + noUncheckedIndexedAccess + exactOptionalPropertyTypes)
+  linter: none
+  formatter: none
+  test_command: pnpm -r test
+  note: "Strict TDD activated by user request: write the failing test first, see it fail for the right reason, then implement, then refactor. No production code without a test."
 
 rules:
   proposal:
@@ -26,20 +35,21 @@ rules:
     - Use Given/When/Then for scenarios
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
   design:
-    - Choose the tech stack explicitly; none is currently detected
-    - Include sequence diagrams for complex flows
     - Document architecture decisions with rationale
+    - Include sequence diagrams for complex flows
   tasks:
     - Group by phase, use hierarchical numbering
     - Keep tasks completable in one session
   apply:
     guidelines:
       - Follow existing code patterns
-    tdd: false
-    test_command: ""
+      - Strict TDD: tests come first, then the minimum code to pass
+      - Never disable, skip, or .only() tests to make them green
+    tdd: true
+    test_command: pnpm -r test
   verify:
-    test_command: ""
-    build_command: ""
+    test_command: pnpm -r test
+    build_command: tsc --noEmit -p tsconfig.base.json
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas

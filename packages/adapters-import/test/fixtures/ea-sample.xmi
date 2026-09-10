@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<UML:Model xmi:version="2.1" xmlns:UML="http://schema.omg.org/spec/UML/2.1">
+  <UML:Class id="c1" name="Order" kind="class" isAbstract="false">
+    <UML:Attribute name="id" type="int" visibility="+" isStatic="false" isDerived="false" multiplicity="1"/>
+    <UML:Attribute name="total" type="double" visibility="-" isStatic="false" isDerived="false"/>
+    <UML:Operation name="calculateTotal" type="double" visibility="+" isStatic="false">
+      <UML:Parameter name="tax" type="double"/>
+    </UML:Operation>
+    <taggedValue name="ea_stereotype" value="Entity"/>
+  </UML:Class>
+  <UML:Class id="c2" name="OrderLine" kind="class" isAbstract="false">
+    <UML:Attribute name="quantity" type="int" visibility="+" isStatic="false" isDerived="false" multiplicity="0..*"/>
+  </UML:Class>
+  <UML:Association id="a1" name="order_lines">
+    <UML:AssociationEnd class="c1" multiplicity="1" role="parent" aggregation="composite"/>
+    <UML:AssociationEnd class="c2" multiplicity="0..*" role="child"/>
+    <taggedValue name="ea_property" value="composite"/>
+  </UML:Association>
+  <UML:Generalization id="g1" child="c2" parent="c1"/>
+  <UML:Realization id="r1" client="c1" supplier="c3"/>
+  <UML:Dependency id="d1" client="c1" supplier="c4"/>
+  <UML:NaryAssociation id="n1" name="Ternary">
+    <UML:AssociationEnd class="c1" multiplicity="1" role="a"/>
+    <UML:AssociationEnd class="c2" multiplicity="0..*" role="b"/>
+    <UML:AssociationEnd class="c3" multiplicity="1..*" role="c"/>
+  </UML:NaryAssociation>
+</UML:Model>

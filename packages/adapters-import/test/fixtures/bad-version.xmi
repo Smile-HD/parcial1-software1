@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<UML:Model xmi:version="1.4" xmlns:UML="http://schema.omg.org/spec/UML/1.4">
+  <UML:Class name="Test"/>
+</UML:Model>
