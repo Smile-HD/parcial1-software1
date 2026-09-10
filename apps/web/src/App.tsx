@@ -39,6 +39,8 @@ import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
 import { PresenceBar } from './canvas/PresenceBar';
 import { LanguageToggle, t, useT } from './i18n';
+import { GenerateSpringButton } from './codegen/GenerateSpringButton';
+import { ImportXmiButton } from './xmi/ImportXmiButton';
 
 const DIAGRAM_NAME = 'Untitled';
 const COLLAB_URL: string = import.meta.env.VITE_COLLAB_URL ?? 'ws://localhost:1234';
@@ -418,6 +420,10 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             <span aria-live="polite">
               {saveStatus === 'saving' ? tr('toolbar.saving') : saveStatus === 'saved' ? tr('toolbar.saved') : saveMessage ?? ''}
             </span>
+            {/* PR 14a/14d: kick off Spring Boot codegen via the job API. */}
+            <GenerateSpringButton diagramId={roomId} disabled={status !== 'ready'} />
+            {/* PR 15: import an Enterprise Architect XMI 2.1 file. */}
+            <ImportXmiButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
             <PresenceBar names={peers} />
             {/* unit 13e.9 — the EN/ES segmented control lives in the toolbar. */}
             <LanguageToggle />

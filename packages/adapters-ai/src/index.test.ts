@@ -932,3 +932,37 @@ describe('OpenAiLlm n-ary association prompt (unit 13.4)', () => {
     expect(captured.system).toMatch(/three or more/i);
   });
 });
+
+describe('OpenAiLlm batch (multi-command) prompt (interpreter-llm-resilience R4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('system prompt documents the batch shape with a worked example and the placeholder rule', async () => {
+    const captured: { system?: string } = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init: { body: string }) => {
+        const body = JSON.parse(init.body) as { messages: { role: string; content: string }[] };
+        captured.system = body.messages.find((m) => m.role === 'system')?.content;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ action: 'refuse', reason: 'noop' }) } }],
+          }),
+        });
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    await llm.interpret('create classes Supplier, Part, Project', {}, makeDiagram());
+
+    expect(captured.system).toBeDefined();
+    // The prompt teaches the model the multi-command batch shape (R4).
+    expect(captured.system).toContain('"kind":"batch"');
+    expect(captured.system).toContain('"deltas":[');
+    // Carries the placeholder rule for cross-references inside a batch.
+    expect(captured.system).toContain('PLACEHOLDER');
+    expect(captured.system).toContain('NEW_CLASS_1');
+  });
+});

@@ -12,17 +12,46 @@
  */
 import { DeltaSchema, deltaJsonSchema, type Delta, type Diagram, type LlmPort, type LlmResult } from '@app/core';
 
-/** Surfaced on refusals so the user knows the bounded command set (interpreter:R4). */
+/**
+ * Surfaced on refusals so the user knows the bounded command set
+ * (interpreter:R4 + interpreter-llm-resilience R3). Covers every kind in
+ * `DeltaSchema`'s discriminated union: class, member, association,
+ * generalization, realization, dependency, n-ary association, AND batch.
+ *
+ * The list is a `readonly string[]` (not a closed enum) so the user-facing
+ * copy stays in natural language, but a separate `SUPPORTED_DELTA_KINDS`
+ * constant pins the discriminated-union membership for compile-time safety.
+ */
 export const SUPPORTED_CATEGORIES: readonly string[] = [
   'add/rename/delete class',
   'add/remove attribute (name: type)',
   'add/remove method (name: returnType)',
   'add/remove association with multiplicities',
+  'add/remove n-ary association (3+ members)',
   'create/remove generalization (inheritance)',
   'create interfaces and abstract classes',
   'create/remove realization (class realizes interface)',
   'create/remove dependency (client depends on supplier)',
+  'multi-command batch (combine several edits in one delta)',
 ];
+
+/**
+ * Compile-time pin of the discriminated-union membership of `DeltaSchema`.
+ * Every entry MUST match a `kind` literal in
+ * `packages/core/src/delta.ts:DeltaSchema` (interpreter-llm-resilience R3:
+ * SUPPORTED_CATEGORIES enumerates all 7 single kinds + batch).
+ */
+export const SUPPORTED_DELTA_KINDS = [
+  'class',
+  'member',
+  'association',
+  'generalization',
+  'realization',
+  'dependency',
+  'naryAssociation',
+  'batch',
+] as const;
+export type SupportedDeltaKind = (typeof SUPPORTED_DELTA_KINDS)[number];
 
 export interface PendingDelta {
   id: string;
