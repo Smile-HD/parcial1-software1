@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { parseXmiDocument, xmiToDeltaBatch } from '../../../packages/adapters-import/src/xmi21.js';
-import { loadDiagramById } from './index.js';
+import { parseXmiDocument, xmiToDeltaBatch } from '@app/adapters-import';
+import { loadDiagramById, DiagramNotFoundError } from './index.js';
+import { BatchDeltaSchema } from '@app/core';
 
 export function registerXmiImportRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string }; Body: { xmi: string } }>(
@@ -10,10 +11,18 @@ export function registerXmiImportRoutes(app: FastifyInstance) {
       const diagramId = request.params.id;
       const { xmi } = request.body;
 
-      // Check if diagram exists
-      const diagram = await loadDiagramById(diagramId);
-      if (!diagram) {
-        return reply.status(404).send({ error: 'Diagram not found' });
+      // Check if diagram exists. loadDiagramById throws DiagramNotFoundError
+      // for a missing row (it never returns null), so 404 must be derived
+      // from the caught error — same pattern as POST /diagrams/:id/generate.
+      try {
+        await loadDiagramById(diagramId);
+      } catch (error) {
+        if (error instanceof DiagramNotFoundError) {
+          return reply.status(404).send({ error: 'Diagram not found' });
+        }
+        return reply
+          .status(500)
+          .send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
       }
 
       let model;
@@ -25,14 +34,12 @@ export function registerXmiImportRoutes(app: FastifyInstance) {
 
       const batch = xmiToDeltaBatch(model, diagramId);
 
-      // PR 15 web apply path: return the parsed deltas so the web client can
-      // apply them straight to its Y.Doc. The original AI-interpreter-style
-      // pending-store path is unused here because the import is a batch
-      // (N deltas), not a single delta, and PendingDeltaStore is shaped for
-      // the single-delta case.
+      // Validate the batch against the canonical schema before returning
+      const validatedBatch = BatchDeltaSchema.parse(batch);
+
       return reply.send({
-        deltaId: `import-${Date.now()}`,
-        deltas: batch.deltas,
+        deltaId: validatedBatch.id,
+        batch: validatedBatch,
         summary: {
           classes: model.classes.length,
           associations: model.associations.length,

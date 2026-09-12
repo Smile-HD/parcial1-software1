@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@app/adapters-ai": "workspace:*",
+    "@app/adapters-import": "workspace:*",
     "@app/core": "workspace:*",
     "@app/codegen": "workspace:*",
     "@fastify/cors": "^11.3.0",
