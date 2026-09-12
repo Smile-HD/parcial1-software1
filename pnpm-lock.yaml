@@ -27,6 +27,9 @@ importers:
       '@app/adapters-ai':
         specifier: workspace:*
         version: link:../../packages/adapters-ai
+      '@app/adapters-import':
+        specifier: workspace:*
+        version: link:../../packages/adapters-import
       '@app/codegen':
         specifier: workspace:*
         version: link:../../packages/codegen

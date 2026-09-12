@@ -11,6 +11,12 @@
   <UML:Class id="c2" name="OrderLine" kind="class" isAbstract="false">
     <UML:Attribute name="quantity" type="int" visibility="+" isStatic="false" isDerived="false" multiplicity="0..*"/>
   </UML:Class>
+  <UML:Class id="c3" name="Payable" kind="interface" isAbstract="true">
+    <UML:Operation name="pay" type="void" visibility="+" isStatic="false"/>
+  </UML:Class>
+  <UML:Class id="c4" name="Customer" kind="class" isAbstract="false">
+    <UML:Attribute name="email" type="String" visibility="+" isStatic="false" isDerived="false"/>
+  </UML:Class>
   <UML:Association id="a1" name="order_lines">
     <UML:AssociationEnd class="c1" multiplicity="1" role="parent" aggregation="composite"/>
     <UML:AssociationEnd class="c2" multiplicity="0..*" role="child"/>

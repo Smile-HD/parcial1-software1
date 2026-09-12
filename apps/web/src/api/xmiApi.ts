@@ -1,14 +1,14 @@
 /**
  * XMI import REST client (PR 15) — sends an XMI 2.1 file to the API and
- * returns the parsed deltas. The web client applies them straight to its
+ * returns the parsed batch delta. The web client applies it atomically to its
  * Y.Doc; the server does NOT mutate the diagram (the response carries
- * the deltas, not the new diagram state).
+ * the batch delta, not the new diagram state).
  *
  * Endpoint: POST /diagrams/:id/import/xmi
  * Body:     { xmi: string }   (raw XMI text)
- * Reply:    { deltaId, deltas: Delta[], summary: {...counts...} }
+ * Reply:    { deltaId, batch: BatchDelta, summary: {...counts...} }
  */
-import type { Delta } from '@app/core';
+import type { BatchDelta } from '@app/core';
 
 import { DiagramApiError } from './diagramApi';
 
@@ -25,7 +25,7 @@ export interface XmiImportSummary {
 
 export interface XmiImportResult {
   deltaId: string;
-  deltas: readonly Delta[];
+  batch: BatchDelta;
   summary: XmiImportSummary;
 }
 
@@ -49,15 +49,15 @@ export async function importXmi(diagramId: string, xmiText: string): Promise<Xmi
   }
   const body = (await response.json()) as {
     deltaId?: string;
-    deltas?: Delta[];
+    batch?: BatchDelta;
     summary?: XmiImportSummary;
   };
-  if (!Array.isArray(body.deltas)) {
-    throw new DiagramApiError(500, 'XMI import response did not include deltas');
+  if (!body.batch) {
+    throw new DiagramApiError(500, 'XMI import response did not include batch');
   }
   return {
     deltaId: typeof body.deltaId === 'string' ? body.deltaId : `import-${Date.now()}`,
-    deltas: body.deltas,
+    batch: body.batch,
     summary: body.summary ?? {
       classes: 0,
       associations: 0,

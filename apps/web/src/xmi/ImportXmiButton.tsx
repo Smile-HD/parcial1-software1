@@ -4,8 +4,8 @@
  * Click flow:
  *   1. Open a file picker restricted to .xmi
  *   2. Read the file as text
- *   3. POST to /diagrams/:id/import/xmi (api returns parsed deltas + summary)
- *   4. Apply every delta to the local Y.Doc in order via applyDeltaToYDoc
+ *   3. POST to /diagrams/:id/import/xmi (api returns parsed batch delta + summary)
+ *   4. Apply the batch delta atomically to the local Y.Doc via applyDeltaToYDoc
  *   5. Show a short success/failure status (the canvas re-renders from the
  *      Y.Doc observers — editor:R1)
  *
@@ -70,19 +70,27 @@ export function ImportXmiButton({ doc, diagramId, disabled = false }: ImportXmiB
         setState({ phase: 'failed', message });
         return;
       }
-      // Apply every delta in order. If any fails we stop and surface the
-      // partial result so the user knows what was applied.
-      let appliedCount = 0;
-      for (const delta of result.deltas) {
-        const applied = applyDeltaToYDoc(doc, delta);
-        if (!applied.ok) {
-          setState({
-            phase: 'failed',
-            message: tr('xmi.applyFailed', { applied: String(appliedCount), kind: applied.error.kind }),
-          });
-          return;
-        }
-        appliedCount += 1;
+      // Apply the batch delta atomically (spec 15.6: one atomic delta batch).
+      // core's schema gate THROWS on a malformed batch (ZodError from
+      // DeltaSchema.parse) instead of returning an engine rejection, so the
+      // call must be guarded — otherwise the rejection escapes the async
+      // handler and the control hangs in 'importing' forever.
+      let applied: ReturnType<typeof applyDeltaToYDoc>;
+      try {
+        applied = applyDeltaToYDoc(doc, result.batch);
+      } catch {
+        setState({
+          phase: 'failed',
+          message: tr('xmi.applyFailed', { applied: '0', kind: 'SchemaError' }),
+        });
+        return;
+      }
+      if (!applied.ok) {
+        setState({
+          phase: 'failed',
+          message: tr('xmi.applyFailed', { applied: '0', kind: applied.error.kind }),
+        });
+        return;
       }
       setState({ phase: 'succeeded', summary: result.summary });
     },
