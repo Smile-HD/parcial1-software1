@@ -399,15 +399,17 @@ describe('interfaces and realizations (14.5)', () => {
 });
 
 describe('abstract classes, visibility and attribute multiplicity (14.5)', () => {
-  it('abstract class becomes an abstract entity WITH repository/controller/service', () => {
+  it('abstract class becomes an abstract entity WITHOUT repository/controller/service', () => {
     const d = v2Diagram({ classes: [v2Cls(ID2.payment, 'Payment', { isAbstract: true })] });
     const result = generate(d, { outputRoot: ROOT });
     const payment = entityOf(result.files, 'Payment');
     expect(payment.isAbstract).toBe(true);
     const paths = result.files.map((f) => f.path);
-    expect(paths.some((p) => p.endsWith('PaymentRepository.java'))).toBe(true);
-    expect(paths.some((p) => p.endsWith('PaymentController.java'))).toBe(true);
-    expect(paths.some((p) => p.endsWith('PaymentService.java'))).toBe(true);
+    // 17 spec fix: abstract types cannot back a REST CRUD surface — entity only.
+    expect(paths.some((p) => p.endsWith('PaymentRepository.java'))).toBe(false);
+    expect(paths.some((p) => p.endsWith('PaymentController.java'))).toBe(false);
+    expect(paths.some((p) => p.endsWith('PaymentService.java'))).toBe(false);
+    expect(result.warnings.some((w) => w.code === 'abstract-class-no-crud')).toBe(true);
   });
 
   it('maps member visibility -/# to private/protected field modifiers', () => {

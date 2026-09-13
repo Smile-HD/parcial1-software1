@@ -171,26 +171,35 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(d.naryAssociations).toHaveLength(1);
   });
 
-  it('generates with the real renderer: zero warnings + expected file set', () => {
+  it('generates with the real renderer: expected warnings + file set', () => {
     const result = generate(goldenDiagram(), { outputRoot: ROOT, render });
-    expect(result.warnings).toEqual([]);
+    // 17 spec amendment (2026-09-13): the golden diagram has ONE abstract class
+    // (Payment). Abstract classes emit the entity only — the CRUD trio would be
+    // dead at runtime (Jackson/Spring Data cannot instantiate abstract types) —
+    // and produce exactly this documented warning.
+    expect(result.warnings.map((w) => w.code)).toEqual(['abstract-class-no-crud']);
+    expect(result.warnings[0]?.element).toBe('Payment');
 
     const paths = result.files.map((f) => f.path).sort();
-    for (const name of [
-      'Customer',
-      'Order',
-      'Product',
-      'ShippingAddress',
-      'OrderLine',
-      'Item',
-      'Payment',
-      'CustomerOrderProductLink',
-    ]) {
-      expect(paths).toContain(`src/main/java/${PKG_PATH}/${name}.java`);
-      expect(paths).toContain(`src/main/java/${PKG_PATH}/repository/${name}Repository.java`);
-      expect(paths).toContain(`src/main/java/${PKG_PATH}/web/${name}Controller.java`);
-      expect(paths).toContain(`src/main/java/${PKG_PATH}/service/${name}Service.java`);
-    }
+      for (const name of [
+        'Customer',
+        'Order',
+        'Product',
+        'ShippingAddress',
+        'OrderLine',
+        'Item',
+        'CustomerOrderProductLink',
+      ]) {
+        expect(paths).toContain(`src/main/java/${PKG_PATH}/${name}.java`);
+        expect(paths).toContain(`src/main/java/${PKG_PATH}/repository/${name}Repository.java`);
+        expect(paths).toContain(`src/main/java/${PKG_PATH}/web/${name}Controller.java`);
+        expect(paths).toContain(`src/main/java/${PKG_PATH}/service/${name}Service.java`);
+      }
+      // Abstract class (17 amendment): entity ONLY — no repository/controller/service.
+      expect(paths).toContain(`src/main/java/${PKG_PATH}/Payment.java`);
+      expect(paths.some((p) => p.includes('PaymentRepository'))).toBe(false);
+      expect(paths.some((p) => p.includes('PaymentController'))).toBe(false);
+      expect(paths.some((p) => p.includes('PaymentService'))).toBe(false);
     // Interface: plain file only — no repository/controller/service.
     expect(paths).toContain(`src/main/java/${PKG_PATH}/Sellable.java`);
     expect(paths.some((p) => p.includes('SellableRepository'))).toBe(false);
@@ -208,7 +217,8 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(paths).toContain('README.md');
     // 8 entities × 4 files + 1 interface + Application + pom + 2 properties
     // + 3 wrapper assets + Dockerfile + compose + README = 43.
-    expect(paths).toHaveLength(43);
+    // 43 → 40: 17 amendment (2026-09-13) removes the CRUD trio for abstract Payment.
+    expect(paths).toHaveLength(40);
   });
 
   it('every generated file has non-stub content from a real template', () => {

@@ -33,9 +33,14 @@ const result = generate(diagram, {
   render: createHandlebarsRenderer(),
 });
 
-if (result.warnings.length > 0) {
-  console.error('golden diagram produced warnings — the fixture must stay clean:');
-  for (const w of result.warnings) console.error(`  [${w.code}] ${w.message}`);
+// The golden fixture carries one intentional abstract class (Payment), whose
+// entity-only codegen emits a by-design 'abstract-class-no-crud' warning
+// (17 amendment 2026-09-13). Any OTHER warning means the fixture regressed.
+const EXPECTED_GOLDEN_WARNINGS = new Set(['abstract-class-no-crud']);
+const unexpected = result.warnings.filter((w) => !EXPECTED_GOLDEN_WARNINGS.has(w.code));
+if (unexpected.length > 0) {
+  console.error('golden diagram produced unexpected warnings — the fixture must stay clean:');
+  for (const w of unexpected) console.error(`  [${w.code}] ${w.message}`);
   process.exit(1);
 }
 

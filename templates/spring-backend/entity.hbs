@@ -1,6 +1,7 @@
 package {{packageName}};
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -62,6 +63,9 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
     @ElementCollection(fetch = FetchType.EAGER)
     {{#if fieldModifier}}{{fieldModifier}} {{/if}}List<{{javaType}}> {{name}} = new ArrayList<>();
 {{else}}
+{{#if (eq javaType "String")}}    @NotBlank
+{{else}}    @NotNull
+{{/if}}
     {{#if fieldModifier}}{{fieldModifier}} {{/if}}{{javaType}} {{name}};
 {{/if}}
 
