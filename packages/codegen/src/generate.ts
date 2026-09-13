@@ -290,7 +290,7 @@ function resolvePair(
  * | Shared aggregation                   | plain association, NO cascade (documented decision)     |
  * | Generalization                       | root: `@Inheritance(SINGLE_TABLE)` + `@DiscriminatorColumn`; subclass: `extends` (inherited fields never redeclared) |
  * | Interface classifier                 | plain Java `interface` file (no entity/repo/controller/service); realizers get `implements` |
- * | Abstract class                       | `abstract` JPA entity (+ repo/controller/service); warn when it is an inheritance root needing a table |
+ * | Abstract class                       | `abstract` JPA entity ONLY — no repo/controller/service (17 amendment 2026-09-13: abstract types cannot back a REST CRUD surface); warns |
  * | Member visibility `-` / `#`          | `private` / `protected` field modifiers (`+` stays private per JPA convention, `~` package-private) |
  * | Attribute multiplicity >1 (basic)    | `List<T>` field with `@ElementCollection`               |
  * | N-ary association (centroid diamond) | intermediate join entity `<SortedMemberNames>Link` with an owning `@ManyToOne` per member |
@@ -411,6 +411,19 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   for (const entity of entities.values()) {
     const name = entity.className;
     push(`src/main/java/${packagePath}/${name}.java`, 'source', 'entity', entity);
+    // 17 spec fix (2026-09-13): an abstract UML class cannot be instantiated, so a
+    // REST/CRUD surface over it can only fail at runtime (Jackson cannot deserialize
+    // the abstract type; Spring Data cannot persist it). Emit ONLY the entity (the
+    // inheritance hierarchy still needs it); repository/service/controller belong to
+    // concrete classes. Concrete subclasses inherit the persisted fields.
+    if (entity.isAbstract) {
+      warnings.push({
+        code: 'abstract-class-no-crud',
+        message: `Abstract class ${name}: repository/controller/service intentionally not generated (abstract types cannot back a REST CRUD surface); the entity is emitted for inheritance`,
+        element: name,
+      });
+      continue;
+    }
     push(
       `src/main/java/${packagePath}/repository/${name}Repository.java`,
       'source',

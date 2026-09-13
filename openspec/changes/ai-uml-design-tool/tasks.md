@@ -270,12 +270,12 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 
 ## Phase 6: System B Demo & Hardening (PRs 17–19)
 
-- [ ] 17.1 Extend golden check: backend reaches ready state and answers health/CRUD with outbound internet blocked; zero outbound calls observed (offline:R1).
-- [ ] 17.2 Test: H2 file persistence — record survives restart; first run auto-creates schema (offline:R2).
-- [ ] 17.3 Test: CRUD cycle per generated entity; missing-required-field create ⇒ client error, nothing persisted (offline:R3).
-- [ ] 17.4 Generated README documents single-command `./mvnw spring-boot:run`; fresh-operator scenario passes without source edits (offline:R4).
-- [ ] 17.5 Verify: all offline-backend-artifact acceptance criteria via golden check run fully offline.
-- [ ] 17.6 Production profile test: generated backend boots with `application-prod.properties` against a real PostgreSQL (local 5433 instance); schema created on first start and records survive restart — the production counterpart of 17.2's H2 test.
+- [x] 17.1 Extend golden check: backend reaches ready state and answers health/CRUD with outbound internet blocked; zero outbound calls observed (offline:R1). (`--offline` mode: `mvnw -o` build + dead SOCKS proxy JVM)
+- [x] 17.2 Test: H2 file persistence — record survives restart; first run auto-creates schema (offline:R2). (pre-kill visibility proof + 8s MVStore flush window before hard kill — see 17 handoff notes)
+- [x] 17.3 Test: CRUD cycle per generated entity; missing-required-field create ⇒ client error, nothing persisted (offline:R3). (spec amendment: abstract classes generate entity ONLY — repo/controller/service are for concrete classes; 17.3b asserts abstract Payment route is 404; Bean Validation `@Valid`/`@NotBlank`/`@NotNull` added to templates)
+- [x] 17.4 Generated README documents single-command `./mvnw spring-boot:run`; fresh-operator scenario passes without source edits (offline:R4).
+- [x] 17.5 Verify: all offline-backend-artifact acceptance criteria via golden check run fully offline. (`node tools/golden-check.mjs --offline` exit 0, 2026-09-13)
+- [x] 17.6 Production profile test: generated backend boots with `application-prod.properties` against a real PostgreSQL (local 5433 instance); schema created on first start and records survive restart — the production counterpart of 17.2's H2 test. (`node tools/golden-check.mjs --prod` exit 0; temp DB created/dropped cleanly)
 - [ ] 18.1 Assistant templates: `POST /api/assistant`; deterministic intent matcher → fixed action enum (list/count/create) bound to generated CRUD (assistant:R2, design D11 — Ollama `qwen2.5:1.5b`, localhost only).
 - [ ] 18.2 RED (JUnit in generated project): raw datastore query refused, no mutation (assistant:R2); unmappable request ⇒ canned capability response, no guess (assistant:R3).
 - [ ] 18.3 Model-unavailable ⇒ explicit unavailable response; CRUD unaffected (assistant:R1).

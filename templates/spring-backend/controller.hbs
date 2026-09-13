@@ -3,6 +3,7 @@ package {{packageName}}.web;
 import {{packageName}}.{{className}};
 import {{packageName}}.service.{{className}}Service;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -29,7 +30,7 @@ public class {{className}}Controller {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public {{className}} create(@RequestBody {{className}} entity) {
+    public {{className}} create(@Valid @RequestBody {{className}} entity) {
         return service.save(entity);
     }
 
@@ -44,7 +45,7 @@ public class {{className}}Controller {
     }
 
     @PutMapping("/{id}")
-    public {{className}} update(@PathVariable Long id, @RequestBody {{className}} entity) {
+    public {{className}} update(@PathVariable Long id, @Valid @RequestBody {{className}} entity) {
         service.findById(id); // 404 when the row is absent
         entity.setId(id);
         return service.save(entity);
