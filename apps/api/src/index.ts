@@ -24,6 +24,7 @@ import {
 import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { registerXmiImportRoutes } from './xmi-import.js';
+import { registerXmiExportRoutes } from './xmi-export.js';
 import { pathToFileURL } from 'node:url';
 import { generate, createHandlebarsRenderer, DEFAULT_TEMPLATES_DIR, type GeneratedFile } from '@app/codegen';
 import { jobRegistry } from './jobs.js';
@@ -538,6 +539,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
   });
 
   registerXmiImportRoutes(app);
+  registerXmiExportRoutes(app);
 
   // POST /diagrams/:id/voice — speech → transcript → SAME interpret pipeline.
   // voice:R1 — transcription via an existing STT API; an outage is an explicit

@@ -68,3 +68,25 @@ export async function importXmi(diagramId: string, xmiText: string): Promise<Xmi
     },
   };
 }
+
+/**
+ * Export a diagram as XMI 2.1 for download (PR 15b).
+ * Endpoint: GET /diagrams/:id/export/xmi
+ * Reply:    .xmi file as attachment (application/xml)
+ */
+export async function exportXmi(diagramId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/export/xmi`);
+  if (!response.ok) {
+    let message = `XMI export failed (${response.status})`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (typeof body.error === 'string' && body.error.length > 0) {
+        message = body.error;
+      }
+    } catch {
+      // ignore non-JSON body
+    }
+    throw new DiagramApiError(response.status, message);
+  }
+  return response.blob();
+}

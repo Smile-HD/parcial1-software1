@@ -249,11 +249,11 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 
 ### Unit 15b: XMI 2.1 exporter (PR 15b — scope amendment 2026-09-05)
 
-- [ ] 15b.1 RED: exported XMI parses back through the importer into the SAME model — lossless round-trip for the full supported subset (classes, members with visibility/static/derived/attribute-multiplicity, associations with kinds/names/roles/multiplicities, generalizations, interfaces/abstract/realization/dependency, n-ary).
-- [ ] 15b.2 Create `packages/adapters-import/src/xmi21-export.ts` — IR → standard UML 2.x XMI 2.1 document that EA can import (visibility prefixes `+|-|#|~`, derived /, static, multiplicity ranges, aggregation kinds on memberEnd, generalization/realization/dependency elements, n-ary membership); no EA-proprietary extensions required for round-trip.
-- [ ] 15b.3 Export preserves layout: canvas positions serialized in an XMI layout extension; importer falls back to grid auto-layout when absent.
-- [ ] 15b.4 `GET /diagrams/:id/export/xmi` streams the `.xmi` file as attachment; export is strictly read-only — idempotent, no mutation, no confirm gate.
-- [ ] 15b.5 Verify: golden diagram exercising the full supported subset round-trips (export → import → identical model) and works offline with zero network calls.
+- [x] 15b.1 RED: exported XMI parses back through the importer into the SAME model — lossless round-trip for the full supported subset (classes, members with visibility/static/derived/attribute-multiplicity, associations with kinds/names/roles/multiplicities, generalizations, interfaces/abstract/realization/dependency, n-ary).
+- [x] 15b.2 Create `packages/adapters-import/src/xmi21-export.ts` — IR → standard UML 2.x XMI 2.1 document that EA can import (visibility prefixes `+|-|#|~`, derived /, static, multiplicity ranges, aggregation kinds on memberEnd, generalization/realization/dependency elements, n-ary membership); no EA-proprietary extensions required for round-trip.
+- [x] 15b.3 Export preserves layout: canvas positions serialized in an XMI layout extension; importer falls back to grid auto-layout when absent.
+- [x] 15b.4 `GET /diagrams/:id/export/xmi` streams the `.xmi` file as attachment; export is strictly read-only — idempotent, no mutation, no confirm gate.
+- [x] 15b.5 Verify: golden diagram exercising the full supported subset round-trips (export → import → identical model) and works offline with zero network calls.
 - [ ] 16.1 [P] RED: PDF renamed `.png` and oversized image rejected locally with ZERO API calls (photo:R4, threat row 3).
 - [ ] 16.2 Create `VisionPort` + multimodal adapter + fake; extraction JSON schema validated; prose response rejected (photo:R1).
 - [ ] 16.3 `POST /diagrams/:id/photo` as job; review proposal UI — edit/drop individual elements before approval (photo:R2).
