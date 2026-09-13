@@ -55,6 +55,22 @@ const EN = {
   'xmi.requestFailed': 'Failed to reach the import service',
   'xmi.applyFailed': 'Imported {applied} elements before a delta was rejected ({kind})',
 
+  // Photo import (PR 16, task 16.3-WEB).
+  'photo.button': 'Import Photo',
+  'photo.ariaLabel': 'Import a photo of a class diagram',
+  'photo.validating': 'Validating…',
+  'photo.uploading': 'Uploading…',
+  'photo.extracting': 'Extracting…',
+  'photo.applying': 'Applying…',
+  'photo.succeeded': 'Applied',
+  'photo.readFailed': 'Failed to read the image file',
+  'photo.uploadFailed': 'Failed to reach the photo import service',
+  'photo.pollFailed': 'Lost connection to the extraction service',
+  'photo.extractionFailed': 'Photo extraction failed',
+  'photo.noBatch': 'Photo extraction did not return a result',
+  'photo.applySchemaError': 'The extracted result is invalid and cannot be applied',
+  'photo.applyFailed': 'Applied 0 elements before a delta was rejected ({kind})',
+
   // Image export (unit 16b).
   'export.png': 'Export PNG',
   'export.pngAria': 'Export diagram as PNG image',
@@ -268,6 +284,22 @@ const ES: Record<TKey, string> = {
   'xmi.readFailed': 'No se pudo leer el archivo XMI',
   'xmi.requestFailed': 'No se pudo contactar al servicio de importación',
   'xmi.applyFailed': 'Se importaron {applied} elementos antes de rechazar un delta ({kind})',
+
+  // Photo import (PR 16, task 16.3-WEB).
+  'photo.button': 'Importar Foto',
+  'photo.ariaLabel': 'Importar una foto de un diagrama de clases',
+  'photo.validating': 'Validando…',
+  'photo.uploading': 'Subiendo…',
+  'photo.extracting': 'Extrayendo…',
+  'photo.applying': 'Aplicando…',
+  'photo.succeeded': 'Aplicado',
+  'photo.readFailed': 'No se pudo leer el archivo de imagen',
+  'photo.uploadFailed': 'No se pudo contactar al servicio de importación de fotos',
+  'photo.pollFailed': 'Se perdió la conexión con el servicio de extracción',
+  'photo.extractionFailed': 'La extracción de la foto falló',
+  'photo.noBatch': 'La extracción de la foto no devolvió un resultado',
+  'photo.applySchemaError': 'El resultado extraído no es válido y no se puede aplicar',
+  'photo.applyFailed': 'Se aplicaron 0 elementos antes de rechazar un delta ({kind})',
 
   // Image export (unit 16b).
   'export.png': 'Exportar PNG',
