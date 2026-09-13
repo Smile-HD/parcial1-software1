@@ -15,16 +15,18 @@ import {
   DiagramSchema,
   type LlmPort,
   type SttPort,
+  type VisionPort,
   buildYDocFromDiagram,
   projectYDocToDiagram,
   encodeYDoc,
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
-import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort } from '@app/adapters-ai';
+import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { registerXmiImportRoutes } from './xmi-import.js';
 import { registerXmiExportRoutes } from './xmi-export.js';
+import { registerPhotoImportRoutes } from './photo-import.js';
 import { pathToFileURL } from 'node:url';
 import { generate, createHandlebarsRenderer, DEFAULT_TEMPLATES_DIR, type GeneratedFile } from '@app/codegen';
 import { jobRegistry } from './jobs.js';
@@ -59,6 +61,7 @@ export interface AppOptions {
   logger?: boolean;
   llm?: LlmPort;
   stt?: SttPort;
+  vision?: VisionPort;
 }
 
 export const pendingDeltas = new PendingDeltaStore();
@@ -298,6 +301,9 @@ export function buildApp(options?: AppOptions): FastifyInstance {
   // Voice (PR 8): injected stt (tests) wins over env config (Whisper when an
   // API key is present), with the deterministic FakeStt as offline default.
   const stt: SttPort = options?.stt ?? WhisperStt.fromEnv() ?? new FakeStt();
+  // Vision (PR 16): injected vision (tests) wins over env config, with
+  // FakeVision as offline default.
+  const vision: VisionPort = options?.vision ?? OpenAiVision.fromEnv() ?? new FakeVision();
 
   // CORS — the web editor (apps/web) is a separate origin in dev (Vite :5173)
   // and calls this API cross-origin; without these headers every browser
@@ -540,6 +546,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
   registerXmiImportRoutes(app);
   registerXmiExportRoutes(app);
+  // PR 16: photo import routes — VisionPort injected for testability.
+  registerPhotoImportRoutes(app, vision);
 
   // POST /diagrams/:id/voice — speech → transcript → SAME interpret pipeline.
   // voice:R1 — transcription via an existing STT API; an outage is an explicit
