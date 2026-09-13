@@ -1,0 +1,113 @@
+package {{packageName}}.assistant;
+
+import java.text.Normalizer;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Deterministic bilingual keyword matcher for the offline assistant (design D11).
+ * Primary path: if this matcher hits, Ollama is never consulted.
+ * Returns UNMATCHED (not a guess) when confidence is insufficient (assistant:R3).
+ * Rendered by templates/spring-backend/intent-matcher.hbs — do not edit by hand.
+ */
+public class IntentMatcher {
+
+    private static final Map<String, AssistantEngine.Intent.Action> ACTION_KEYWORDS = Map.ofEntries(
+        // English
+        Map.entry("list", AssistantEngine.Intent.Action.LIST),
+        Map.entry("show", AssistantEngine.Intent.Action.LIST),
+        Map.entry("display", AssistantEngine.Intent.Action.LIST),
+        Map.entry("count", AssistantEngine.Intent.Action.COUNT),
+        Map.entry("how many", AssistantEngine.Intent.Action.COUNT),
+        Map.entry("create", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("add", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("new", AssistantEngine.Intent.Action.CREATE),
+        // Spanish
+        Map.entry("lista", AssistantEngine.Intent.Action.LIST),
+        Map.entry("la lista", AssistantEngine.Intent.Action.LIST),
+        Map.entry("dame", AssistantEngine.Intent.Action.LIST),
+        Map.entry("mu\u00e9strame", AssistantEngine.Intent.Action.LIST),
+        Map.entry("mostrar", AssistantEngine.Intent.Action.LIST),
+        Map.entry("cu\u00e1ntos", AssistantEngine.Intent.Action.COUNT),
+        Map.entry("cuantos", AssistantEngine.Intent.Action.COUNT),
+        Map.entry("crea", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("nuevo", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("nueva", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("agregar", AssistantEngine.Intent.Action.CREATE)
+    );
+
+    private static final Map<String, String> SPANISH_ENTITIES = Map.ofEntries(
+        Map.entry("clientes", "Customer"),
+        Map.entry("cliente", "Customer"),
+        Map.entry("ordenes", "Order"),
+        Map.entry("orden", "Order"),
+        Map.entry("pedidos", "Order"),
+        Map.entry("pedido", "Order"),
+        Map.entry("productos", "Product"),
+        Map.entry("producto", "Product"),
+        Map.entry("direcciones", "ShippingAddress"),
+        Map.entry("direcci\u00f3n", "ShippingAddress"),
+        Map.entry("direccion", "ShippingAddress"),
+        Map.entry("l\u00edneas", "OrderLine"),
+        Map.entry("lineas", "OrderLine"),
+        Map.entry("l\u00ednea", "OrderLine"),
+        Map.entry("linea", "OrderLine"),
+        Map.entry("art\u00edculos", "Item"),
+        Map.entry("articulos", "Item"),
+        Map.entry("art\u00edculo", "Item"),
+        Map.entry("articulo", "Item")
+    );
+
+    private final Set<String> knownEntities;
+
+    public IntentMatcher(Set<String> knownEntities) {
+        this.knownEntities = knownEntities;
+    }
+
+    public AssistantEngine.Intent classify(String freeText) {
+        if (freeText == null || freeText.isBlank()) return AssistantEngine.Intent.UNMATCHED;
+        String lower = normalize(freeText);
+
+        // 1. Find action (longest-match wins for multi-word phrases)
+        AssistantEngine.Intent.Action action = null;
+        int longestMatch = -1;
+        for (var entry : ACTION_KEYWORDS.entrySet()) {
+            if (lower.contains(entry.getKey()) && entry.getKey().length() > longestMatch) {
+                action = entry.getValue();
+                longestMatch = entry.getKey().length();
+            }
+        }
+        if (action == null) return AssistantEngine.Intent.UNMATCHED;
+
+        // 2. Find entity
+        String entityName = findEntity(lower);
+        if (entityName == null) return AssistantEngine.Intent.UNMATCHED;
+
+        return new AssistantEngine.Intent(action, entityName);
+    }
+
+    private String findEntity(String text) {
+        // Direct English match (with common plurals: +s, +es, y→ies)
+        for (String entity : knownEntities) {
+            String lower = entity.toLowerCase();
+            if (text.contains(lower) || text.contains(lower + "s") || text.contains(lower + "es")) {
+                return entity;
+            }
+            if (lower.endsWith("y") && text.contains(lower.substring(0, lower.length() - 1) + "ies")) {
+                return entity;
+            }
+        }
+        // Spanish synonym match
+        for (var entry : SPANISH_ENTITIES.entrySet()) {
+            if (text.contains(entry.getKey()) && knownEntities.contains(entry.getValue())) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String normalize(String s) {
+        String n = Normalizer.normalize(s, Normalizer.Form.NFD);
+        return n.replaceAll("\\p{InCombiningDiacriticalMarks}+", "").toLowerCase().trim();
+    }
+}

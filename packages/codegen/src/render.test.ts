@@ -215,10 +215,18 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(paths).toContain('Dockerfile');
     expect(paths).toContain('docker-compose.yml');
     expect(paths).toContain('README.md');
+    // 18: assistant files
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/AssistantEngine.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/IntentMatcher.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/OllamaEngine.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/AuditLog.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/web/AssistantController.java`);
     // 8 entities × 4 files + 1 interface + Application + pom + 2 properties
     // + 3 wrapper assets + Dockerfile + compose + README = 43.
     // 43 → 40: 17 amendment (2026-09-13) removes the CRUD trio for abstract Payment.
-    expect(paths).toHaveLength(40);
+    // 40 → 45: 18 adds 5 assistant files (AssistantEngine, IntentMatcher,
+    // OllamaEngine, AuditLog, AssistantController).
+    expect(paths).toHaveLength(45);
   });
 
   it('every generated file has non-stub content from a real template', () => {
@@ -338,6 +346,82 @@ describe('service template (maintainer decision C — thin 3+1 service layer)', 
     expect(java).toContain('new EntityNotFoundException(');
     expect(java).toContain('public Customer save(Customer entity)');
     expect(java).toContain('public void deleteById(Long id)');
+  });
+});
+
+// ---------- unit 18: offline assistant (design D11) ----------
+
+describe('assistant templates (18.1)', () => {
+  it('AssistantEngine.java is a valid interface with Intent inner record', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/AssistantEngine.java`);
+    expect(java).toContain(`package ${PKG}.assistant;`);
+    expect(java).toContain('public interface AssistantEngine');
+    expect(java).toContain('Optional<Intent> classify(String freeText)');
+    expect(java).toContain('record Intent');
+    expect(java).toContain('enum Action');
+    expect(java).toContain('LIST');
+    expect(java).toContain('COUNT');
+    expect(java).toContain('CREATE');
+  });
+
+  it('IntentMatcher.java has bilingual action keywords and entity matching', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/IntentMatcher.java`);
+    expect(java).toContain('public class IntentMatcher');
+    // English keywords
+    expect(java).toContain('"list"');
+    expect(java).toContain('"count"');
+    expect(java).toContain('"create"');
+    // Spanish keywords (Unicode-escaped in the Java source)
+    expect(java).toContain('"lista"');
+    expect(java).toContain('"cu\\u00e1ntos"');
+    expect(java).toContain('"crea"');
+    // Spanish entity synonyms
+    expect(java).toContain('"clientes"');
+    expect(java).toContain('"Customer"');
+  });
+
+  it('OllamaEngine.java uses noProxy and has loopback guard', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/OllamaEngine.java`);
+    expect(java).toContain('public class OllamaEngine implements AssistantEngine');
+    expect(java).toContain('NO_PROXIES');
+    expect(java).toContain('Proxy.NO_PROXY');
+    expect(java).toContain('127.0.0.1');
+    expect(java).toContain('localhost');
+    expect(java).toContain('assistant:R1');
+  });
+
+  it('AuditLog.java appends ISO-timestamped lines with SHA-256', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/AuditLog.java`);
+    expect(java).toContain('public class AuditLog');
+    expect(java).toContain('assistant-audit.log');
+    expect(java).toContain('SHA-256');
+    expect(java).toContain('Instant.now()');
+  });
+
+  it('AssistantController.java dispatches to entity services and audits', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/web/AssistantController.java`);
+    expect(java).toContain('@RestController');
+    expect(java).toContain('@RequestMapping("/api/assistant")');
+    expect(java).toContain('@PostMapping');
+    expect(java).toContain('AssistantRequest');
+    expect(java).toContain('AssistantResponse');
+    expect(java).toContain('CAPABILITY_MESSAGE');
+    // Imports every concrete entity service
+    expect(java).toContain('CustomerService');
+    expect(java).toContain('OrderService');
+    expect(java).toContain(' ProductService');
+    expect(java).toContain('ShippingAddressService');
+    expect(java).toContain('OrderLineService');
+    expect(java).toContain('ItemService');
+    expect(java).toContain('CustomerOrderProductLinkService');
+  });
+});
+
+describe('application-properties includes assistant config (18.1)', () => {
+  it('configures assistant.model and assistant.ollama.url', () => {
+    const props = fileAt('src/main/resources/application.properties');
+    expect(props).toContain('assistant.model=qwen2.5:1.5b');
+    expect(props).toContain('assistant.ollama.url=http://127.0.0.1:11434');
   });
 });
 

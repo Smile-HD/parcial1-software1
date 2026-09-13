@@ -276,11 +276,11 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 - [x] 17.4 Generated README documents single-command `./mvnw spring-boot:run`; fresh-operator scenario passes without source edits (offline:R4).
 - [x] 17.5 Verify: all offline-backend-artifact acceptance criteria via golden check run fully offline. (`node tools/golden-check.mjs --offline` exit 0, 2026-09-13)
 - [x] 17.6 Production profile test: generated backend boots with `application-prod.properties` against a real PostgreSQL (local 5433 instance); schema created on first start and records survive restart — the production counterpart of 17.2's H2 test. (`node tools/golden-check.mjs --prod` exit 0; temp DB created/dropped cleanly)
-- [ ] 18.1 Assistant templates: `POST /api/assistant`; deterministic intent matcher → fixed action enum (list/count/create) bound to generated CRUD (assistant:R2, design D11 — Ollama `qwen2.5:1.5b`, localhost only).
-- [ ] 18.2 RED (JUnit in generated project): raw datastore query refused, no mutation (assistant:R2); unmappable request ⇒ canned capability response, no guess (assistant:R3).
-- [ ] 18.3 Model-unavailable ⇒ explicit unavailable response; CRUD unaffected (assistant:R1).
-- [ ] 18.4 Local audit log: timestamp + action name + outcome per executed action (assistant:R4).
-- [ ] 18.5 Verify: assistant answers offline inside golden check; no outbound calls (assistant:R1).
+- [x] 18.1 Assistant templates: `POST /api/assistant`; deterministic intent matcher → fixed action enum (list/count/create) bound to generated CRUD (assistant:R2, design D11 — Ollama `qwen2.5:1.5b`, localhost only).
+- [x] 18.2 RED (JUnit in generated project): raw datastore query refused, no mutation (assistant:R2); unmappable request ⇒ canned capability response, no guess (assistant:R3). **DEVIATION**: JUnit-in-generated-project replaced by golden-check HTTP assertions + codegen render tests — no offline test lib available; raw-query refusal, no-guess fallback, and no-mutation are asserted behaviorally in modes default+offline.
+- [x] 18.3 Model-unavailable ⇒ explicit unavailable response; CRUD unaffected (assistant:R1). **ASSERTION MECHANISM**: Ollama unreachable → OllamaEngine.classify() catches connection exception → returns empty Optional → controller falls through to canned "unavailable" response; CRUD endpoints proven independently (17.3 full cycle). Default-mode golden asserts matcher path works; offline-mode golden asserts the same through dead SOCKS proxy (proves NO_PROXIES selector bypasses JVM-level proxy).
+- [x] 18.4 Local audit log: timestamp + action name + outcome per executed action (assistant:R4).
+- [x] 18.5 Verify: assistant answers offline inside golden check; no outbound calls (assistant:R1).
 - [ ] 19.1 Create external `mobile-test-client/` (Flutter, Dart SDK required; outside codegen output, excluded from A's pnpm build) (mobile:R1).
 - [ ] 19.2 Runtime-configurable backend base URL (settings screen persisted via shared_preferences); retarget without rebuild (mobile:R4).
 - [ ] 19.3 CRUD screen: full cycle on demo entity via `http` package; backend-down ⇒ explicit connection error, no stale data shown (mobile:R2).
