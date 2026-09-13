@@ -55,6 +55,13 @@ const EN = {
   'xmi.requestFailed': 'Failed to reach the import service',
   'xmi.applyFailed': 'Imported {applied} elements before a delta was rejected ({kind})',
 
+  // Image export (unit 16b).
+  'export.png': 'Export PNG',
+  'export.pngAria': 'Export diagram as PNG image',
+  'export.jpeg': 'Export JPEG',
+  'export.jpegAria': 'Export diagram as JPEG image',
+  'export.emptyWarning': 'No diagram content to export',
+
   // Interpreter bar.
   'interpreter.ariaLabel': 'Natural language command',
   'interpreter.placeholder': 'e.g. "add a class Product"',
@@ -261,6 +268,13 @@ const ES: Record<TKey, string> = {
   'xmi.readFailed': 'No se pudo leer el archivo XMI',
   'xmi.requestFailed': 'No se pudo contactar al servicio de importación',
   'xmi.applyFailed': 'Se importaron {applied} elementos antes de rechazar un delta ({kind})',
+
+  // Image export (unit 16b).
+  'export.png': 'Exportar PNG',
+  'export.pngAria': 'Exportar diagrama como imagen PNG',
+  'export.jpeg': 'Exportar JPEG',
+  'export.jpegAria': 'Exportar diagrama como imagen JPEG',
+  'export.emptyWarning': 'No hay contenido del diagrama para exportar',
 
   'interpreter.ariaLabel': 'Comando en lenguaje natural',
   'interpreter.placeholder': 'p. ej. "agregar una clase Producto"',
