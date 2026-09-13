@@ -30,6 +30,7 @@ export const PACKAGE_NAME = '@app/adapters-ai' as const;
 
 export * from './stt.js';
 export * from './retry-repairing-llm.js';
+export * from './vision.js';
 
 // ── shared helpers ─────────────────────────────────────────────────────────
 
