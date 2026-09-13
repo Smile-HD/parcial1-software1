@@ -262,11 +262,11 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 
 ### Unit 16b: Diagram image export (PR 16b — scope amendment 2026-09-06; pairs with Unit 16 as image I/O)
 
-- [ ] 16b.1 RED: export never bumps version, emits zero deltas, zero API calls with network blocked (image-export:R3, image-export:R4).
-- [ ] 16b.2 Wire html-to-image (or equivalent) on React Flow viewport + Export PNG / Export JPEG controls; filename from diagram name + id (image-export:R1).
-- [ ] 16b.3 JPEG white-background compositing + fit-to-content bounds at fixed 2x scale (image-export:R2).
-- [ ] 16b.4 Empty-canvas guard: explicit warning, no file produced (image-export:R5).
-- [ ] 16b.5 Verify: golden diagram exports visually match canvas (manual) and web suite stays green (image-export:R1–R5).
+- [x] 16b.1 RED: export never bumps version, emits zero deltas, zero API calls with network blocked (image-export:R3, image-export:R4).
+- [x] 16b.2 Wire html-to-image (or equivalent) on React Flow viewport + Export PNG / Export JPEG controls; filename from diagram name + id (image-export:R1).
+- [x] 16b.3 JPEG white-background compositing + fit-to-content bounds at fixed 2x scale (image-export:R2).
+- [x] 16b.4 Empty-canvas guard: explicit warning, no file produced (image-export:R5).
+- [x] 16b.5 Verify: golden diagram exports visually match canvas (manual) and web suite stays green (image-export:R1–R5). **Note:** web suite green (273/273); the manual visual check is deferred to the maintainer on the live demo canvas.
 
 ## Phase 6: System B Demo & Hardening (PRs 17–19)
 

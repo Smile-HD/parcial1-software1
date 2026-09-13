@@ -40,6 +40,7 @@ import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
 import { PresenceBar } from './canvas/PresenceBar';
 import { LanguageToggle, t, useT } from './i18n';
 import { GenerateSpringButton } from './codegen/GenerateSpringButton';
+import { ExportToolbarButtons } from './canvas/imageExport';
 import { ImportXmiButton } from './xmi/ImportXmiButton';
 
 const DIAGRAM_NAME = 'Untitled';
@@ -424,6 +425,8 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             <GenerateSpringButton diagramId={roomId} disabled={status !== 'ready'} />
             {/* PR 15: import an Enterprise Architect XMI 2.1 file. */}
             <ImportXmiButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
+            {/* unit 16b: client-side PNG/JPEG export — read-only, zero API calls. */}
+            <ExportToolbarButtons doc={doc} />
             <PresenceBar names={peers} />
             {/* unit 13e.9 — the EN/ES segmented control lives in the toolbar. */}
             <LanguageToggle />
