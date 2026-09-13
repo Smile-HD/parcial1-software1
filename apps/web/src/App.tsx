@@ -42,6 +42,7 @@ import { LanguageToggle, t, useT } from './i18n';
 import { GenerateSpringButton } from './codegen/GenerateSpringButton';
 import { ExportToolbarButtons } from './canvas/imageExport';
 import { ImportXmiButton } from './xmi/ImportXmiButton';
+import { ImportPhotoButton } from './photo/ImportPhotoButton';
 
 const DIAGRAM_NAME = 'Untitled';
 const COLLAB_URL: string = import.meta.env.VITE_COLLAB_URL ?? 'ws://localhost:1234';
@@ -427,6 +428,8 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             <ImportXmiButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
             {/* unit 16b: client-side PNG/JPEG export — read-only, zero API calls. */}
             <ExportToolbarButtons doc={doc} />
+            {/* PR 16c: photo-to-UML import. */}
+            <ImportPhotoButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
             <PresenceBar names={peers} />
             {/* unit 13e.9 — the EN/ES segmented control lives in the toolbar. */}
             <LanguageToggle />

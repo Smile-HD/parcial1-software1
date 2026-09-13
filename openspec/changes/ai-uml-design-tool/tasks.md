@@ -256,7 +256,7 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 - [x] 15b.5 Verify: golden diagram exercising the full supported subset round-trips (export → import → identical model) and works offline with zero network calls.
 - [x] 16.1 [P] RED: PDF renamed `.png` and oversized image rejected locally with ZERO API calls (photo:R4, threat row 3).
 - [x] 16.2 Create `VisionPort` + multimodal adapter + fake; extraction JSON schema validated; prose response rejected (photo:R1).
-- [ ] 16.3 `POST /diagrams/:id/photo` as job; review proposal UI — edit/drop individual elements before approval (photo:R2). **API job route DONE this slice; web upload+review UI ships in the next chained slice (16c)**.
+- [x] 16.3 `POST /diagrams/:id/photo` as job; review proposal UI — edit/drop individual elements before approval (photo:R2).
 - [x] 16.4 Unreadable/zero-element result ⇒ explicit warning, NO fabricated classes; document input constraints (photo:R3).
 - [x] 16.5 Verify: golden clean photo end-to-end with fake; nothing commits without approval (photo acceptance).
 
