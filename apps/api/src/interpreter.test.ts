@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Text interpreter (PR 7) â€” API-side tests.
  *
  * 7.1 whole-design refusal (interpreter:R3) â€” automated RED first.
@@ -13,6 +13,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildApp, closePool } from './index.js';
 import { DiagramSchema, type Diagram, type LlmPort, type LlmResult } from '@app/core';
+import { FakeLlm } from '@app/adapters-ai';
 
 function makeDiagram(): Diagram {
   const customerId = crypto.randomUUID();
@@ -232,6 +233,48 @@ describe('text interpreter API (PR 7)', () => {
       payload: { text: 'add a class Invoice' },
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('interprets flexible command "crea un diagrama hola con atributos pepe y año" into pending batch delta with standard string defaults', async () => {
+    const app = buildApp({ logger: false, llm: new FakeLlm() });
+    const diagram = makeDiagram();
+    const id = await createDiagram(app, diagram);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/diagrams/${id}/interpret`,
+      payload: { text: 'crea un diagrama hola con atributos pepe y año' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { status: string; deltaId: string; delta: any };
+    expect(body.status).toBe('pending');
+    expect(body.delta.kind).toBe('batch');
+    expect(body.delta.deltas).toHaveLength(3);
+    expect(body.delta.deltas[0]).toMatchObject({ kind: 'class', op: 'create', name: 'hola' });
+    expect(body.delta.deltas[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'pepe', type: 'string' });
+    expect(body.delta.deltas[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'año', type: 'string' });
+  });
+
+  it('refuses pure garbage and vague prompts like "creame algo" returning 200 refused with supportedCategories', async () => {
+    const app = buildApp({ logger: false, llm: new FakeLlm() });
+    const diagram = makeDiagram();
+    const id = await createDiagram(app, diagram);
+
+    const garbagePrompts = ['creame algo', 'haz algo', 'asdfghjkl'];
+
+    for (const prompt of garbagePrompts) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/diagrams/${id}/interpret`,
+        payload: { text: prompt },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { status: string; reason: string; supportedCategories: string[] };
+      expect(body.status).toBe('refused');
+      expect(body.supportedCategories.length).toBeGreaterThan(0);
+    }
   });
 });
 

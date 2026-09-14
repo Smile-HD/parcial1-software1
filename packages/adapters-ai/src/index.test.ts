@@ -86,6 +86,111 @@ describe('FakeLlm', () => {
     const unknown = await llm.interpret('rename class Ghost to Phantom', schema, diagram);
     expect(unknown.kind).toBe('refused');
   });
+
+  describe('flexible intent with standard defaults vs garbage refusal', () => {
+    it('interprets "crea un diagrama hola con atributos pepe y año" defaulting types to string', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+      const result = await llm.interpret('crea un diagrama hola con atributos pepe y año', schema, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind !== 'delta') return;
+      // Validates DeltaSchema
+      const validated = DeltaSchema.safeParse(result.value);
+      expect(validated.success).toBe(true);
+
+      const value = result.value as { kind: string; deltas?: any[] };
+      expect(value.kind).toBe('batch');
+      expect(value.deltas).toHaveLength(3);
+      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'hola' });
+      expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'pepe', type: 'string' });
+      expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'año', type: 'string' });
+    });
+
+    it('interprets "crea una clase hola con atributos pepe y año"', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+      const result = await llm.interpret('crea una clase hola con atributos pepe y año', schema, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind !== 'delta') return;
+      const validated = DeltaSchema.safeParse(result.value);
+      expect(validated.success).toBe(true);
+
+      const value = result.value as { kind: string; deltas?: any[] };
+      expect(value.kind).toBe('batch');
+      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'hola' });
+      expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'pepe', type: 'string' });
+      expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'año', type: 'string' });
+    });
+
+    it('interprets multiple comma-separated attributes: "crea clase Usuario con atributos nombre, email y edad"', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+      const result = await llm.interpret('crea clase Usuario con atributos nombre, email y edad', schema, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind !== 'delta') return;
+      const validated = DeltaSchema.safeParse(result.value);
+      expect(validated.success).toBe(true);
+
+      const value = result.value as { kind: string; deltas?: any[] };
+      expect(value.kind).toBe('batch');
+      expect(value.deltas).toHaveLength(4);
+      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Usuario' });
+      expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'nombre', type: 'string' });
+      expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'email', type: 'string' });
+      expect(value.deltas?.[3]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'edad', type: 'string' });
+    });
+
+    it('interprets adding attribute to existing class without explicit type defaulting to string', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+
+      // Spanish: "agrega atributo apodo a Customer"
+      const resSpanish = await llm.interpret('agrega atributo apodo a Customer', schema, diagram);
+      expect(resSpanish.kind).toBe('delta');
+      if (resSpanish.kind === 'delta') {
+        expect(resSpanish.value).toMatchObject({
+          kind: 'member',
+          op: 'addAttribute',
+          name: 'apodo',
+          type: 'string',
+        });
+      }
+
+      // English: "add attribute nickname to Customer"
+      const resEnglish = await llm.interpret('add attribute nickname to Customer', schema, diagram);
+      expect(resEnglish.kind).toBe('delta');
+      if (resEnglish.kind === 'delta') {
+        expect(resEnglish.value).toMatchObject({
+          kind: 'member',
+          op: 'addAttribute',
+          name: 'nickname',
+          type: 'string',
+        });
+      }
+    });
+
+    it('refuses pure garbage and vague non-actionable prompts', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+
+      const garbagePrompts = [
+        'creame algo',
+        'haz algo',
+        'poner cosas',
+        'asdfghjkl',
+        'hacer algo bonito',
+        'hola como estas',
+      ];
+
+      for (const prompt of garbagePrompts) {
+        const res = await llm.interpret(prompt, schema, diagram);
+        expect(res.kind).toBe('refused');
+      }
+    });
+  });
 });
 
 describe('OpenAiLlm (wiring contract, stubbed fetch)', () => {
@@ -964,5 +1069,144 @@ describe('OpenAiLlm batch (multi-command) prompt (interpreter-llm-resilience R4)
     // Carries the placeholder rule for cross-references inside a batch.
     expect(captured.system).toContain('PLACEHOLDER');
     expect(captured.system).toContain('NEW_CLASS_1');
+  });
+});
+
+describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('system prompt documents default string type for omitted attribute types and garbage refusal', async () => {
+    const captured: { system?: string } = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init: { body: string }) => {
+        const body = JSON.parse(init.body) as { messages: { role: string; content: string }[] };
+        captured.system = body.messages.find((m) => m.role === 'system')?.content;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ action: 'refuse', reason: 'noop' }) } }],
+          }),
+        });
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    await llm.interpret('crea un diagrama hola con atributos pepe y año', {}, makeDiagram());
+
+    expect(captured.system).toBeDefined();
+    expect(captured.system).toContain('FLEXIBLE INTENT & TYPE DEFAULTS');
+    expect(captured.system).toContain('default type to "string"');
+    expect(captured.system).toContain('REFUSAL OF VAGUE / GARBAGE PROMPTS');
+    expect(captured.system).toContain('creame algo');
+  });
+
+  it('parses model response with defaulted string attributes into valid Delta', async () => {
+    const diagram = makeDiagram();
+    const classId = crypto.randomUUID();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  action: 'apply',
+                  delta: {
+                    kind: 'batch',
+                    id: crypto.randomUUID(),
+                    diagramId: diagram.id,
+                    timestamp: new Date().toISOString(),
+                    deltas: [
+                      {
+                        kind: 'class',
+                        op: 'create',
+                        id: crypto.randomUUID(),
+                        diagramId: diagram.id,
+                        timestamp: new Date().toISOString(),
+                        classId,
+                        name: 'hola',
+                        position: { x: 80, y: 80 },
+                      },
+                      {
+                        kind: 'member',
+                        op: 'addAttribute',
+                        id: crypto.randomUUID(),
+                        diagramId: diagram.id,
+                        timestamp: new Date().toISOString(),
+                        classId,
+                        memberId: crypto.randomUUID(),
+                        name: 'pepe',
+                        type: 'string',
+                      },
+                      {
+                        kind: 'member',
+                        op: 'addAttribute',
+                        id: crypto.randomUUID(),
+                        diagramId: diagram.id,
+                        timestamp: new Date().toISOString(),
+                        classId,
+                        memberId: crypto.randomUUID(),
+                        name: 'año',
+                        type: 'string',
+                      },
+                    ],
+                  },
+                }),
+              },
+            },
+          ],
+        }),
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    const result = await llm.interpret('crea un diagrama hola con atributos pepe y año', schema, diagram);
+
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const parsed = DeltaSchema.safeParse(result.value);
+      expect(parsed.success).toBe(true);
+      const batch = result.value as { kind: string; deltas: any[] };
+      expect(batch.kind).toBe('batch');
+      expect(batch.deltas).toHaveLength(3);
+      expect(batch.deltas[1].name).toBe('pepe');
+      expect(batch.deltas[1].type).toBe('string');
+      expect(batch.deltas[2].name).toBe('año');
+      expect(batch.deltas[2].type).toBe('string');
+    }
+  });
+
+  it('parses refusal response when model refuses garbage prompt "creame algo"', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  action: 'refuse',
+                  reason: 'No valid UML entities or operations specified.',
+                }),
+              },
+            },
+          ],
+        }),
+      }),
+    );
+
+    const llm = new OpenAiLlm({ apiKey: 'test-key' });
+    const result = await llm.interpret('creame algo', schema, makeDiagram());
+
+    expect(result.kind).toBe('refused');
+    if (result.kind === 'refused') {
+      expect(result.reason).toContain('No valid UML entities');
+    }
   });
 });
