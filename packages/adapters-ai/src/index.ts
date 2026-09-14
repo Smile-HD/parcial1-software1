@@ -91,7 +91,7 @@ export class FakeLlm implements LlmPort {
     // 4 (evaluated FIRST). add attribute to an EXISTING class. Checked before
     // the create-class pattern so "add attribute x: int to the class Customer"
     // is not misread as a class creation (offline demo fix, unit 9).
-    const addAttribute = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:attribute|atributo)\s+([A-Za-z_]\w*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    const addAttribute = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:attribute|atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (addAttribute) {
       const classId = classIdByName(currentIr, addAttribute[3]!);
       if (classId === null) return refused(`Unknown class "${addAttribute[3]}"`);
@@ -102,7 +102,7 @@ export class FakeLlm implements LlmPort {
         classId,
         memberId: crypto.randomUUID(),
         name: addAttribute[1]!,
-        type: addAttribute[2]!,
+        type: addAttribute[2] ?? 'string',
         ...adornments,
       };
       return { kind: 'delta', value: delta };
@@ -110,7 +110,7 @@ export class FakeLlm implements LlmPort {
 
     // 0 (evaluated FIRST among creates). create interface: "create interface X"
     // — an interface is a class with kind 'interface' (unit 12.5, 12a half).
-    const createInterface = /\b(?:create|add|make|new)\b[\s\S]*?\b(?:interface|interfaz)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const createInterface = /\b(?:create|add|make|new|crea)\b[\s\S]*?\b(?:interface|interfaz)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (createInterface) {
       const name = createInterface[1]!;
       const position = nextPosition(currentIr);
@@ -126,8 +126,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 1. create class [+ optional "with attribute name: type"]
-    const createClass = /\b(?:add|create|crea|agregá|agrega|añade)\b[\s\S]*?\bclass(?:es)?\s+([A-Za-z_]\w*)/i.exec(utterance);
+    // 1. create class / diagram [+ optional "with attributes a, b y c"]
+    const createClass = /\b(?:add|create|crea|agregá|agrega|añade)\b[\s\S]*?\b(?:class(?:es)?|clase|diagrama)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (createClass) {
       const name = createClass[1]!;
       const position = nextPosition(currentIr);
@@ -139,20 +139,54 @@ export class FakeLlm implements LlmPort {
         name,
         position,
       };
-      const attribute = /\b(?:with|con)\s+(?:an?\s+)?(?:attribute|atributo)\s+([A-Za-z_]\w*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)/i.exec(utterance);
-      if (attribute) {
-        const addAttribute: MemberDelta = {
-          kind: 'member',
-          op: 'addAttribute',
-          ...deltaBase(currentIr),
-          classId: create.classId,
-          memberId: crypto.randomUUID(),
-          name: attribute[1]!,
-          type: attribute[2]!,
-          ...adornments,
-        };
-        const batch: Delta = { kind: 'batch', deltas: [create, addAttribute] };
-        return { kind: 'delta', value: batch };
+
+      const attrTail = /\b(?:with|con)\s+(?:an?\s+)?(?:attributes?|atributos?)\s+([\s\S]+)$/i.exec(utterance);
+      if (attrTail) {
+        const rawList = attrTail[1]!;
+        const items = rawList
+          .split(/\s*,\s*|\s+(?:and|y)\s+/i)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+
+        const memberDeltas: MemberDelta[] = [];
+        for (const item of items) {
+          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)$/i.exec(item);
+          if (typedMatch) {
+            memberDeltas.push({
+              kind: 'member',
+              op: 'addAttribute',
+              ...deltaBase(currentIr),
+              classId: create.classId,
+              memberId: crypto.randomUUID(),
+              name: typedMatch[1]!,
+              type: typedMatch[2]!,
+              ...adornments,
+            });
+          } else {
+            const bareMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(item);
+            if (bareMatch) {
+              memberDeltas.push({
+                kind: 'member',
+                op: 'addAttribute',
+                ...deltaBase(currentIr),
+                classId: create.classId,
+                memberId: crypto.randomUUID(),
+                name: bareMatch[1]!,
+                type: 'string', // Standard default type when omitted
+                ...adornments,
+              });
+            }
+          }
+        }
+
+        if (memberDeltas.length > 0) {
+          const batch: Delta = {
+            kind: 'batch',
+            ...deltaBase(currentIr),
+            deltas: [create, ...memberDeltas],
+          };
+          return { kind: 'delta', value: batch };
+        }
       }
       return { kind: 'delta', value: create };
     }
@@ -621,6 +655,11 @@ export class OpenAiLlm implements LlmPort {
       '- Example: "Order is composed of OrderLine" → whole=Order. If Order is sourceClassId, set aggregationEnd="source". If Order is targetClassId, set aggregationEnd="target".',
       '- Example: "OrderLine is part of Order" → whole=Order. Set aggregationEnd to the end where Order resides.',
       '- Default is "source" if omitted (backward compat).',
+      '',
+      'FLEXIBLE INTENT & TYPE DEFAULTS:',
+      '- If the user names attributes without specifying types (e.g. "crea un diagrama hola con atributos pepe y año", "crea clase Usuario con atributos nombre, email", "add attribute nickname to User"), default type to "string". Do NOT refuse or fail due to omitted attribute types.',
+      '- Informal phrasings like "crea un diagrama X con atributos..." or "crea clase X con atributos A, B y C" mean create class X with those attributes (using default type "string" if unspecified). Combine them in a "kind":"batch" envelope.',
+      '- REFUSAL OF VAGUE / GARBAGE PROMPTS: If the request lacks any actionable UML entities, classes, attributes or operations (e.g. "creame algo", "haz algo", "poner cosas", "asdfghjkl"), reply with {"action":"refuse","reason":"No valid UML entities or operations specified."}. Never invent arbitrary unrequested classes.',
       '',
       'HARD RULES:',
       '- Every uuid you output MUST be hex-only (0-9a-f) UUID v4.',
