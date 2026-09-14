@@ -13,11 +13,12 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, '..', 'migrations');
 
 function getDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error('DATABASE_URL environment variable is required');
+  try {
+    process.loadEnvFile();
+  } catch {
+    // No hay .env — recurre al valor por defecto o variables de entorno.
   }
-  return url;
+  return process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
 }
 
 async function ensureMigrationsTable(pool: Pool): Promise<void> {

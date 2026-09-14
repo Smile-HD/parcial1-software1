@@ -878,27 +878,6 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     };
   }, [doc]);
 
-  // Unidad 13b — Escape cancela la herramienta de arista armada (y su último mensaje).
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        setEdgeTool(null);
-        setEdgeMessage(null);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, []);
-
-  /**
-   * unidad 13e.7 — los antiguos handleAddClass/handleAddInterface de la barra de herramientas DESAPARECIERON:
-   * el arrastre de la paleta (onDrop → handlePaletteDrop) y el Quick Linker son
-   * las únicas rutas de creación. Los controladores puros exportados se mantienen (las pruebas
-   * los importan directamente).
-   */
-
   /** unidad 13b — permitir soltar elementos de la paleta sobre el lienzo. */
   const onDragOver = useCallback((event: DragEvent): void => {
     event.preventDefault();
@@ -909,8 +888,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
 
   /**
    * unidad 13b — soltar de la paleta: lee el tipo de nodo arrastrado desde
-   * dataTransfer, convierte el punto de pantalla a coordenadas de flujo, y emite
-   * el delta de creación de clase/interfaz en esa posición.
+   * dataTransfer, convierte el punto de pantalla a coordenadas de flujo (ajustado
+   * a la cuadrícula de 20px estilo EA), y emite el delta de creación de clase/interfaz.
    */
   const onDrop = useCallback(
     (event: DragEvent): void => {
@@ -930,7 +909,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       if (rfRef.current !== null) {
         const flow = rfRef.current.screenToFlowPosition(screenPos);
         if (Number.isFinite(flow.x) && Number.isFinite(flow.y)) {
-          position = flow;
+          position = {
+            x: Math.round(flow.x / 20) * 20,
+            y: Math.round(flow.y / 20) * 20,
+          };
         }
       }
       handlePaletteDrop(doc, diagram.id, {
@@ -940,6 +922,46 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       });
     },
     [doc, diagram],
+  );
+
+  /**
+   * Comodidad estilo EA: clic directo en la paleta para colocar un clasificador
+   * centrado en el viewport sin forzar el gesto de arrastre.
+   */
+  const handlePaletteQuickAdd = useCallback(
+    (kind: PaletteNodeKind): void => {
+      const live = projectYDocToDiagram(doc);
+      let position = { x: 200, y: 160 };
+      if (rfRef.current !== null) {
+        const container = document.querySelector('.diagram-canvas .react-flow');
+        if (container !== null) {
+          const rect = container.getBoundingClientRect();
+          const centerScreen = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+          const flowPos = rfRef.current.screenToFlowPosition(centerScreen);
+          if (Number.isFinite(flowPos.x) && Number.isFinite(flowPos.y)) {
+            position = {
+              x: Math.round(flowPos.x / 20) * 20,
+              y: Math.round(flowPos.y / 20) * 20,
+            };
+          }
+        }
+      }
+      while (
+        live.classes.some(
+          (c) => Math.abs(c.position.x - position.x) < 20 && Math.abs(c.position.y - position.y) < 20,
+        )
+      ) {
+        position.x += 40;
+        position.y += 40;
+      }
+      const newId = handlePaletteDrop(doc, live.id, {
+        kind,
+        position,
+        existingNames: live.classes.map((cls) => cls.name),
+      });
+      setSelectedClassId(newId);
+    },
+    [doc],
   );
 
   /**
@@ -1570,6 +1592,80 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     setSelectedEdge(null);
   };
 
+  // Comodidad estilo EA: atajos de teclado globales para Escape, Delete y flechas de dirección.
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setEdgeTool(null);
+        setEdgeMessage(null);
+        setSelectedClassId(null);
+        setSelectedEdge(null);
+        setSelectedNaryId(null);
+        return;
+      }
+
+      // Evitar interceptar teclas mientras se edita texto en inputs, textareas o selects
+      const target = event.target as HTMLElement | null;
+      const isInput =
+        target !== null &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+      if (isInput) {
+        return;
+      }
+
+      // Teclas de eliminación: Delete o Backspace para el elemento seleccionado
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedClassId !== null) {
+          event.preventDefault();
+          handleDeleteClass(selectedClassId);
+          setSelectedClassId(null);
+          return;
+        }
+        if (selectedEdge !== null) {
+          event.preventDefault();
+          deleteSelectedEdge();
+          return;
+        }
+        if (selectedNaryId !== null) {
+          event.preventDefault();
+          handleDeleteNaryAssociation(doc, diagram.id, selectedNaryId);
+          setSelectedNaryId(null);
+          return;
+        }
+      }
+
+      // Flechas de dirección: desplazar la clase seleccionada en pasos de 20px (alineación a cuadrícula)
+      if (selectedClassId !== null && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        const cls = diagram.classes.find((c) => c.id === selectedClassId);
+        if (cls) {
+          event.preventDefault();
+          let dx = 0;
+          let dy = 0;
+          if (event.key === 'ArrowUp') dy = -20;
+          if (event.key === 'ArrowDown') dy = 20;
+          if (event.key === 'ArrowLeft') dx = -20;
+          if (event.key === 'ArrowRight') dx = 20;
+
+          handleNodeDragStop(doc, diagram.id, {
+            id: cls.id,
+            position: {
+              x: Math.round((cls.position.x + dx) / 20) * 20,
+              y: Math.round((cls.position.y + dy) / 20) * 20,
+            },
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [doc, diagram, selectedClassId, selectedEdge, selectedNaryId]);
+
   return (
     <div className="diagram-canvas" style={{ width: '100%', height: '100%' }}>
       {/* unidad 13b — riel de creación izquierdo: arrastrar nodos, armar herramientas de aristas, n-ario.
@@ -1581,6 +1677,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         onNaryModeToggle={toggleNaryMode}
         collapsed={paletteCollapsed}
         onToggleCollapsed={() => setPaletteCollapsed((prev) => !prev)}
+        onNodeClick={handlePaletteQuickAdd}
       />
       {/* unidad 13e.7 — la barra de herramientas heredada `.diagram-canvas__toolbar` (Add class /
           Add interface / Link classes / N-ary association / Directed) fue
@@ -1956,6 +2053,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           setEdgeMessage(null);
         }}
         onNodeDragStop={(_event, node) => handleNodeDragStop(doc, diagram.id, node)}
+        snapToGrid={true}
+        snapGrid={[20, 20]}
         fitView
       >
         {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos detrás de los elementos. */}

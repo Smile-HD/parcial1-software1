@@ -1,5 +1,5 @@
-import type { Diagram, Delta } from './ir.js';
-import type { Delta as DeltaType } from './delta.js';
+import type { Diagram } from './ir.js';
+import type { Delta } from './delta.js';
 
 /**
  * Resultado de una llamada de interpretación al LLM.
@@ -46,7 +46,7 @@ export interface SttPort {
  * Recibe una imagen y retorna una propuesta de lote de deltas (batch).
  */
 export interface VisionPort {
-  extract(image: Uint8Array, mimeType: string): Promise<DeltaType>;
+  extract(image: Uint8Array, mimeType: string): Promise<Delta>;
 }
 
 /**
@@ -54,7 +54,7 @@ export interface VisionPort {
  * Analiza la entrada y retorna un lote de deltas para revisión y posterior aplicación.
  */
 export interface ImporterPort {
-  import(source: Uint8Array, format: string): Promise<DeltaType>;
+  import(source: Uint8Array, format: string): Promise<Delta>;
 }
 
 /**
