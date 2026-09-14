@@ -603,6 +603,17 @@
   background: #eef0f7;
 }
 
+/* Comodidad estilo EA: área de impacto ampliada para agarrar fácilmente la flecha sin fallar */
+.uml-class__quicklinker::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  right: -6px;
+  bottom: -6px;
+  border-radius: 50%;
+}
+
 /* unit 13d — the rubber band drawn while the quick-link drag is live.
    Fixed full-viewport overlay; pointer-events: none so the drop always
    lands on the canvas, never on the line. */

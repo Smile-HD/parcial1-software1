@@ -67,6 +67,8 @@ export interface PaletteProps {
   collapsed?: boolean;
   /** unidad 13e.10 — renderiza el alternador de encabezado cuando se proporciona. */
   onToggleCollapsed?: () => void;
+  /** Comodidad estilo EA: clic directo para colocar un nodo en el lienzo sin forzar arrastre. */
+  onNodeClick?: (kind: PaletteNodeKind) => void;
 }
 
 const INK = '#1a1a2e';
@@ -181,6 +183,7 @@ export function Palette({
   onNaryModeToggle,
   collapsed = false,
   onToggleCollapsed,
+  onNodeClick,
 }: PaletteProps) {
   const { t } = useT();
 
@@ -220,6 +223,7 @@ export function Palette({
           data-testid="palette-class"
           draggable
           onDragStart={startNodeDrag('class')}
+          onClick={() => onNodeClick?.('class')}
           aria-label={t('palette.createClassAria')}
           title={t('palette.dragClassTitle')}
         >
@@ -232,6 +236,7 @@ export function Palette({
           data-testid="palette-interface"
           draggable
           onDragStart={startNodeDrag('interface')}
+          onClick={() => onNodeClick?.('interface')}
           aria-label={t('palette.createInterfaceAria')}
           title={t('palette.dragInterfaceTitle')}
         >

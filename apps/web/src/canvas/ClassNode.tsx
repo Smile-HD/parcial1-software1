@@ -720,6 +720,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
+      {/* Comodidad estilo EA: handles superior e inferior para modelado y conexiones verticales */}
+      <Handle type="target" position={Position.Top} id="target-top" />
+      <Handle type="source" position={Position.Bottom} id="source-bottom" />
       {/* unidad 13c — arrastre para conectar en todo el nodo: mientras una herramienta de borde está armada,
           este handle de origen transparente de nodo completo hace que todo el cuerpo sea un
           inicio de conexión válido (y, en modo flexible, un final válido). NO se
