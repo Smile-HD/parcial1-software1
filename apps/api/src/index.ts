@@ -1,7 +1,7 @@
 /**
- * @app/api — Fastify REST API for diagram persistence.
+ * @app/api — API REST Fastify para persistencia de diagramas.
  * POST /diagrams, GET /diagrams/:id, PUT /diagrams/:id
- * PostgreSQL 16 via pg Pool, uuidv7 IDs, optimistic concurrency (version).
+ * PostgreSQL 16 vía pg Pool, IDs uuidv7, concurrencia optimista (version).
  */
 
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -32,31 +32,31 @@ import { generate, createHandlebarsRenderer, DEFAULT_TEMPLATES_DIR, type Generat
 import { jobRegistry } from './jobs.js';
 import * as yazl from 'yazl';
 
-// Load apps/api/.env when present so the OpenAI-compatible provider config
-// (OPENAI_API_KEY / OPENAI_BASE_URL / LLM_MODEL / WHISPER_MODEL) and
-// DATABASE_URL survive restarts without shell setup. Missing file is fine —
-// env vars can still come from the shell.
+// Carga apps/api/.env cuando está presente para que la configuración del proveedor
+// compatible con OpenAI (OPENAI_API_KEY / OPENAI_BASE_URL / LLM_MODEL / WHISPER_MODEL)
+// y DATABASE_URL sobrevivan a los reinicios sin configuración de terminal. Si falta el
+// archivo no hay problema — las variables de entorno aún pueden provenir del entorno del proceso.
 try {
   process.loadEnvFile();
 } catch {
-  // No .env in the current directory — rely on the process environment.
+  // No hay .env en el directorio actual — se confía en el entorno del proceso.
 }
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
 
-/** Test/bootstrap hook: closes the module-scoped pool. */
+/** Hook para pruebas/arranque: cierra el pool con alcance de módulo. */
 export async function closePool(): Promise<void> {
   await pool.end();
 }
 
-/** Exported for tests that need to insert corrupt rows. */
+/** Exportado para pruebas que necesitan insertar filas corruptas. */
 export { pool };
 
-// Interpreter LLM wiring: an injected llm (tests) wins over env config
-// (OpenAI-compatible when OPENAI_API_KEY is set), with the deterministic
-// FakeLlm as the offline default so dev/demo never require network.
+// Conexión del LLM del intérprete: un llm inyectado (pruebas) prevalece sobre la
+// configuración de entorno (compatible con OpenAI cuando OPENAI_API_KEY está definida),
+// con el FakeLlm determinista como valor por defecto offline para que el desarrollo/demo no requieran red.
 export interface AppOptions {
   logger?: boolean;
   llm?: LlmPort;
@@ -66,14 +66,14 @@ export interface AppOptions {
 
 export const pendingDeltas = new PendingDeltaStore();
 
-// Request/Response schemas.
-// `yjsState` (base64 Yjs update) is the authoritative persisted state: clients
-// connected to the collab server share the blob's Yjs clocks, so the API must
-// store the client's own blob instead of rebuilding one from the JSON
-// projection (a rebuilt blob resets clocks and CRDT-merging it against live
-// client docs duplicates Y.Array members). See work unit 6b / design D4.
-// NOTE: declared as plain strings — Fastify's AjV does not know the `base64`
-// format; base64 correctness is enforced in preparePersistence (400 on junk).
+// Esquemas de Request/Response.
+// `yjsState` (actualización de Yjs en base64) es el estado persistido autoritativo: los
+// clientes conectados al servidor de colaboración comparten los relojes de Yjs del blob,
+// por lo que la API debe almacenar el propio blob del cliente en lugar de reconstruir
+// uno a partir de la proyección JSON (un blob reconstruido reinicia relojes y fusionarlo
+// mediante CRDT contra documentos vivos de clientes duplica miembros de Y.Array). Ver unidad 6b / diseño D4.
+// NOTA: declarado como cadenas simples — AjV de Fastify no conoce el formato `base64`;
+// la validez de base64 se aplica en preparePersistence (400 si es inválido).
 const CreateDiagramBodySchema = z.object({
   name: z.string().min(1),
   diagram: DiagramSchema,
@@ -100,16 +100,17 @@ const DiagramResponseSchema = z.object({
 const ErrorResponseSchema = z.object({ error: z.string() });
 const ConflictResponseSchema = z.object({ error: z.string(), currentVersion: z.number() });
 
-// Fastify's AjV compiler needs plain JSON Schema — Zod objects cannot be passed
-// directly. Convert once at module load; handlers still parse via the Zod schemas.
-// target 'draft-7': Fastify's default AjV instance does not register the 2020-12 dialect.
+// El compilador AjV de Fastify requiere JSON Schema puro — los objetos Zod no pueden
+// pasarse directamente. Se convierten una sola vez al cargar el módulo; los manejadores
+// aún validan mediante los esquemas Zod.
+// target 'draft-7': la instancia por defecto de AjV en Fastify no registra el dialecto 2020-12.
 const CreateDiagramBodyJsonSchema = z.toJSONSchema(CreateDiagramBodySchema, { target: 'draft-7' });
 const UpdateDiagramBodyJsonSchema = z.toJSONSchema(UpdateDiagramBodySchema, { target: 'draft-7' });
 const DiagramResponseJsonSchema = z.toJSONSchema(DiagramResponseSchema, { target: 'draft-7' });
 const ErrorResponseJsonSchema = z.toJSONSchema(ErrorResponseSchema, { target: 'draft-7' });
 const ConflictResponseJsonSchema = z.toJSONSchema(ConflictResponseSchema, { target: 'draft-7' });
 
-// Helper: map DB row to response
+// Helper: mapea una fila de BD a la respuesta
 function mapRowToResponse(row: {
   id: string;
   name: string;
@@ -130,11 +131,11 @@ function mapRowToResponse(row: {
   };
 }
 
-// Build persistence state for a diagram. When the client supplies its own
-// Yjs blob (collab-connected clients do), the blob is authoritative: decode,
-// validate its projection and persist it AS IS so every connected client's
-// clocks keep converging (work unit 6b). Without a blob, rebuild one from the
-// validated JSON projection (legacy/API-only callers).
+// Construye el estado de persistencia para un diagrama. Cuando el cliente provee su
+// propio blob de Yjs (los clientes conectados a colaboración lo hacen), el blob es autoritativo:
+// decodificar, validar su proyección y persistirlo TAL CUAL para que los relojes de cada cliente
+// conectado sigan convergiendo (unidad 6b). Sin un blob, reconstruir uno a partir de la
+// proyección JSON validada (invocadores legados o solo de API).
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 function preparePersistence(
@@ -162,16 +163,16 @@ function preparePersistence(
   const yDoc = buildYDocFromDiagram(diagram);
   const update = encodeYDoc(yDoc);
   const yjsState = Buffer.from(update);
-  // Validate projection round-trip
+  // Valida el viaje de ida y vuelta de la proyección
   const validation = validateYDocProjection(yDoc);
   if (!validation.ok) {
     throw new Error('Y.Doc projection validation failed after build');
   }
-  // Use the validated projection as the stored doc (ensures consistency)
+  // Usa la proyección validada como documento almacenado (asegura consistencia)
   return { doc: validation.diagram, yjsState, version: 1 };
 }
 
-// Load diagram from DB row, with self-healing
+// Carga el diagrama desde la fila de BD, con auto-recuperación (self-healing)
 async function loadDiagramFromRow(row: {
   id: string;
   name: string;
@@ -179,7 +180,7 @@ async function loadDiagramFromRow(row: {
   yjs_state: Buffer;
   version: number;
 }): Promise<{ diagram: Diagram; yjsState: Buffer; version: number }> {
-  // Try to load Y.Doc from blob (authoritative)
+  // Intenta cargar Y.Doc desde el blob (autoritativo)
   let yDoc: Y.Doc;
   try {
     yDoc = loadYDocFromUpdate(new Uint8Array(row.yjs_state));
@@ -187,35 +188,35 @@ async function loadDiagramFromRow(row: {
     throw new Error('Corrupt yjs_state blob: cannot decode Y.Doc');
   }
 
-  // Validate projection from blob
+  // Valida la proyección desde el blob
   const validation = validateYDocProjection(yDoc);
   if (validation.ok) {
-    // Blob is good, return blob-derived diagram
+    // El blob es correcto, retorna el diagrama derivado del blob
     return { diagram: validation.diagram, yjsState: row.yjs_state, version: row.version };
   }
 
-  // Blob projection failed Zod validation — try stored doc as fallback
+  // La proyección del blob falló la validación Zod — prueba el documento almacenado como respaldo
   try {
     const storedDoc = DiagramSchema.parse(row.doc);
-    // Rebuild Y.Doc from stored doc and verify it encodes to same blob
+    // Reconstruye Y.Doc desde el doc almacenado y verifica que codifique al mismo blob
     const rebuiltYDoc = buildYDocFromDiagram(storedDoc);
     const rebuiltUpdate = encodeYDoc(rebuiltYDoc);
     if (Buffer.compare(Buffer.from(rebuiltUpdate), row.yjs_state) !== 0) {
-      // Blob and doc diverge — blob is authoritative per design, but it's corrupt
+      // El blob y el doc difieren — el blob es autoritativo por diseño, pero está corrupto
       throw new Error('yjs_state blob corrupt and does not match stored doc');
     }
-    // Self-heal: doc was valid, blob encodes correctly but projection failed (shouldn't happen)
-    // Return doc-derived diagram
+    // Auto-recuperación: el doc era válido, el blob codifica correctamente pero la proyección falló (no debería ocurrir)
+    // Retorna el diagrama derivado del doc
     return { diagram: storedDoc, yjsState: row.yjs_state, version: row.version };
   } catch {
-    // Both blob and doc are invalid — explicit load error per editor:R5
+    // Tanto el blob como el doc son inválidos — error explícito de carga según editor:R5
     throw new Error('Diagram load failed: corrupt yjs_state blob and invalid stored doc');
   }
 }
 
-/** Thrown by loadDiagramById when the diagram id has no row in the DB.
- *  Distinct from corruption errors thrown by loadDiagramFromRow so handlers
- *  can return 404 instead of 500. */
+/** Lanzado por loadDiagramById cuando el id de diagrama no tiene fila en la BD.
+ *  Distinto de errores de corrupción lanzados por loadDiagramFromRow para que los
+ *  manejadores puedan retornar 404 en lugar de 500. */
 export class DiagramNotFoundError extends Error {
   override readonly name = 'DiagramNotFoundError';
   constructor(id: string) {
@@ -223,7 +224,7 @@ export class DiagramNotFoundError extends Error {
   }
 }
 
-// Helper: load diagram by id (returns row and diagram)
+// Helper: carga diagrama por id (retorna fila y diagrama)
 export async function loadDiagramById(id: string): Promise<{ row: any; diagram: Diagram; version: number }> {
   const result = await pool.query(
     'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
@@ -243,7 +244,7 @@ export async function loadDiagramById(id: string): Promise<{ row: any; diagram: 
   return { row, diagram, version };
 }
 
-// Helper: build a zip from GeneratedFile entries
+// Helper: construye un zip a partir de entradas GeneratedFile
 function buildZipFromFiles(files: GeneratedFile[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const zip = new yazl.ZipFile();
@@ -258,12 +259,12 @@ function buildZipFromFiles(files: GeneratedFile[]): Promise<Buffer> {
   });
 }
 
-// Background generation job
+// Trabajo de generación en segundo plano
 async function runGeneration(jobId: string, diagramId: string): Promise<void> {
   try {
     jobRegistry.setRunning(jobId);
     const { diagram } = await loadDiagramById(diagramId);
-    const outputRoot = process.cwd() + '/generated'; // dummy root for containment check
+    const outputRoot = process.cwd() + '/generated'; // raíz simulada para verificación de contención
     const render = createHandlebarsRenderer(DEFAULT_TEMPLATES_DIR);
     const result = generate(diagram, { outputRoot, basePackage: 'com.example.generated', render });
     const zipBuffer = await buildZipFromFiles(result.files);
@@ -273,7 +274,7 @@ async function runGeneration(jobId: string, diagramId: string): Promise<void> {
   }
 }
 
-/** Reads `OPENAI_LLM_MAX_ATTEMPTS` (default 2, clamp 3) for the retry+repair wrapper. */
+/** Lee `OPENAI_LLM_MAX_ATTEMPTS` (por defecto 2, acotado a 3) para el envoltorio de reintento+reparación. */
 function readMaxAttemptsFromEnv(): number {
   const raw = process.env.OPENAI_LLM_MAX_ATTEMPTS;
   if (raw === undefined || raw === '') return 2;
@@ -284,47 +285,47 @@ function readMaxAttemptsFromEnv(): number {
   return Math.floor(n);
 }
 
-/** Builds the Fastify app (routes registered, not listening). Exported for smoke tests. */
+/** Construye la aplicación Fastify (rutas registradas, sin escuchar). Exportado para pruebas de humo. */
 export function buildApp(options?: AppOptions): FastifyInstance {
   const app = Fastify({ logger: options?.logger ?? true });
-  // Wiring (interpreter-llm-resilience, R2/R5): the production LLM path —
-  // any OpenAiLlm picked via env or a direct injection that IS an OpenAiLlm
-  // instance — is wrapped in RetryRepairingLlmPort so a Zod-invalid model
-  // output is recovered with a repair prompt rather than surfaced as a
-  // generic schema error to the user. Test-injected LlmPort instances that
-  // are NOT OpenAiLlm (e.g. FakeLlm in offline tests) are left untouched
-  // (R2: FakeLlm must keep its deterministic behaviour).
+  // Cableado (interpreter-llm-resilience, R2/R5): la ruta de LLM de producción —
+  // cualquier OpenAiLlm seleccionado por entorno o inyección directa que SEA una
+  // instancia de OpenAiLlm — se envuelve en RetryRepairingLlmPort para que una salida
+  // del modelo inválida según Zod se recupere con un prompt de reparación en lugar de exponerse
+  // como un error genérico de esquema al usuario. Las instancias de LlmPort inyectadas en pruebas
+  // que NO sean OpenAiLlm (ej. FakeLlm en pruebas offline) se dejan intactas
+  // (R2: FakeLlm debe mantener su comportamiento determinista).
   const baseLlm: LlmPort = options?.llm ?? OpenAiLlm.fromEnv() ?? new FakeLlm();
   const llm: LlmPort = baseLlm instanceof OpenAiLlm
     ? new RetryRepairingLlmPort(baseLlm, { maxAttempts: readMaxAttemptsFromEnv() })
     : baseLlm;
-  // Voice (PR 8): injected stt (tests) wins over env config (Whisper when an
-  // API key is present), with the deterministic FakeStt as offline default.
+  // Voz (PR 8): el stt inyectado (pruebas) prevalece sobre la configuración de entorno
+  // (Whisper cuando hay una API key presente), con FakeStt determinista como valor por defecto offline.
   const stt: SttPort = options?.stt ?? WhisperStt.fromEnv() ?? new FakeStt();
-  // Vision (PR 16): injected vision (tests) wins over env config, with
-  // FakeVision as offline default.
+  // Visión (PR 16): la visión inyectada (pruebas) prevalece sobre la configuración de entorno,
+  // con FakeVision como valor por defecto offline.
   const vision: VisionPort = options?.vision ?? OpenAiVision.fromEnv() ?? new FakeVision();
 
-  // CORS — the web editor (apps/web) is a separate origin in dev (Vite :5173)
-  // and calls this API cross-origin; without these headers every browser
-  // fetch is blocked. `origin: true` reflects the request origin (dev/LAN
-  // posture — mobile client in unit 14 needs LAN origins too). `methods`
-  // must include PUT explicitly: @fastify/cors defaults to GET,HEAD,POST,
-  // which silently blocks every save (editor:R5). Tighten to an explicit
-  // allow-list of origins when a production deployment is requested.
+  // CORS — el editor web (apps/web) es un origen separado en desarrollo (Vite :5173)
+  // y llama a esta API cross-origin; sin estas cabeceras cada fetch del navegador
+  // es bloqueado. `origin: true` refleja el origen de la petición (postura dev/LAN — el
+  // cliente móvil en la unidad 14 también necesita orígenes LAN). `methods`
+  // debe incluir PUT explícitamente: @fastify/cors usa GET,HEAD,POST por defecto,
+  // lo que bloquearía silenciosamente cada guardado (editor:R5). Ajustar a una lista
+  // permitida explícita de orígenes cuando se requiera despliegue en producción.
   void app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT'] });
 
-  // Health check
+  // Comprobación de estado (health check)
   app.get('/health', async () => ({ status: 'ok' }));
 
-  // POST /diagrams — create new diagram
+  // POST /diagrams — crea un nuevo diagrama
   app.post<{ Body: z.infer<typeof CreateDiagramBodySchema> }>(
     '/diagrams',
     { schema: { body: CreateDiagramBodyJsonSchema, response: { 201: DiagramResponseJsonSchema } } },
     async (request, reply) => {
       const { name, diagram: diagramData } = request.body;
 
-      // Validate diagram ID matches body (or generate if missing)
+      // Valida que el ID del diagrama coincida con el cuerpo (o genera uno si falta)
       const diagramId = diagramData.id ?? uuidv7();
       const validatedDiagram = DiagramSchema.parse({ ...diagramData, id: diagramId });
 
@@ -365,7 +366,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
   );
 
-  // GET /diagrams/:id — load diagram with self-healing
+  // GET /diagrams/:id — carga el diagrama con auto-recuperación (self-healing)
   app.get<{ Params: { id: string } }>(
     '/diagrams/:id',
     { schema: { response: { 200: DiagramResponseJsonSchema, 404: ErrorResponseJsonSchema } } },
@@ -402,13 +403,13 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           updated_at: row.updated_at,
         }));
       } catch (error) {
-        // Explicit load error, no partial diagram (editor:R5)
+        // Error explícito de carga, sin diagrama parcial (editor:R5)
         return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
       }
     }
   );
 
-  // PUT /diagrams/:id — update with optimistic concurrency
+  // PUT /diagrams/:id — actualiza con concurrencia optimista
   app.put<{ Params: { id: string }; Body: z.infer<typeof UpdateDiagramBodySchema> }>(
     '/diagrams/:id',
     { schema: { body: UpdateDiagramBodyJsonSchema, response: { 200: DiagramResponseJsonSchema, 404: ErrorResponseJsonSchema, 409: ConflictResponseJsonSchema } } },
@@ -416,7 +417,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       const { id } = request.params;
       const { name, diagram: diagramData, version: expectedVersion } = request.body;
 
-      // Validate diagram ID matches URL
+      // Valida que el ID del diagrama coincida con la URL
       const validatedDiagram = DiagramSchema.parse({ ...diagramData, id });
 
       let persisted: { doc: Diagram; yjsState: Buffer; version: number };
@@ -447,7 +448,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         await client.query('COMMIT');
 
         if (result.rows.length === 0) {
-          // Check if diagram exists (to distinguish 404 from 409)
+          // Comprueba si el diagrama existe (para distinguir 404 de 409)
           const check = await client.query('SELECT version FROM diagrams WHERE id = $1', [id]);
           if (check.rows.length === 0) {
             return reply.status(404).send({ error: 'Diagram not found' });
@@ -473,9 +474,9 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
   );
 
-  // POST /diagrams/:id/interpret — natural language → refusal | pending delta.
-  // interpreter:R1 — schema-invalid LLM output → 422, model untouched.
-  // interpreter:R3/R4 — refusals carry the supported command categories.
+  // POST /diagrams/:id/interpret — lenguaje natural → rechazo | delta pendiente.
+  // interpreter:R1 — salida LLM con esquema inválido → 422, metamodelo intacto.
+  // interpreter:R3/R4 — los rechazos incluyen las categorías de comandos soportadas.
   app.post<{ Params: { id: string }; Body: { text?: string } }>(
     '/diagrams/:id/interpret',
     async (request, reply) => {
@@ -524,9 +525,9 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
   );
 
-  // POST /deltas/:id/confirm — releases the pending delta to the confirming
-  // client, which applies it to its Y.Doc and propagates via collab
-  // (interpreter:R2 — the API itself never mutates the diagram here).
+  // POST /deltas/:id/confirm — entrega el delta pendiente al cliente que confirma,
+  // el cual lo aplica a su Y.Doc y lo propaga vía colaboración
+  // (interpreter:R2 — la propia API nunca muta el diagrama aquí).
   app.post<{ Params: { id: string } }>('/deltas/:id/confirm', async (request, reply) => {
     const pending = pendingDeltas.take(request.params.id);
     if (!pending) {
@@ -535,7 +536,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     return { status: 'confirmed', delta: pending.delta, diagramId: pending.diagramId };
   });
 
-  // POST /deltas/:id/reject — discards the pending delta, model unchanged.
+  // POST /deltas/:id/reject — descarta el delta pendiente, metamodelo sin cambios.
   app.post<{ Params: { id: string } }>('/deltas/:id/reject', async (request, reply) => {
     const pending = pendingDeltas.take(request.params.id);
     if (!pending) {
@@ -546,14 +547,14 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
   registerXmiImportRoutes(app);
   registerXmiExportRoutes(app);
-  // PR 16: photo import routes — VisionPort injected for testability.
+  // PR 16: rutas de importación de fotos — VisionPort inyectado para pruebas.
   registerPhotoImportRoutes(app, vision);
 
-  // POST /diagrams/:id/voice — speech → transcript → SAME interpret pipeline.
-  // voice:R1 — transcription via an existing STT API; an outage is an explicit
-  // 502 that directs the user to the text command input fallback.
-  // voice:R2 — the transcript re-enters interpretCommand: shared pending
-  // store, same confirm gate, no privileged path.
+  // POST /diagrams/:id/voice — voz → transcripción → MISMO flujo de interpretación.
+  // voice:R1 — transcripción vía API STT existente; una interrupción es un 502
+  // explícito que dirige al usuario al respaldo de entrada de comandos por texto.
+  // voice:R2 — la transcripción reingresa a interpretCommand: almacén de pendientes
+  // compartido, misma compuerta de confirmación, sin ruta privilegiada.
   app.post<{ Params: { id: string }; Body: { audio?: string; mimeType?: string } }>(
     '/diagrams/:id/voice',
     async (request, reply) => {
@@ -613,18 +614,18 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
   );
 
-  // ---- Unit 14d: generate-over-HTTP job API ----
+  // ---- Unidad 14d: API de trabajos generate-over-HTTP ----
 
-  // POST /diagrams/:id/generate — kick off async generation, return jobId.
-  // 404 if the diagram id has no row; 500 if the row exists but the blob
-  // is corrupt. 409 if a job is already in flight for the same diagram
-  // (backpressure: prevent N concurrent generations of the same model).
+  // POST /diagrams/:id/generate — inicia generación asíncrona, retorna jobId.
+  // 404 si el id de diagrama no tiene fila; 500 si la fila existe pero el blob
+  // está corrupto. 409 si ya hay un trabajo en curso para el mismo diagrama
+  // (contrapresión: previene N generaciones concurrentes del mismo modelo).
   app.post<{ Params: { id: string } }>(
     '/diagrams/:id/generate',
     async (request, reply) => {
       const { id } = request.params;
       try {
-        await loadDiagramById(id); // validates existence + blob integrity
+        await loadDiagramById(id); // valida existencia + integridad del blob
       } catch (error) {
         if (error instanceof DiagramNotFoundError) {
           return reply.status(404).send({ error: 'Diagram not found' });
@@ -633,8 +634,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           .status(500)
           .send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
       }
-      // Backpressure: dedup by diagramId. A queued/running job for the
-      // same diagram blocks new jobs (return 409 with the existing id).
+      // Contrapresión: deduplicar por diagramId. Un trabajo en cola o en ejecución para el
+      // mismo diagrama bloquea nuevos trabajos (retorna 409 con el id existente).
       const existing = jobRegistry.findActiveByDiagramId(id);
       if (existing) {
         return reply.status(409).send({
@@ -643,13 +644,13 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         });
       }
       const job = jobRegistry.create(id);
-      // Run generation in background (do not await)
+      // Ejecuta la generación en segundo plano (sin await)
       setImmediate(() => void runGeneration(job.id, id));
       return reply.status(202).send({ jobId: job.id });
     }
   );
 
-  // GET /jobs/:id — get job status
+  // GET /jobs/:id — obtiene el estado del trabajo
   app.get<{ Params: { id: string } }>(
     '/jobs/:id',
     async (request, reply) => {
@@ -669,7 +670,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     }
   );
 
-  // GET /jobs/:id/artifact — download the generated zip
+  // GET /jobs/:id/artifact — descarga el zip generado
   app.get<{ Params: { id: string } }>(
     '/jobs/:id/artifact',
     async (request, reply) => {
@@ -683,8 +684,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       if (job.status !== 'succeeded' || !job.artifact) {
         return reply.status(409).send({ error: 'Artifact not ready yet' });
       }
-      // Defense in depth: UUIDs are already safe, but sanitize the
-      // filename before it lands in a Content-Disposition header.
+      // Defensa en profundidad: los UUIDs ya son seguros, pero se sanea el
+      // nombre de archivo antes de colocarlo en la cabecera Content-Disposition.
       const safeName = String(job.diagramId).replace(/[^a-zA-Z0-9-]/g, '_');
       return reply
         .header('Content-Type', 'application/zip')
@@ -699,7 +700,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 async function startServer() {
   const app = buildApp();
 
-  // Graceful shutdown
+  // Cierre ordenado (graceful shutdown)
   const shutdown = async () => {
     console.log('Shutting down...');
     await app.close();

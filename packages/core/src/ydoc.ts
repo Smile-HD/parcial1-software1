@@ -3,7 +3,7 @@ import { type Diagram, type Class, type Association, type Generalization, type R
 import { z } from 'zod';
 
 /**
- * Yjs type names used in the Y.Doc for the diagram.
+ * Nombres de tipos Yjs utilizados en el Y.Doc para el diagrama.
  */
 const Y_DOC_TYPES = {
   classes: 'classes',
@@ -16,11 +16,11 @@ const Y_DOC_TYPES = {
 } as const;
 
 /**
- * Builds a Y.Doc from a validated Diagram IR.
- * The Y.Doc structure:
- * - yMap<Class> at 'classes' key (classId -> Y.Map of class fields)
- * - yMap<Association> at 'associations' key (assocId -> Y.Map of association fields)
- * - yMap at 'meta' key for diagram-level metadata (id, name)
+ * Construye un Y.Doc a partir de un IR Diagram validado.
+ * Estructura del Y.Doc:
+ * - yMap<Class> en la clave 'classes' (classId -> Y.Map de campos de la clase)
+ * - yMap<Association> en la clave 'associations' (assocId -> Y.Map de campos de la asociación)
+ * - yMap en la clave 'meta' para metadatos a nivel de diagrama (id, name)
  */
 export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
   const doc = new Y.Doc();
@@ -32,16 +32,16 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
   const yNaryAssociations = doc.getMap(Y_DOC_TYPES.naryAssociations);
   const yMeta = doc.getMap(Y_DOC_TYPES.meta);
 
-  // Set diagram metadata
+  // Establecer metadatos del diagrama
   yMeta.set('id', diagram.id);
   yMeta.set('name', diagram.name);
 
-  // Add classes
+  // Agregar clases
   for (const cls of diagram.classes) {
     const yClass = new Y.Map();
     yClass.set('id', cls.id);
     yClass.set('name', cls.name);
-    // Unit 12.1: classifier kind + abstract marking round-trip through the blob.
+    // Unidad 12.1: tipo de clasificador + marcado abstracto se conservan en el blob.
     yClass.set('kind', cls.kind ?? 'class');
     yClass.set('isAbstract', cls.isAbstract ?? false);
     yClass.set('position', new Y.Map([
@@ -49,7 +49,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
       ['y', cls.position.y],
     ]));
 
-    // Attributes as Y.Array of Y.Maps
+    // Atributos como Y.Array de Y.Maps
     const yAttributes = new Y.Array();
     for (const attr of cls.attributes) {
       const yAttr = new Y.Map();
@@ -66,7 +66,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     }
     yClass.set('attributes', yAttributes);
 
-    // Methods as Y.Array of Y.Maps
+    // Métodos como Y.Array de Y.Maps
     const yMethods = new Y.Array();
     for (const method of cls.methods) {
       const yMethod = new Y.Map();
@@ -90,14 +90,14 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yClasses.set(cls.id, yClass);
   }
 
-  // Add associations
+  // Agregar asociaciones
   for (const assoc of diagram.associations) {
     const yAssoc = new Y.Map();
     yAssoc.set('id', assoc.id);
     yAssoc.set('sourceClassId', assoc.sourceClassId);
     yAssoc.set('targetClassId', assoc.targetClassId);
-    // Unit 13d fix C: multiplicities are optional — an unspecified end stores
-    // NO key (absence is the signal; never a phantom '1').
+    // Corrección unidad 13d C: multiplicidades opcionales — un extremo sin especificar
+    // NO almacena clave (la ausencia es la señal; nunca un '1' fantasma).
     if (assoc.sourceMultiplicity !== undefined) yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
     if (assoc.targetMultiplicity !== undefined) yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
     yAssoc.set('directed', assoc.directed);
@@ -109,8 +109,8 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yAssociations.set(assoc.id, yAssoc);
   }
 
-  // Add generalizations (unit 11 — blob-preserving, same shape as associations;
-  // unit 13c carries the optional label name)
+  // Agregar generalizaciones (unidad 11 — preserva blob, misma forma que asociaciones;
+  // unidad 13c incluye el nombre opcional de etiqueta)
   for (const gen of diagram.generalizations ?? []) {
     const yGen = new Y.Map();
     yGen.set('id', gen.id);
@@ -120,8 +120,8 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yGeneralizations.set(gen.id, yGen);
   }
 
-  // Add realizations (unit 12 — blob-preserving, same shape as generalizations;
-  // unit 13c carries the optional label name)
+  // Agregar realizaciones (unidad 12 — preserva blob, misma forma que generalizaciones;
+  // unidad 13c incluye el nombre opcional de etiqueta)
   for (const real of diagram.realizations ?? []) {
     const yReal = new Y.Map();
     yReal.set('id', real.id);
@@ -131,8 +131,8 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yRealizations.set(real.id, yReal);
   }
 
-  // Add dependencies (unit 12b — blob-preserving, same shape as realizations;
-  // unit 13c carries the optional label name)
+  // Agregar dependencias (unidad 12b — preserva blob, misma forma que realizaciones;
+  // unidad 13c incluye el nombre opcional de etiqueta)
   for (const dep of diagram.dependencies ?? []) {
     const yDep = new Y.Map();
     yDep.set('id', dep.id);
@@ -142,8 +142,8 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     yDependencies.set(dep.id, yDep);
   }
 
-  // Add n-ary associations (unit 13 — blob-preserving; memberEnds is an
-  // ordered Y.Array of Y.Maps so per-end multiplicity/role survive the trip)
+  // Agregar asociaciones n-arias (unidad 13 — preserva blob; memberEnds es un
+  // Y.Array ordenado de Y.Maps para que la multiplicidad/rol sobrevivan el viaje)
   for (const nary of diagram.naryAssociations ?? []) {
     const yNary = new Y.Map();
     yNary.set('id', nary.id);
@@ -164,8 +164,8 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
 }
 
 /**
- * Projects a Y.Doc back to a Diagram IR JSON.
- * This is the read-time projection used for API responses.
+ * Proyecta un Y.Doc nuevamente a JSON del IR Diagram.
+ * Es la proyección en tiempo de lectura utilizada para las respuestas de la API.
  */
 export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   const yClasses = doc.getMap(Y_DOC_TYPES.classes);
@@ -185,7 +185,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
 
     const classId = yClass.get('id') as string;
     const className = yClass.get('name') as string;
-    // Unit 12.1: absent on pre-unit-12 docs → IR defaults (class/false).
+    // Unidad 12.1: ausente en documentos anteriores a unidad 12 → valores por defecto (class/false).
     const kind = yClass.get('kind') as Class['kind'] | undefined;
     const isAbstract = yClass.get('isAbstract') as boolean | undefined;
     const yPosition = yClass.get('position') as Y.Map<unknown> | undefined;
@@ -261,8 +261,8 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     const name = yAssoc.get('name') as string | undefined;
     const sourceRole = yAssoc.get('sourceRole') as string | undefined;
     const targetRole = yAssoc.get('targetRole') as string | undefined;
-    // Unit 13d fix C: absent multiplicity keys project to UNDEFINED ends
-    // (unspecified ≠ '1'); present keys round-trip exactly (backward compat).
+    // Corrección unidad 13d C: claves ausentes se proyectan a extremos INDEFINIDOS
+    // (no especificado ≠ '1'); claves presentes hacen viaje de ida y vuelta exacto.
     const sourceMultiplicity = yAssoc.get('sourceMultiplicity') as Association['sourceMultiplicity'];
     const targetMultiplicity = yAssoc.get('targetMultiplicity') as Association['targetMultiplicity'];
 
@@ -285,7 +285,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
   yGeneralizations.forEach((yGen) => {
     if (!(yGen instanceof Y.Map)) return;
 
-    // Unit 13c: optional label name (absent on pre-13c docs → undefined).
+    // Unidad 13c: nombre de etiqueta opcional (ausente en docs anteriores → undefined).
     const name = yGen.get('name') as string | undefined;
     generalizations.push(GeneralizationSchema.parse({
       id: yGen.get('id') as string,
@@ -361,17 +361,17 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
 }
 
 /**
- * Encodes a Y.Doc to a Uint8Array update blob using Y.encodeStateAsUpdate.
- * This blob is the authoritative persistence format (design invariant).
+ * Codifica un Y.Doc a un blob de actualización Uint8Array usando Y.encodeStateAsUpdate.
+ * Este blob es el formato de persistencia autoritativo (invariante de diseño).
  */
 export function encodeYDoc(doc: Y.Doc): Uint8Array {
   return Y.encodeStateAsUpdate(doc);
 }
 
 /**
- * Applies a Yjs update blob (Uint8Array) into a Y.Doc.
- * Returns the modified Y.Doc (same instance).
- * Throws if the update cannot be applied (corrupt blob).
+ * Aplica un blob de actualización Yjs (Uint8Array) en un Y.Doc.
+ * Retorna el Y.Doc modificado (misma instancia).
+ * Lanza excepción si la actualización no se puede aplicar (blob corrupto).
  */
 export function applyUpdateToYDoc(doc: Y.Doc, update: Uint8Array): Y.Doc {
   Y.applyUpdate(doc, update);
@@ -379,9 +379,9 @@ export function applyUpdateToYDoc(doc: Y.Doc, update: Uint8Array): Y.Doc {
 }
 
 /**
- * Creates a fresh Y.Doc and applies an update blob to it.
- * Convenience function for loading from persistence.
- * Throws if the update cannot be applied (corrupt blob).
+ * Crea un Y.Doc limpio y le aplica un blob de actualización.
+ * Función de utilidad para cargar desde la persistencia.
+ * Lanza excepción si la actualización no se puede aplicar (blob corrupto).
  */
 export function loadYDocFromUpdate(update: Uint8Array): Y.Doc {
   const doc = new Y.Doc();
@@ -390,9 +390,9 @@ export function loadYDocFromUpdate(update: Uint8Array): Y.Doc {
 }
 
 /**
- * Validates that a Y.Doc can be projected to a valid Diagram.
- * Used for self-healing check: if projection fails Zod validation,
- * the stored doc jsonb is out of sync and must be regenerated from blob.
+ * Valida que un Y.Doc se pueda proyectar a un Diagram válido.
+ * Utilizado para verificación de auto-recuperación: si la proyección falla la validación Zod,
+ * el doc jsonb almacenado está desfasado y debe regenerarse desde el blob.
  */
 export function validateYDocProjection(doc: Y.Doc): { ok: true; diagram: Diagram } | { ok: false; error: z.ZodError } {
   try {

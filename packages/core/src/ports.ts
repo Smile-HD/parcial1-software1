@@ -2,68 +2,68 @@ import type { Diagram, Delta } from './ir.js';
 import type { Delta as DeltaType } from './delta.js';
 
 /**
- * Result of an LLM interpretation call.
- * Either a candidate delta (to be validated and confirmed) or a refusal.
+ * Resultado de una llamada de interpretación al LLM.
+ * Es una delta candidata (para ser validada y confirmada) o un rechazo.
  */
 export type LlmResult =
   | { kind: 'delta'; value: unknown }
   | { kind: 'refused'; reason: string };
 
 /**
- * Port for persisting and loading diagrams.
- * The canonical diagram model (IR) is stored as a JSON document.
+ * Puerto para persistir y cargar diagramas.
+ * El modelo canónico del diagrama (IR) se almacena como un documento JSON.
  */
 export interface DiagramRepository {
-  /** Save a diagram (create or update). */
+  /** Guarda un diagrama (creación o actualización). */
   save(diagram: Diagram): Promise<void>;
-  /** Load a diagram by ID. */
+  /** Carga un diagrama por su ID. */
   load(id: string): Promise<Diagram | null>;
-  /** List all diagrams (for navigation). */
+  /** Lista todos los diagramas (para navegación). */
   list(): Promise<Pick<Diagram, 'id' | 'name'>[]>;
-  /** Delete a diagram by ID. */
+  /** Elimina un diagrama por su ID. */
   delete(id: string): Promise<void>;
 }
 
 /**
- * Port for LLM-based natural language interpretation.
- * Receives an utterance, the delta JSON Schema, and the current IR.
- * Returns either a candidate delta or a refusal with reason.
+ * Puerto para interpretación de lenguaje natural mediante LLM.
+ * Recibe una petición en texto, el JSON Schema del delta y el IR actual.
+ * Retorna una delta candidata o un rechazo con su motivo.
  */
 export interface LlmPort {
   interpret(utterance: string, deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult>;
 }
 
 /**
- * Port for Speech-to-Text (STT) transcription.
- * Receives audio bytes and returns the transcript.
+ * Puerto para transcripción de voz a texto (STT).
+ * Recibe los bytes del audio y retorna la transcripción en texto.
  */
 export interface SttPort {
   transcribe(audio: Uint8Array, mimeType: string): Promise<string>;
 }
 
 /**
- * Port for Vision-based diagram extraction from images.
- * Receives an image and returns a structured delta batch proposal.
+ * Puerto para extracción de diagramas a partir de imágenes (Visión).
+ * Recibe una imagen y retorna una propuesta de lote de deltas (batch).
  */
 export interface VisionPort {
   extract(image: Uint8Array, mimeType: string): Promise<DeltaType>;
 }
 
 /**
- * Port for importing diagrams from external formats (e.g., XMI).
- * Parses the input and returns a batch delta for review-then-apply.
+ * Puerto para importar diagramas desde formatos externos (ej. XMI).
+ * Analiza la entrada y retorna un lote de deltas para revisión y posterior aplicación.
  */
 export interface ImporterPort {
   import(source: Uint8Array, format: string): Promise<DeltaType>;
 }
 
 /**
- * Port for accessing code generation templates.
- * Templates are stored as files and loaded at runtime (design D9).
+ * Puerto para acceder a las plantillas de generación de código.
+ * Las plantillas se almacenan como archivos y se cargan en tiempo de ejecución (diseño D9).
  */
 export interface TemplateStore {
-  /** List available template names. */
+  /** Lista los nombres de plantillas disponibles. */
   list(): Promise<string[]>;
-  /** Read a template by relative path. */
+  /** Lee una plantilla por su ruta relativa. */
   read(rel: string): Promise<string>;
 }

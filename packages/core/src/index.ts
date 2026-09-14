@@ -1,9 +1,9 @@
 /**
- * @app/core — Canonical IR, delta schemas, and apply/validate operations.
- * Phase 2 (PRs 2-3): IR + delta engine.
+ * @app/core — IR canónico, esquemas de deltas y operaciones de aplicación/validación.
+ * Fase 2 (PRs 2-3): Motor de IR + deltas.
  */
 export {
-  // IR schemas and types
+  // Esquemas y tipos del IR
   MultiplicitySchema,
   MultiplicityEnum,
   VisibilitySchema,
@@ -38,7 +38,7 @@ export {
 } from './ir.js';
 
 export {
-  // Delta schemas and types (Phase 2.3)
+  // Esquemas y tipos de deltas (Fase 2.3)
   DeltaSchema,
   type Delta,
   ClassDeltaSchema,
@@ -61,7 +61,7 @@ export {
 } from './delta.js';
 
 export {
-  // Port interfaces (Phase 2.4)
+  // Interfaces de puertos (Fase 2.4)
   type DiagramRepository,
   type LlmPort,
   type SttPort,
@@ -72,14 +72,14 @@ export {
 } from './ports.js';
 
 export {
-  // Apply engine (Phase 2.5 / PR 3)
+  // Motor de aplicación (Fase 2.5 / PR 3)
   applyDelta,
   type ApplyResult,
   type ApplyError,
 } from './apply.js';
 
 export {
-  // Y.Doc codec (PR 4) — shared by API and collab-server
+  // Códec Y.Doc (PR 4) — compartido por API y servidor colaborativo
   buildYDocFromDiagram,
   projectYDocToDiagram,
   encodeYDoc,

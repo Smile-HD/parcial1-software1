@@ -5,8 +5,8 @@ import '../config/api_config.dart';
 import '../models/customer.dart';
 import 'api_exceptions.dart';
 
-/// Service executing CRUD operations against the generated Spring Boot backend.
-/// Meets requirement mobile:R2 (full CRUD cycle + explicit down reporting).
+/// Servicio que ejecuta operaciones CRUD contra el backend generado en Spring Boot.
+/// Cumple con el requerimiento mobile:R2 (ciclo CRUD completo + reporte explícito de caída).
 class CustomerService {
   final ApiConfig config;
   final http.Client client;
@@ -92,7 +92,7 @@ class CustomerService {
     }
   }
 
-  /// Wraps network calls to surface explicit BackendConnectionException when backend is down.
+  /// Envuelve las llamadas de red para exponer un BackendConnectionException explícito cuando el backend está caído.
   Future<http.Response> _guardNetworkCall(Future<http.Response> Function() call) async {
     try {
       return await call();

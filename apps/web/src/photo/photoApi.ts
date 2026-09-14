@@ -1,12 +1,12 @@
 /**
- * Photo import REST client (PR 16, task 16.3-WEB) — drives the photo import
- * job API exposed by apps/api/src/photo-import.ts.
+ * Cliente REST de importación de fotos (PR 16, tarea 16.3-WEB) — gestiona la API
+ * de trabajos de importación de fotos expuesta por apps/api/src/photo-import.ts.
  *
  * POST /diagrams/:id/photo  → 202 { jobId }
  * GET  /diagrams/:id/photo/:jobId  → { status, batch?, warnings?, error? }
  *
- * Mirrors the pattern in codegenApi.ts (job polling) and xmiApi.ts
- * (typed REST client with DiagramApiError).
+ * Refleja el patrón de codegenApi.ts (sondeo de trabajos) y xmiApi.ts
+ * (cliente REST tipado con DiagramApiError).
  */
 import type { BatchDelta } from '@app/core';
 
@@ -26,11 +26,11 @@ export interface PhotoJobResult {
 }
 
 /**
- * Upload a photo for extraction. Sends the base64-encoded image and
- * returns the job id for polling.
+ * Sube una foto para extracción. Envía la imagen codificada en base64 y
+ * retorna el id del trabajo para sondeo.
  *
- * photo:R4 — the client MUST call validatePhotoFile + validatePhotoBytes
- * BEFORE this function; this function does NOT validate locally.
+ * photo:R4 — el cliente DEBE llamar a validatePhotoFile + validatePhotoBytes
+ * ANTES de esta función; esta función NO valida localmente.
  */
 export async function uploadPhoto(
   diagramId: string,
@@ -50,7 +50,7 @@ export async function uploadPhoto(
         message = body.error;
       }
     } catch {
-      // ignore non-JSON body
+      // ignorar cuerpo no-JSON
     }
     throw new DiagramApiError(response.status, message);
   }
@@ -62,8 +62,8 @@ export async function uploadPhoto(
 }
 
 /**
- * Poll job status. Returns the full job result including batch + warnings
- * when succeeded. Throws DiagramApiError on transport / HTTP errors.
+ * Consulta el estado del trabajo. Retorna el resultado completo del trabajo incluyendo lote + advertencias
+ * en caso de éxito. Lanza DiagramApiError ante errores de transporte / HTTP.
  */
 export async function getPhotoJob(diagramId: string, jobId: string): Promise<PhotoJobResult> {
   const response = await fetch(
@@ -77,7 +77,7 @@ export async function getPhotoJob(diagramId: string, jobId: string): Promise<Pho
         message = body.error;
       }
     } catch {
-      // ignore
+      // ignorar
     }
     throw new DiagramApiError(response.status, message);
   }

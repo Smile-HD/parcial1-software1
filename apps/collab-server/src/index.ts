@@ -1,18 +1,18 @@
 /**
- * @app/collab-server — Yjs collaboration transport (PR 5, design D4).
+ * @app/collab-server — Transporte de colaboración Yjs (PR 5, diseño D4).
  *
- * One room per diagram: clients connect to ws://host:port/diagrams/<diagramId>.
- * The sync/awareness wire protocol is implemented directly on top of
- * y-protocols using the SAME ESM yjs instance as @app/core and the persistence
- * binding. Do NOT route room docs through `y-websocket/bin/utils`: its
- * `require('yjs')` resolves a second (CJS) yjs instance, and a room doc
- * bootstrapped across the two copies mis-integrates client deltas (the
- * "vanishing key" bug found in PR 5 verification). One copy everywhere.
+ * Una sala por diagrama: los clientes se conectan a ws://host:port/diagrams/<diagramId>.
+ * El protocolo de red de sincronización/presencia (awareness) está implementado directamente
+ * sobre y-protocols usando la MISMA instancia ESM de yjs que @app/core y la vinculación
+ * de persistencia. NO enrutar documentos de sala a través de `y-websocket/bin/utils`: su
+ * `require('yjs')` resuelve una segunda instancia (CJS) de yjs, y un documento de sala
+ * arrancado entre las dos copias desintegra los deltas de los clientes (el error de "llave que desaparece"
+ * encontrado en la verificación de PR 5). Una sola copia en todas partes.
  *
- * Persistence binding invariants (design.md "Persistence Schema"):
- * - The Yjs blob (yjs_state) is authoritative; room open loads it.
- * - Saves are debounced and guarded by optimistic version checks.
- * - The transport never becomes a second source of truth.
+ * Invariantes de vinculación de persistencia (design.md "Esquema de Persistencia"):
+ * - El blob de Yjs (yjs_state) es autoritativo; la apertura de sala lo carga.
+ * - Los guardados son antirrebote y están protegidos por comprobaciones de versión optimistas.
+ * - El transporte nunca se convierte en una segunda fuente de verdad.
  */
 import { Buffer } from 'node:buffer';
 import { createServer, type Server as HttpServer } from 'node:http';
@@ -32,27 +32,27 @@ const MESSAGE_AWARENESS = 1;
 interface Room {
   readonly doc: Y.Doc;
   readonly awareness: awarenessProtocol.Awareness;
-  /** conn → awareness client ids announced by that conn */
+  /** conn → IDs de cliente de presencia (awareness) anunciados por esa conexión */
   readonly conns: Map<WsWebSocket, Set<number>>;
 }
 
 export interface CollabServerOptions {
-  /** 0 = ephemeral port (tests). Default 1234. */
+  /** 0 = puerto efímero (pruebas). Por defecto 1234. */
   port?: number;
-  /** Default 127.0.0.1; use 0.0.0.0 for LAN. */
+  /** Por defecto 127.0.0.1; usar 0.0.0.0 para LAN. */
   host?: string;
   databaseUrl: string;
-  /** Debounce window for room persistence. Default 500ms. */
+  /** Ventana de antirrebote para la persistencia de sala. Por defecto 500ms. */
   debounceMs?: number;
 }
 
 export interface CollabServer {
   readonly port: number;
-  /** Resolves when no debounced or in-flight persistence write remains. */
+  /** Se resuelve cuando no quedan escrituras de persistencia antirrebote ni en vuelo. */
   idle(): Promise<void>;
-  /** Resolves once the server has scheduled (or started) at least one write. Test timing aid. */
+  /** Se resuelve una vez que el servidor ha programado (o iniciado) al menos una escritura. Ayuda de sincronización para pruebas. */
   waitUntilScheduled(timeoutMs?: number): Promise<void>;
-  /** Closes sockets, flushes rooms, shuts down HTTP + pool. Idempotent. */
+  /** Cierra sockets, vacía salas, apaga HTTP + pool. Idempotente. */
   close(): Promise<void>;
 }
 
@@ -79,14 +79,14 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
     if (existing) return existing;
     const doc = new Y.Doc();
     const awareness = new awarenessProtocol.Awareness(doc);
-    awareness.setLocalState(null); // the server holds no local awareness state
+    awareness.setLocalState(null); // el servidor no mantiene estado local de presencia (awareness)
     const room: Room = { doc, awareness, conns: new Map() };
     rooms.set(docName, room);
-    // Awareness changes: track which clients each conn introduced (for cleanup
-    // on disconnect) and relay every add/update/removal to all conns. This
-    // event-driven relay is REQUIRED: y-protocols 1.0.7 `applyAwarenessUpdate`
-    // returns void, and removals (removeAwarenessStates) never travel as raw
-    // client messages — clients only learn about a departed peer through here.
+    // Cambios de presencia: rastrea qué clientes introdujo cada conexión (para limpieza
+    // al desconectar) y retransmite cada adición/actualización/eliminación a todas las conexiones.
+    // Esta retransmisión dirigida por eventos es OBLIGATORIA: `applyAwarenessUpdate` de y-protocols 1.0.7
+    // retorna void, y las eliminaciones (removeAwarenessStates) nunca viajan como mensajes
+    // crudos de cliente — los clientes solo se enteran de un par desconectado a través de aquí.
     awareness.on('update', (change: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
       const changed = [...change.added, ...change.updated, ...change.removed];
       if (origin instanceof WsWebSocket) {
@@ -100,13 +100,13 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
       const message = encoding.toUint8Array(encoder);
       for (const conn of room.conns.keys()) send(conn, message);
     });
-    // Blob-authoritative bootstrap: load persisted state once per room (design D4).
+    // Arranque autoritativo por blob: carga el estado persistido una vez por sala (diseño D4).
     void persistence.bindState(docName, doc).catch((error: unknown) => {
       console.error(`[collab-server] persistence binding failed for room ${docName}`, error);
     });
-    // Broadcast doc updates to every connected client, INCLUDING the origin one:
-    // clients re-applying their own update is a no-op for Yjs, and the echo is
-    // the ack that the server integrated the change (mirrors y-websocket utils).
+    // Difunde actualizaciones del doc a cada cliente conectado, INCLUYENDO el de origen:
+    // que los clientes reapliquen su propia actualización es una operación nula para Yjs, y el eco
+    // es la confirmación (ack) de que el servidor integró el cambio (imita y-websocket utils).
     doc.on('update', (update: Uint8Array) => {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_SYNC);
@@ -131,9 +131,9 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
         break;
       }
       case MESSAGE_AWARENESS: {
-        // y-protocols 1.0.7 applyAwarenessUpdate returns void: per-conn
-        // tracking and the relay to the other clients happen in the room's
-        // awareness 'update' handler (origin is this conn).
+        // applyAwarenessUpdate de y-protocols 1.0.7 retorna void: el rastreo por
+        // conexión y la retransmisión a otros clientes ocurren en el manejador
+        // 'update' de awareness de la sala (el origen es esta conexión).
         awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(decoder), conn);
         break;
       }
@@ -156,8 +156,8 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
       room = getOrCreateRoom(docName);
       room.conns.set(conn, new Set());
 
-      // Hand the newcomer the current awareness states and a sync step 1 so it
-      // replies with its diff (mirrors y-websocket's connection setup).
+      // Entrega al nuevo cliente los estados actuales de presencia y un sync step 1 para que
+      // responda con su diff (imita la configuración de conexión de y-websocket).
       const states = room.awareness.getStates();
       if (states.size > 0) {
         const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(room.awareness, Array.from(states.keys()));
@@ -171,8 +171,8 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
       syncProtocol.writeSyncStep1(syncEncoder, room.doc);
       send(conn, encoding.toUint8Array(syncEncoder));
     } catch (error) {
-      // Setup must never throw into the upgrade gate's promise chain (it would
-      // surface as a bogus "room bootstrap failed"); fail the conn instead.
+      // La configuración nunca debe lanzar errores a la cadena de promesas de la compuerta de actualización
+      // (se manifestaría como un error ficticio de "arranque de sala fallido"); se cierra la conexión en su lugar.
       console.error('[collab-server] connection setup failed', error);
       conn.close();
       return;
@@ -189,14 +189,14 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
 
     const onDisconnect = (): void => {
       const tracked = room.conns.get(conn);
-      if (!tracked) return; // already disconnected (close fires after error)
+      if (!tracked) return; // ya desconectado (close se dispara tras error)
       room.conns.delete(conn);
       if (tracked.size > 0) {
         awarenessProtocol.removeAwarenessStates(room.awareness, Array.from(tracked), null);
       }
       if (room.conns.size === 0) {
         rooms.delete(docName);
-        // Last connection left the room: flush immediately (blob-authoritative).
+        // La última conexión abandonó la sala: vaciar inmediatamente (blob autoritativo).
         void persistence.writeState(docName, room.doc).catch((error: unknown) => {
           console.error(`[collab-server] room flush failed for ${docName}`, error);
         });
@@ -206,11 +206,11 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
     conn.on('error', onDisconnect);
   });
 
-  // Gate: hold the handshake until the room's persisted blob is fully applied.
-  // No client may sync against a room doc that is still bootstrapping.
+  // Compuerta: retiene el handshake hasta que el blob persistido de la sala se aplique completamente.
+  // Ningún cliente puede sincronizarse contra el doc de una sala que aún se está iniciando.
   httpServer.on('upgrade', (request, socket, head) => {
     const docName = (request.url || '').slice(1).split('?')[0];
-    getOrCreateRoom(docName); // starts the persistence bootstrap if needed
+    getOrCreateRoom(docName); // inicia el arranque de persistencia si es necesario
     void persistence
       .whenLoaded(docName)
       .then(() => {
@@ -251,7 +251,7 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
       for (const room of rooms.values()) {
         for (const conn of room.conns.keys()) conn.close();
       }
-      await new Promise((resolve) => setTimeout(resolve, 100)); // let close events propagate
+      await new Promise((resolve) => setTimeout(resolve, 100)); // permite propagar los eventos de cierre
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
       await persistence.destroy();
@@ -260,12 +260,12 @@ export async function startCollabServer(options: CollabServerOptions): Promise<C
   return server;
 }
 
-// ---------- CLI entry point ----------
+// ---------- Punto de entrada CLI ----------
 
 const isDirectRun = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirectRun) {
-  // Same dev default as the API (postgres:16 in Docker via compose, port 5433).
-  // DATABASE_URL overrides for LAN/AWS deployments.
+  // Mismo valor por defecto de desarrollo que la API (postgres:16 en Docker vía compose, puerto 5433).
+  // DATABASE_URL sobreescribe para despliegues en LAN/AWS.
   const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';
   const port = Number(process.env.COLLAB_PORT) || 1234;
   const host = process.env.COLLAB_HOST || '0.0.0.0';

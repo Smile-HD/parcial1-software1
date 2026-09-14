@@ -1,7 +1,7 @@
 /**
- * Minimal migration runner for @app/api.
- * Applies numbered SQL files from migrations/ directory.
- * Tracks applied migrations in _migrations table.
+ * Ejecutor mínimo de migraciones para @app/api.
+ * Aplica archivos SQL numerados desde el directorio migrations/.
+ * Registra las migraciones aplicadas en la tabla _migrations.
  */
 
 import { Pool } from 'pg';
@@ -77,7 +77,7 @@ export async function runMigrations(): Promise<void> {
   }
 }
 
-// CLI entry point
+// Punto de entrada CLI
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   runMigrations().catch(err => {
     console.error('Migration failed:', err);

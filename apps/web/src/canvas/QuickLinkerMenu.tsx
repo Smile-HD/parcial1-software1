@@ -1,15 +1,15 @@
 /**
- * unit 13d — EA-style Quick Linker: the positioned menu.
+ * unidad 13d — Quick Linker estilo EA: el menú posicionado.
  *
- * A small context-menu-style list rendered at a fixed screen anchor (the
- * pointer-up point). The SAME component serves both Quick Linker menus:
- *  - the connector menu (valid connector types between two classifiers);
- *  - the element menu (Class / Interface on an empty-canvas drop).
+ * Una pequeña lista estilo menú contextual renderizada en un ancla de pantalla fija (el
+ * punto pointer-up). El MISMO componente sirve para ambos menús de Quick Linker:
+ *  - el menú de conectores (tipos de conector válidos entre dos clasificadores);
+ *  - el menú de elementos (Class / Interface al soltar en lienzo vacío).
  *
- * It is deliberately dumb: items in, id-out. All metamodel filtering happens
- * in `quickLinker.ts` (pure), and all delta emission lives in DiagramCanvas —
- * so this component is fully testable with props alone, no pointer drag.
- * Escape or a click-away closes it WITHOUT selecting anything (onClose).
+ * Es deliberadamente simple: entran ítems, sale un id. Todo el filtrado de metamodelo ocurre
+ * en `quickLinker.ts` (puro), y toda la emisión de deltas vive en DiagramCanvas —
+ * por lo que este componente es totalmente testeable solo con props, sin arrastre de puntero.
+ * Escape o un clic fuera lo cierran SIN seleccionar nada (onClose).
  */
 import { useEffect, useRef } from 'react';
 
@@ -19,7 +19,7 @@ export interface QuickLinkerMenuItem {
 }
 
 export interface QuickLinkerMenuProps {
-  /** Screen anchor (clientX/clientY at pointer-up). */
+  /** Ancla en pantalla (clientX/clientY en pointer-up). */
   position: { x: number; y: number };
   items: readonly QuickLinkerMenuItem[];
   onSelect: (id: string) => void;
@@ -35,9 +35,9 @@ export function QuickLinkerMenu({ position, items, onSelect, onClose }: QuickLin
         onClose();
       }
     };
-    // Click-away: any pointer-down OUTSIDE the menu dismisses it without
-    // creating anything. Capture phase so no intermediate stopPropagation
-    // can hide the gesture from us.
+    // Clic afuera: cualquier pointer-down FUERA del menú lo descarta sin
+    // crear nada. Fase de captura para que ningún stopPropagation intermedio
+    // pueda ocultarnos el gesto.
     const onPointerDown = (event: Event): void => {
       const target = event.target as Node | null;
       if (target !== null && menuRef.current !== null && menuRef.current.contains(target)) {
@@ -60,7 +60,7 @@ export function QuickLinkerMenu({ position, items, onSelect, onClose }: QuickLin
       role="menu"
       data-testid="quicklinker-menu"
       style={{ position: 'fixed', left: `${position.x}px`, top: `${position.y}px` }}
-      // Keep canvas-level handlers (node select, pane click) out of the menu's gestures.
+      // Mantener los controladores del nivel del lienzo (selección de nodo, clic en panel) fuera de los gestos del menú.
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >

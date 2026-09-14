@@ -7,43 +7,43 @@ import Handlebars from 'handlebars';
 import type { EntityFieldModel, InterfaceMethodModel, Renderer } from './generate.js';
 
 /**
- * Handlebars renderer for the Spring backend templates (unit 14b).
+ * Renderizador Handlebars para las plantillas de backend Spring (unidad 14b).
  *
- * Implements the 14a seam: `createHandlebarsRenderer()` compiles every `.hbs`
- * template under `templates/spring-backend/` ONCE and returns a {@link Renderer}
- * that resolves a template id to its compiled template. The vendored Maven
- * wrapper scripts are raw (non-hbs) assets served verbatim — they are
- * third-party files and are never compiled or edited.
+ * Implementa la interfaz de 14a: `createHandlebarsRenderer()` compila cada plantilla
+ * `.hbs` bajo `templates/spring-backend/` UNA SOLA VEZ y retorna un {@link Renderer}
+ * que resuelve un id de plantilla a su plantilla compilada. Los scripts empaquetados del Maven
+ * wrapper son recursos sin procesar (no hbs) servidos textualmente — son archivos de
+ * terceros y nunca se compilan ni editan.
  *
- * Templates are DATA (proposal: "templates are data, never runtime code of
- * System A"); this module is the only place that touches the filesystem for
- * rendering, and it does so read-only at construction time.
+ * Las plantillas son DATOS (propuesta: "las plantillas son datos, nunca código en tiempo de ejecución del
+ * Sistema A"); este módulo es el único lugar que interactúa con el sistema de archivos para
+ * renderizado, y lo hace solo en modo lectura al momento de construcción.
  */
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
-/** Repo-root template dir: packages/codegen/src → <root>/templates/spring-backend. */
+/** Directorio de plantillas en la raíz del repositorio: packages/codegen/src → <root>/templates/spring-backend. */
 export const DEFAULT_TEMPLATES_DIR = join(MODULE_DIR, '..', '..', '..', 'templates', 'spring-backend');
 
-/** Whitelist of servable raw wrapper assets — guards against path traversal via model. */
+/** Lista blanca de recursos wrapper servibles sin procesar — protege contra salto de ruta vía modelo. */
 const WRAPPER_ASSETS = new Set(['mvnw', 'mvnw.cmd', 'maven-wrapper.properties']);
 
-/** Template id under which the raw Maven wrapper assets are emitted. */
+/** Id de plantilla bajo el cual se emiten los recursos sin procesar de Maven wrapper. */
 export const MAVEN_WRAPPER_TEMPLATE = 'maven-wrapper';
 
-// ---------- naming helpers shared by the templates ----------
+// ---------- helpers de nombres compartidos por las plantillas ----------
 
-/** Lowercase the first character (Java bean-property convention). */
+/** Convierte a minúscula el primer caracter (convención de propiedades Java bean). */
 function camel(name: string): string {
   return name.length === 0 ? name : name[0].toLowerCase() + name.slice(1);
 }
 
-/** Uppercase the first character (getter/setter suffix). */
+/** Convierte a mayúscula el primer caracter (sufijo getter/setter). */
 function cap(name: string): string {
   return name.length === 0 ? name : name[0].toUpperCase() + name.slice(1);
 }
 
-/** camelCase / PascalCase → snake_case (for FK / join-table column names). */
+/** camelCase / PascalCase → snake_case (para nombres de columnas FK / tabla de unión). */
 function snake(name: string): string {
   return name
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -52,9 +52,9 @@ function snake(name: string): string {
 }
 
 /**
- * Naive-but-deterministic English pluralization used for collection field
- * names and REST route segments (s / es / y→ies). Documented simplification;
- * 14c may replace it with a role-name-driven mapping.
+ * Pluralización determinista simple en inglés usada para nombres de campos
+ * de colecciones y segmentos de rutas REST (s / es / y→ies). Simplificación documentada;
+ * 14c puede reemplazarlo con un mapeo basado en nombres de rol.
  */
 function plural(word: string): string {
   if (word.length === 0) return word;
@@ -63,12 +63,12 @@ function plural(word: string): string {
   return `${word}s`;
 }
 
-/** Entity class name → REST route segment: ShippingAddress → shipping-addresses. */
+/** Nombre de clase de entidad → segmento de ruta REST: ShippingAddress → shipping-addresses. */
 function route(className: string): string {
   return snake(plural(camel(className)));
 }
 
-/** javaType → FQN imports needed by an entity's declared field types. */
+/** javaType → importaciones FQN requeridas por los tipos de campo declarados de la entidad. */
 const TYPE_IMPORTS: Readonly<Record<string, string>> = {
   BigDecimal: 'java.math.BigDecimal',
   LocalDate: 'java.time.LocalDate',
@@ -92,7 +92,7 @@ function registerHelpers(hb: typeof Handlebars): void {
     }
     return [...imports].sort();
   });
-  // 14c: java imports for interface method signatures (return + parameter types).
+  // 14c: importaciones java para firmas de métodos de interfaz (tipos de retorno + parámetros).
   hb.registerHelper('methodImports', (methods: InterfaceMethodModel[] | undefined) => {
     const imports = new Set<string>();
     for (const method of methods ?? []) {
@@ -108,11 +108,11 @@ function registerHelpers(hb: typeof Handlebars): void {
 }
 
 /**
- * Build a Renderer backed by the `.hbs` templates in `templatesDir`
- * (default: repo-root `templates/spring-backend/`).
+ * Construye un Renderer respaldado por las plantillas `.hbs` en `templatesDir`
+ * (por defecto: raíz del repositorio `templates/spring-backend/`).
  *
- * @throws if the templates directory is missing or contains no templates —
- *   fails loudly instead of silently rendering stubs.
+ * @throws si el directorio de plantillas no existe o no contiene plantillas —
+ *   falla de manera explícita en lugar de renderizar stubs silenciosamente.
  */
 export function createHandlebarsRenderer(templatesDir: string = DEFAULT_TEMPLATES_DIR): Renderer {
   registerHelpers(Handlebars);
@@ -127,7 +127,7 @@ export function createHandlebarsRenderer(templatesDir: string = DEFAULT_TEMPLATE
     throw new Error(`no .hbs templates found in ${templatesDir}`);
   }
 
-  // Raw wrapper assets are read once and cached — verbatim, never templated.
+  // Los recursos wrapper sin procesar se leen una vez y se cachean — textualmente, nunca con plantillas.
   const assetCache = new Map<string, string>();
   const rawAsset = (asset: string): string => {
     if (!WRAPPER_ASSETS.has(asset)) {

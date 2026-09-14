@@ -1,23 +1,23 @@
 import { z } from 'zod';
 
 /**
- * Multiplicity validation (editor:R4, MODIFIED by the 2026-08-31 UML 2.5.1
- * compliance amendment): the legacy four values stay valid, and the schema
- * now accepts the full UML 2.5.1 multiplicity grammar — `*` (many), `0`,
- * plain integers, and arbitrary ranges `m..n` / `m..*` with non-negative
- * integers. Non-numeric garbage is rejected.
+ * Validación de multiplicidad (editor:R4, MODIFICADO por la enmienda de
+ * cumplimiento UML 2.5.1 del 2026-08-31): los cuatro valores heredados siguen
+ * siendo válidos y el esquema ahora acepta la gramática completa de multiplicidad
+ * de UML 2.5.1 — `*` (muchos), `0`, enteros simples y rangos arbitrarios `m..n` /
+ * `m..*` con enteros no negativos. Cualquier valor no numérico inválido es rechazado.
  */
 export const MultiplicitySchema = z
   .string()
   .regex(/^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/, 'Multiplicity must be *, an integer, or m..n / m..* with non-negative integers');
 export type Multiplicity = z.infer<typeof MultiplicitySchema>;
 
-/** The four legacy values remain accepted (they all match MultiplicitySchema). */
+/** Los cuatro valores heredados siguen siendo aceptados (todos coinciden con MultiplicitySchema). */
 export const MultiplicityEnum = z.enum(['1', '0..1', '1..*', '0..*']);
 
 /**
- * Position on the canvas (x, y coordinates).
- * Persisted as part of the IR per design decision.
+ * Posición en el lienzo (coordenadas x, y).
+ * Persistida como parte del IR por decisión de diseño.
  */
 export const PositionSchema = z.object({
   x: z.number(),
@@ -26,14 +26,14 @@ export const PositionSchema = z.object({
 export type Position = z.infer<typeof PositionSchema>;
 
 /**
- * UML visibility markers per UML 2.5.1 notation.
+ * Marcadores de visibilidad UML según la notación UML 2.5.1.
  */
 export const VisibilitySchema = z.enum(['+', '-', '#', '~']);
 export type Visibility = z.infer<typeof VisibilitySchema>;
 
 /**
- * Attribute of a class: name + type, with UML adornments. All adornment
- * fields are optional with defaults so pre-compliance diagrams stay valid.
+ * Atributo de una clase: nombre + tipo, con adornos UML. Todos los campos de adornos
+ * son opcionales con valores predeterminados para que los diagramas antiguos sigan siendo válidos.
  */
 export const AttributeSchema = z.object({
   id: z.string().uuid(),
@@ -47,7 +47,7 @@ export const AttributeSchema = z.object({
 export type Attribute = z.infer<typeof AttributeSchema>;
 
 /**
- * Parameter of a method: name + type.
+ * Parámetro de un método: nombre + tipo.
  */
 export const ParameterSchema = z.object({
   name: z.string().min(1),
@@ -56,8 +56,8 @@ export const ParameterSchema = z.object({
 export type Parameter = z.infer<typeof ParameterSchema>;
 
 /**
- * Method of a class: name + return type + parameter list, with visibility
- * and static adornments (instance-scope by default).
+ * Método de una clase: nombre + tipo de retorno + lista de parámetros, con visibilidad
+ * y adornos estáticos (ámbito de instancia por defecto).
  */
 export const MethodSchema = z.object({
   id: z.string().uuid(),
@@ -70,16 +70,16 @@ export const MethodSchema = z.object({
 export type Method = z.infer<typeof MethodSchema>;
 
 /**
- * Classifier kind per UML 2.5.1: a plain class or an interface.
- * Defaults to 'class' so pre-unit-12 diagrams stay valid (backward compat).
+ * Tipo de clasificador según UML 2.5.1: una clase normal o una interfaz.
+ * Por defecto 'class' para que los diagramas previos a la unidad 12 sigan siendo válidos.
  */
 export const ClassKindSchema = z.enum(['class', 'interface']);
 export type ClassKind = z.infer<typeof ClassKindSchema>;
 
 /**
- * Class in the diagram: name, position, attributes, methods.
- * `kind` distinguishes classes from interfaces (unit 12.1); `isAbstract`
- * marks abstract classes. Both default to class/false for backward compat.
+ * Clase en el diagrama: nombre, posición, atributos, métodos.
+ * `kind` distingue clases de interfaces (unidad 12.1); `isAbstract`
+ * marca clases abstractas. Ambos usan valores por defecto (class/false) por compatibilidad.
  */
 export const ClassSchema = z.object({
   id: z.string().uuid(),
@@ -93,21 +93,19 @@ export const ClassSchema = z.object({
 export type Class = z.infer<typeof ClassSchema>;
 
 /**
- * Aggregation kind per UML 2.5.1: none (plain), shared (hollow diamond),
- * composite (filled diamond). Defaults to 'none' for backward compat.
+ * Tipo de agregación según UML 2.5.1: none (simple), shared (diamante hueco),
+ * composite (diamante relleno). Por defecto 'none' por compatibilidad.
  */
 export const AggregationKindSchema = z.enum(['none', 'shared', 'composite']);
 export type AggregationKind = z.infer<typeof AggregationKindSchema>;
 
 /**
- * Association between two classes with multiplicities at each endpoint.
- * Aggregation/composition and association names/roles are optional (backward compat).
- * aggregationEnd explicitly declares which end owns the aggregation diamond ('source' or 'target'),
- * independent of drawing direction. Defaults to 'source' for backward compat with old diagrams.
- * Unit 13d fix C: the endpoint multiplicities are OPTIONAL — an end may be
- * unspecified (composition/aggregation start empty, per the UML convention
- * that a new connector carries no assumed multiplicity). Existing diagrams
- * with multiplicities stay valid (backward compat); unspecified ≠ '1'.
+ * Asociación entre dos clases con multiplicidades en cada extremo.
+ * La agregación/composición y los nombres/roles son opcionales (compatibilidad hacia atrás).
+ * aggregationEnd declara explícitamente qué extremo posee el diamante de agregación ('source' o 'target'),
+ * independiente de la dirección de trazado. Por defecto 'source'.
+ * Corrección de unidad 13d C: las multiplicidades de los extremos son OPCIONALES — un extremo puede
+ * no estar especificado (según la convención UML de que un nuevo conector no asume multiplicidad).
  */
 export const AssociationSchema = z.object({
   id: z.string().uuid(),
@@ -125,12 +123,11 @@ export const AssociationSchema = z.object({
 export type Association = z.infer<typeof AssociationSchema>;
 
 /**
- * Generalization (inheritance) edge between two classes: the subClass
- * inherits from the superClass (UML 2.5.1 generalization, rendered as a
- * solid line with a hollow triangle on the superclass end).
- * Cycle and duplicate invariants are enforced by the apply engine.
- * `name` is an optional editable label (unit 13c); absent on pre-13c edges
- * so existing diagrams stay valid (backward compat).
+ * Arista de generalización (herencia) entre dos clases: la subClase
+ * hereda de la superClase (generalización UML 2.5.1, representada como una
+ * línea sólida con un triángulo hueco en el extremo de la superclase).
+ * Las invariantes de ciclos y duplicados son aplicadas por el motor applyDelta.
+ * `name` es una etiqueta editable opcional (unidad 13c).
  */
 export const GeneralizationSchema = z.object({
   id: z.string().uuid(),
@@ -141,11 +138,11 @@ export const GeneralizationSchema = z.object({
 export type Generalization = z.infer<typeof GeneralizationSchema>;
 
 /**
- * Realization edge: a client classifier (class) realizes a supplier
- * interface (UML 2.5.1 realization, rendered as a dashed line with a
- * hollow triangle on the interface end). The supplier MUST have
- * `kind === 'interface'` — enforced by the apply engine (unit 12.2).
- * `name` is an optional editable label (unit 13c, backward compat).
+ * Arista de realización: un clasificador cliente (clase) realiza una interfaz
+ * proveedora (realización UML 2.5.1, representada como línea segmentada con
+ * triángulo hueco en el extremo de la interfaz). El proveedor DEBE tener
+ * `kind === 'interface'` — verificado por el motor applyDelta (unidad 12.2).
+ * `name` es una etiqueta editable opcional (unidad 13c).
  */
 export const RealizationSchema = z.object({
   id: z.string().uuid(),
@@ -156,11 +153,11 @@ export const RealizationSchema = z.object({
 export type Realization = z.infer<typeof RealizationSchema>;
 
 /**
- * Dependency edge: a client classifier uses a supplier classifier
- * (UML 2.5.1 dependency, rendered as a dashed line with an open arrow on
- * the supplier end; no multiplicity). Unlike realization, the supplier
- * may be ANY class or interface — enforced by the apply engine (unit 12.2).
- * `name` is an optional editable label (unit 13c, backward compat).
+ * Arista de dependencia: un clasificador cliente usa un clasificador proveedor
+ * (dependencia UML 2.5.1, representada como línea segmentada con flecha abierta en
+ * el extremo proveedor; sin multiplicidad). A diferencia de la realización, el
+ * proveedor puede ser CUALQUIER clase o interfaz — verificado por el motor applyDelta (unidad 12.2).
+ * `name` es una etiqueta editable opcional (unidad 13c).
  */
 export const DependencySchema = z.object({
   id: z.string().uuid(),
@@ -171,8 +168,8 @@ export const DependencySchema = z.object({
 export type Dependency = z.infer<typeof DependencySchema>;
 
 /**
- * One member end of an n-ary association: the participating class plus its
- * own multiplicity and optional role name (editor:R N-ary, unit 13.1).
+ * Un extremo miembro de una asociación n-aria: la clase participante junto con su
+ * propia multiplicidad y rol opcional (editor:R N-ary, unidad 13.1).
  */
 export const NaryMemberEndSchema = z.object({
   classId: z.string().uuid(),
@@ -182,12 +179,11 @@ export const NaryMemberEndSchema = z.object({
 export type NaryMemberEnd = z.infer<typeof NaryMemberEndSchema>;
 
 /**
- * N-ary association: a single association connecting THREE OR MORE classes
- * through a central diamond (UML 2.5.1 n-ary association, unit 13.1).
- * Kept in its OWN collection so the binary-association path stays untouched
- * (design decision D13). The `min(3)` bound is IR integrity: the apply
- * engine prunes/deletes n-aries below this floor on member-class deletion,
- * so a persisted diagram can never hold a degenerate n-ary.
+ * Asociación n-aria: una única asociación que conecta TRES O MÁS clases
+ * mediante un diamante central (asociación n-aria UML 2.5.1, unidad 13.1).
+ * Mantenida en su PROPIA colección para no afectar la ruta de asociaciones binarias
+ * (decisión de diseño D13). El límite `min(3)` asegura la integridad del IR: el motor
+ * applyDelta elimina asociaciones n-arias por debajo de este umbral al borrar clases miembros.
  */
 export const NaryAssociationSchema = z.object({
   id: z.string().uuid(),
@@ -197,10 +193,10 @@ export const NaryAssociationSchema = z.object({
 export type NaryAssociation = z.infer<typeof NaryAssociationSchema>;
 
 /**
- * Diagram: the top-level IR containing classes, associations,
- * generalizations, realizations, dependencies and n-ary associations.
- * `generalizations`, `realizations`, `dependencies` and `naryAssociations`
- * default to [] so pre-unit-11/12/13 diagrams stay valid (backward compat).
+ * Diagrama: el IR de nivel superior que contiene clases, asociaciones,
+ * generalizaciones, realizaciones, dependencias y asociaciones n-arias.
+ * `generalizations`, `realizations`, `dependencies` y `naryAssociations`
+ * usan valor predeterminado [] para asegurar compatibilidad hacia atrás.
  */
 export const DiagramSchema = z.object({
   id: z.string().uuid(),

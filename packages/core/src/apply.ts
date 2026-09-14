@@ -3,8 +3,8 @@ import { type Delta, type ClassDelta, type MemberDelta, type AssociationDelta, t
 import { z } from 'zod';
 
 /**
- * Discriminated union of all possible apply errors.
- * Each error carries structured data for precise handling.
+ * Unión discriminada de todos los posibles errores de aplicación de deltas.
+ * Cada error transporta datos estructurados para un manejo preciso.
  */
 export type ApplyError =
   | { kind: 'DuplicateClassError'; className: string; classId?: string }
@@ -28,7 +28,7 @@ export type ApplyError =
   | { kind: 'BatchError'; error: ApplyError; failedDeltaIndex: number };
 
 /**
- * Type guard for ApplyError
+ * Predicado de tipo (guard) para ApplyError.
  */
 export function isApplyError(value: unknown): value is ApplyError {
   return (
@@ -40,63 +40,63 @@ export function isApplyError(value: unknown): value is ApplyError {
 }
 
 /**
- * Result type for applyDelta - discriminated union of success or error.
+ * Tipo de resultado para applyDelta — unión discriminada de éxito o error.
  */
 export type ApplyResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: ApplyError };
 
 /**
- * Creates a success result.
+ * Crea un resultado exitoso.
  */
 function ok<T>(value: T): ApplyResult<T> {
   return { ok: true, value };
 }
 
 /**
- * Creates an error result.
+ * Crea un resultado con error.
  */
 function err(error: ApplyError): ApplyResult<never> {
   return { ok: false, error };
 }
 
 /**
- * Deep clones a diagram to ensure immutability.
+ * Clona profundamente un diagrama para asegurar inmutabilidad.
  */
 function cloneDiagram(diagram: Diagram): Diagram {
   return DiagramSchema.parse(JSON.parse(JSON.stringify(diagram)));
 }
 
 /**
- * Finds a class by ID in the diagram.
+ * Busca una clase por su ID en el diagrama.
  */
 function findClass(diagram: Diagram, classId: string): Class | undefined {
   return diagram.classes.find(c => c.id === classId);
 }
 
 /**
- * Finds a class by name in the diagram.
+ * Busca una clase por su nombre en el diagrama.
  */
 function findClassByName(diagram: Diagram, name: string): Class | undefined {
   return diagram.classes.find(c => c.name === name);
 }
 
 /**
- * Finds an association by ID in the diagram.
+ * Busca una asociación por su ID en el diagrama.
  */
 function findAssociation(diagram: Diagram, associationId: string): Association | undefined {
   return diagram.associations.find(a => a.id === associationId);
 }
 
 /**
- * Checks if a class name already exists (excluding a specific class ID).
+ * Verifica si ya existe una clase con ese nombre (excluyendo un ID de clase específico).
  */
 function isDuplicateClassName(diagram: Diagram, name: string, excludeClassId?: string): boolean {
   return diagram.classes.some(c => c.name === name && c.id !== excludeClassId);
 }
 
 /**
- * Checks if a member name already exists in a class (excluding a specific member ID).
+ * Verifica si ya existe un miembro con ese nombre en una clase (excluyendo un ID de miembro específico).
  */
 function isDuplicateMemberName(
   classObj: Class,
@@ -110,7 +110,7 @@ function isDuplicateMemberName(
 }
 
 /**
- * Removes all associations connected to a class (cascade delete).
+ * Elimina todas las asociaciones conectadas a una clase (eliminación en cascada).
  */
 function cascadeDeleteAssociations(diagram: Diagram, classId: string): Diagram {
   return {
@@ -122,8 +122,8 @@ function cascadeDeleteAssociations(diagram: Diagram, classId: string): Diagram {
 }
 
 /**
- * Removes all generalization edges connected to a class, in either the
- * subClass or the superClass role (cascade delete, editor:R Generalization).
+ * Elimina todas las aristas de generalización conectadas a una clase, ya sea en el rol
+ * de subClase o superClase (eliminación en cascada, editor:R Generalization).
  */
 function cascadeDeleteGeneralizations(diagram: Diagram, classId: string): Diagram {
   return {
@@ -135,9 +135,8 @@ function cascadeDeleteGeneralizations(diagram: Diagram, classId: string): Diagra
 }
 
 /**
- * Removes all realization edges connected to a class, in either the
- * client or the supplier-interface role (cascade delete, editor:R
- * Interfaces — unit 12.2).
+ * Elimina todas las aristas de realización conectadas a una clase, ya sea en el rol
+ * de cliente o interfaz proveedora (eliminación en cascada, editor:R Interfaces — unidad 12.2).
  */
 function cascadeDeleteRealizations(diagram: Diagram, classId: string): Diagram {
   return {
@@ -149,9 +148,8 @@ function cascadeDeleteRealizations(diagram: Diagram, classId: string): Diagram {
 }
 
 /**
- * Removes all dependency edges connected to a class, in either the
- * client or the supplier role (cascade delete, editor:R Interfaces —
- * unit 12.2, 12b half).
+ * Elimina todas las aristas de dependencia conectadas a una clase, ya sea en el rol
+ * de cliente o proveedor (eliminación en cascada, editor:R Interfaces — unidad 12.2, 12b).
  */
 function cascadeDeleteDependencies(diagram: Diagram, classId: string): Diagram {
   return {
@@ -163,35 +161,34 @@ function cascadeDeleteDependencies(diagram: Diagram, classId: string): Diagram {
 }
 
 /**
- * Prunes a deleted class from every n-ary association's member ends
- * (cascade delete, editor:R N-ary — unit 13.1). An n-ary left with fewer
- * than three ends is no longer an n-ary association and is removed whole
- * (spec scenario "Member deletion prunes the n-ary"). Associations that do
- * not contain the class are carried over by reference — untouched.
+ * Poda una clase eliminada de los extremos miembros de cada asociación n-aria
+ * (eliminación en cascada, editor:R N-ary — unidad 13.1). Una asociación n-aria
+ * que quede con menos de tres extremos ya no es n-aria y se elimina por completo.
+ * Las asociaciones que no contienen la clase se preservan sin cambios por referencia.
  */
 function cascadeDeleteNaryAssociations(diagram: Diagram, classId: string): Diagram {
   const updated: NaryAssociation[] = [];
   for (const nary of diagram.naryAssociations ?? []) {
     const keptEnds = nary.memberEnds.filter(e => e.classId !== classId);
     if (keptEnds.length === nary.memberEnds.length) {
-      updated.push(nary); // class not a member — leave the object as-is
+      updated.push(nary); // la clase no es miembro — dejar el objeto intacto
       continue;
     }
     if (keptEnds.length >= 3) {
       updated.push({ ...nary, memberEnds: keptEnds });
     }
-    // < 3 ends after pruning: the whole n-ary association is deleted.
+    // < 3 extremos tras la poda: la asociación n-aria completa se elimina.
   }
   return { ...diagram, naryAssociations: updated };
 }
 
 /**
- * Cycle check for generalization edges (the highest-risk invariant, unit 11.2).
+ * Verificación de ciclos para aristas de generalización (invariante de mayor riesgo, unidad 11.2).
  *
- * Edges point subClass → superClass. Adding `sub → super` closes a cycle iff
- * `sub` is reachable from `super` by walking existing sub→super edges
- * (i.e. super is already a descendant of sub), or sub === super (self-loop).
- * Ancestor traversal covers multiple inheritance (diamond DAGs stay valid).
+ * Las aristas apuntan subClase → superClase. Añadir `sub → super` cierra un ciclo si y solo si
+ * `sub` es alcanzable desde `super` navegando aristas existentes sub→super
+ * (es decir, super ya es descendiente de sub), o sub === super (auto-bucle).
+ * El recorrido de ancestros cubre herencia múltiple (los DAGs de diamante siguen siendo válidos).
  */
 function wouldCreateGeneralizationCycle(
   diagram: Diagram,
@@ -216,7 +213,7 @@ function wouldCreateGeneralizationCycle(
 }
 
 /**
- * Applies a single class delta.
+ * Aplica un único delta de clase.
  */
 function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagram> {
   switch (delta.op) {
@@ -233,7 +230,7 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
         position: delta.position,
         attributes: [],
         methods: [],
-        // Unit 12.1: optional classifier kind on create (defaults to 'class').
+        // Unidad 12.1: tipo de clasificador opcional en create (por defecto 'class').
         ...(delta.classKind !== undefined ? { kind: delta.classKind } : {}),
       });
       return ok({ ...diagram, classes: [...diagram.classes, newClass] });
@@ -269,8 +266,8 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
     }
 
     case 'update': {
-      // Unit 12.1/12.4 — toggle classifier kind and/or abstract marking.
-      // The schema gate already requires at least one carrier field.
+      // Unidad 12.1/12.4 — alternar tipo de clasificador y/o marcado abstracto.
+      // El filtro de esquema ya exige al menos un campo transportador.
       if (delta.classKind === undefined && delta.isAbstract === undefined) {
         return err({ kind: 'InvalidOperationError', reason: 'Class update requires classKind or isAbstract' });
       }
@@ -292,10 +289,10 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
       if (classIndex === -1) {
         return err({ kind: 'ClassNotFoundError', classId: delta.classId });
       }
-      // Remove the class
+      // Eliminar la clase
       const updatedClasses = diagram.classes.filter(c => c.id !== delta.classId);
-      // Cascade delete associations, generalization, realization, dependency
-      // and n-ary association edges
+      // Eliminación en cascada de asociaciones, generalizaciones, realizaciones,
+      // dependencias y asociaciones n-arias
       let updatedDiagram = { ...diagram, classes: updatedClasses };
       updatedDiagram = cascadeDeleteAssociations(updatedDiagram, delta.classId);
       updatedDiagram = cascadeDeleteGeneralizations(updatedDiagram, delta.classId);
@@ -313,7 +310,7 @@ function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagr
 }
 
 /**
- * Applies a single member delta.
+ * Aplica un único delta de miembro (atributo o método).
  */
 function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Diagram> {
   const classIndex = diagram.classes.findIndex(c => c.id === delta.classId);
@@ -457,19 +454,18 @@ function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyResult<Dia
 }
 
 /**
- * Applies a single association delta.
+ * Aplica un único delta de asociación.
  */
 function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): ApplyResult<Diagram> {
   switch (delta.op) {
     case 'create': {
-      // Unit 13d fix C: multiplicities are OPTIONAL — an association end may
-      // be unspecified (composition/aggregation start empty). Only the
-      // endpoints and the directedness flag are required.
+      // Corrección unidad 13d C: multiplicidades son OPCIONALES — un extremo de asociación
+      // puede iniciar sin especificar. Solo los extremos y el flag de dirección son requeridos.
       if (!delta.sourceClassId || !delta.targetClassId || delta.directed === undefined) {
         return err({ kind: 'InvalidOperationError', reason: 'Association create requires sourceClassId, targetClassId, and directed' });
       }
-      // Recursive (self) associations (source === target) are VALID UML —
-      // e.g. Product is-component-of Product. Both ends must still exist.
+      // Las asociaciones recursivas (auto-asociaciones, source === target) son VÁLIDAS en UML.
+      // Ambos extremos deben existir en el diagrama.
       if (!findClass(diagram, delta.sourceClassId)) {
         return err({ kind: 'ClassNotFoundError', classId: delta.sourceClassId });
       }
@@ -493,10 +489,8 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
     }
 
     case 'updateMultiplicity': {
-      // Unit 13d fix C: the multiplicity carriers are tri-state — undefined
-      // keeps the end, a string sets it, NULL clears it to unspecified. The
-      // at-least-one guard must therefore test `=== undefined`, not falsiness
-      // (a lone `null` clear is a legitimate update).
+      // Corrección unidad 13d C: los campos de multiplicidad son tri-estado — undefined
+      // conserva el valor, un string lo establece, y NULL lo restablece a no especificado.
       if (
         delta.newSourceMultiplicity === undefined &&
         delta.newTargetMultiplicity === undefined &&
@@ -543,12 +537,12 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
 }
 
 /**
- * Applies a single generalization delta (unit 11.2 invariants):
- * - create: both classes must exist; no duplicate edge (same sub+super);
- *   no cycles (self-loop, 2-cycle, or transitive via ancestor traversal).
- * - update: the edge must exist; sets the optional label (unit 13c). An
- *   empty string clears it (mirrors the association name semantics).
- * - delete: the edge must exist.
+ * Aplica un delta de generalización individual (invariantes de la unidad 11.2):
+ * - create: ambas clases deben existir; sin aristas duplicadas (mismo sub+super);
+ *   sin ciclos (auto-bucle, ciclo de 2 elementos, o transitivo vía recorrido de ancestros).
+ * - update: la arista debe existir; establece la etiqueta opcional (unidad 13c). Una
+ *   cadena vacía la limpia (imita la semántica del nombre de asociación).
+ * - delete: la arista debe existir.
  */
 function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta): ApplyResult<Diagram> {
   switch (delta.op) {
@@ -609,13 +603,13 @@ function applyGeneralizationDelta(diagram: Diagram, delta: GeneralizationDelta):
 }
 
 /**
- * Applies a single realization delta (unit 12.2 invariants):
- * - create: both ends must exist; the SUPPLIER MUST be an interface
- *   (`kind === 'interface'` — realizing a plain or abstract class is a
- *   UML violation); no duplicate edge (same client + supplier).
- * - update: the edge must exist; sets the optional label (unit 13c). An
- *   empty string clears it (mirrors the association name semantics).
- * - delete: the edge must exist.
+ * Aplica un delta de realización individual (invariantes de la unidad 12.2):
+ * - create: ambos extremos deben existir; el PROVEEDOR (supplier) DEBE ser una interfaz
+ *   (`kind === 'interface'` — realizar una clase común o abstracta es una
+ *   violación de UML); sin aristas duplicadas (mismo cliente + proveedor).
+ * - update: la arista debe existir; establece la etiqueta opcional (unidad 13c). Una
+ *   cadena vacía la limpia (imita la semántica del nombre de asociación).
+ * - delete: la arista debe existir.
  */
 function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): ApplyResult<Diagram> {
   switch (delta.op) {
@@ -630,8 +624,8 @@ function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): Apply
       if (!supplier) {
         return err({ kind: 'ClassNotFoundError', classId: delta.supplierInterfaceId });
       }
-      // Interface-target invariant (editor:R Interfaces, scenario "Realization
-      // to non-interface rejected"): abstract classes are NOT interfaces.
+      // Invariante de destino de interfaz (editor:R Interfaces, escenario "Realization
+      // to non-interface rejected"): las clases abstractas NO son interfaces.
       if (supplier.kind !== 'interface') {
         return err({ kind: 'RealizationTargetNotInterfaceError', supplierClassId: supplier.id });
       }
@@ -679,14 +673,13 @@ function applyRealizationDelta(diagram: Diagram, delta: RealizationDelta): Apply
 }
 
 /**
- * Applies a single dependency delta (unit 12.2 invariants, 12b half):
- * - create: both ends must exist; no duplicate edge (same client +
- *   supplier). Unlike realization, the supplier may be ANY class or
- *   interface — there is NO interface-target requirement and NO
- *   multiplicity.
- * - update: the edge must exist; sets the optional label (unit 13c). An
- *   empty string clears it (mirrors the association name semantics).
- * - delete: the edge must exist.
+ * Aplica un delta de dependencia individual (invariantes de la unidad 12.2, mitad 12b):
+ * - create: ambos extremos deben existir; sin aristas duplicadas (mismo cliente +
+ *   proveedor). A diferencia de la realización, el proveedor puede ser CUALQUIER clase o
+ *   interfaz — NO existe requisito de destino de interfaz ni multiplicidad.
+ * - update: la arista debe existir; establece la etiqueta opcional (unidad 13c). Una
+ *   cadena vacía la limpia (imita la semántica del nombre de asociación).
+ * - delete: la arista debe existir.
  */
 function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyResult<Diagram> {
   switch (delta.op) {
@@ -744,18 +737,18 @@ function applyDependencyDelta(diagram: Diagram, delta: DependencyDelta): ApplyRe
 }
 
 /**
- * Applies a single n-ary association delta (unit 13.1 invariants,
+ * Aplica un delta de asociación n-aria individual (invariantes de la unidad 13.1,
  * editor:R N-ary):
- * - create: at least THREE member ends; no duplicate classId within one
- *   association; every member class must exist. Lives in its OWN
- *   `naryAssociations` collection — the binary-association path is never
- *   touched (design decision D13).
- * - update (unit 13d fix A): the association must exist; carries an optional
- *   `name` and/or optional replacement `memberEnds`. When memberEnds are
- *   provided the SAME invariants as create are re-validated (existence,
- *   ≥3 ends, no duplicates) so an edit can never produce a degenerate or
- *   dangling n-ary. An empty name clears it (mirrors edge label semantics).
- * - delete: the association must exist.
+ * - create: al menos TRES extremos miembros; sin classId duplicado dentro de una
+ *   misma asociación; cada clase miembro debe existir. Reside en su PROPIA
+ *   colección `naryAssociations` — la ruta de asociaciones binarias nunca
+ *   se altera (decisión de diseño D13).
+ * - update (corrección A de la unidad 13d): la asociación debe existir; transporta
+ *   un `name` opcional y/o un reemplazo opcional de `memberEnds`. Cuando se proveen
+ *   memberEnds, se re-validan los MISMOS invariantes que en create (existencia,
+ *   ≥3 extremos, sin duplicados) para que una edición nunca produzca una n-aria degenerada
+ *   o colgante. Un nombre vacío la limpia (imita la semántica de etiquetas de aristas).
+ * - delete: la asociación debe existir.
  */
 function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta): ApplyResult<Diagram> {
   switch (delta.op) {
@@ -787,8 +780,8 @@ function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta
     }
 
     case 'update': {
-      // The schema gate already requires at least one carrier; this engine
-      // guard mirrors it defensively (same pattern as the class update).
+      // La compuerta de esquema ya requiere al menos un elemento; esta guarda del motor
+      // lo refleja defensivamente (el mismo patrón que en la actualización de clases).
       if (delta.name === undefined && delta.memberEnds === undefined) {
         return err({ kind: 'InvalidOperationError', reason: 'NaryAssociation update requires name or memberEnds' });
       }
@@ -799,7 +792,7 @@ function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta
       const existing = (diagram.naryAssociations ?? [])[naryIndex]!;
       let memberEnds = existing.memberEnds;
       if (delta.memberEnds !== undefined) {
-        // Re-validate the SAME invariants as create on the replacement ends.
+        // Re-valida los MISMOS invariantes que create en los extremos de reemplazo.
         if (delta.memberEnds.length < 3) {
           return err({ kind: 'NaryAssociationMinEndsError', count: delta.memberEnds.length });
         }
@@ -844,13 +837,13 @@ function applyNaryAssociationDelta(diagram: Diagram, delta: NaryAssociationDelta
 }
 
 /**
- * Applies a batch delta atomically (all-or-nothing).
- * Validates all deltas first, then applies them sequentially on a cloned state.
- * If any delta fails, the original state is returned unchanged.
+ * Aplica un delta por lotes (batch) de forma atómica (todo o nada).
+ * Valida primero todos los deltas y luego los aplica secuencialmente sobre un estado clonado.
+ * Si algún delta falla, se retorna el estado original sin modificaciones.
  */
 function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<Diagram> {
-  // First, validate all deltas in the batch against the original state
-  // This ensures atomicity - we don't apply partial changes
+  // Primero valida todos los deltas en el lote contra el estado original.
+  // Esto asegura atomicidad: no aplicamos cambios parciales.
   let workingDiagram = cloneDiagram(diagram);
 
   for (let i = 0; i < batchDelta.deltas.length; i++) {
@@ -886,7 +879,7 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
     }
 
     if (!result.ok) {
-      // Wrap the error with batch context
+      // Envuelve el error con el contexto del lote (batch)
       return err({ kind: 'BatchError', error: result.error, failedDeltaIndex: i });
     }
 
@@ -897,32 +890,32 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
 }
 
 /**
- * Pure function that applies a delta to a diagram state.
+ * Función pura que aplica un delta al estado de un diagrama.
  * 
- * @param state - The current diagram state (never mutated)
- * @param delta - The delta to apply
- * @returns A new diagram state if successful, or an error if the delta is invalid
+ * @param state - El estado actual del diagrama (nunca mutado)
+ * @param delta - El delta a aplicar
+ * @returns Un nuevo estado del diagrama en caso de éxito, o un error si el delta es inválido
  * 
- * Invariants:
- * - NEVER mutates the input state
- * - Returns a NEW state on success (immutable style)
- * - Rejects invalid operations with typed errors (discriminated union)
- * - Atomic batch semantics: one invalid delta ⇒ nothing applied
- * - Duplicate class names are rejected (editor:R1)
- * - Delete class cascades to associations (editor:R2)
+ * Invariantes:
+ * - NUNCA muta el estado de entrada
+ * - Retorna un NUEVO estado en caso de éxito (estilo inmutable)
+ * - Rechaza operaciones inválidas con errores tipados (unión discriminada)
+ * - Semántica atómica de lotes: un delta inválido ⇒ no se aplica nada
+ * - Se rechazan nombres de clase duplicados (editor:R1)
+ * - Eliminar una clase se propaga en cascada a sus asociaciones (editor:R2)
  */
 export function applyDelta(state: Diagram, delta: Delta): ApplyResult<Diagram> {
-  // Validate input state
+  // Valida el estado de entrada
   const validatedState = DiagramSchema.parse(state);
-  // Validate delta
+  // Valida el delta
   const validatedDelta = DeltaSchema.parse(delta);
 
-  // Ensure diagram IDs match
+  // Asegura que los IDs de diagrama coincidan
   if (validatedDelta.diagramId !== validatedState.id) {
     return err({ kind: 'InvalidOperationError', reason: 'Delta diagramId does not match state diagramId' });
   }
 
-  // Clone the state to ensure immutability
+  // Clona el estado para garantizar inmutabilidad
   const clonedState = cloneDiagram(validatedState);
 
   switch (validatedDelta.kind) {

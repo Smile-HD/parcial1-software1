@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { MultiplicitySchema, AggregationKindSchema } from './ir.js';
 
 /**
- * Base delta fields shared by all delta types.
+ * Campos base compartidos por todos los tipos de deltas.
  */
 const DeltaBase = z.object({
   id: z.string().uuid(),
@@ -11,23 +11,23 @@ const DeltaBase = z.object({
 });
 
 /**
- * Class-level operations: create, rename, reposition, delete, update.
- * `classKind` (not `kind` — that is the delta discriminator) carries the
- * UML classifier kind on create and update (unit 12.1/12.4); `isAbstract`
- * toggles abstract marking. The `update` op must carry at least one of them.
+ * Operaciones a nivel de clase: create, rename, reposition, delete, update.
+ * `classKind` (no `kind` — ese es el discriminador del delta) transporta el tipo
+ * de clasificador UML en create y update (unidad 12.1/12.4); `isAbstract`
+ * conmuta el marcado de clase abstracta. La operación `update` debe incluir al menos uno de ellos.
  */
 export const ClassDeltaSchema = DeltaBase.extend({
   kind: z.literal('class'),
   op: z.enum(['create', 'rename', 'reposition', 'delete', 'update']),
   classId: z.string().uuid(),
-  // For create: name + position required
+  // Para create: name + position requeridos
   name: z.string().min(1).optional(),
   position: z.object({ x: z.number(), y: z.number() }).optional(),
-  // For rename: new name required
+  // Para rename: newName requerido
   newName: z.string().min(1).optional(),
-  // For reposition: new position required
+  // Para reposition: newPosition requerida
   newPosition: z.object({ x: z.number(), y: z.number() }).optional(),
-  // Unit 12: classifier kind + abstract marking (create/update carriers)
+  // Unidad 12: tipo de clasificador + marcado abstracto (en create/update)
   classKind: z.enum(['class', 'interface']).optional(),
   isAbstract: z.boolean().optional(),
 }).strict().superRefine((delta, ctx) => {
@@ -41,20 +41,20 @@ export const ClassDeltaSchema = DeltaBase.extend({
 export type ClassDelta = z.infer<typeof ClassDeltaSchema>;
 
 /**
- * Member-level operations: attribute/method add, edit, delete.
+ * Operaciones a nivel de miembro: adición, edición y eliminación de atributos o métodos.
  */
 export const MemberDeltaSchema = DeltaBase.extend({
   kind: z.literal('member'),
   op: z.enum(['addAttribute', 'editAttribute', 'deleteAttribute', 'addMethod', 'editMethod', 'deleteMethod']),
   classId: z.string().uuid(),
   memberId: z.string().uuid(),
-  // For add/edit attribute
+  // Para add/edit attribute
   name: z.string().min(1).optional(),
   type: z.string().min(1).optional(),
-  // For add/edit method
+  // Para add/edit method
   returnType: z.string().min(1).optional(),
   parameters: z.array(z.object({ name: z.string().min(1), type: z.string().min(1) })).optional(),
-  // UML adornments (unit 9 — optional so legacy deltas stay valid)
+  // Adornos UML (unidad 9 — opcionales para preservar deltas antiguos)
   visibility: z.enum(['+', '-', '#', '~']).optional(),
   isStatic: z.boolean().optional(),
   isDerived: z.boolean().optional(),
@@ -63,49 +63,48 @@ export const MemberDeltaSchema = DeltaBase.extend({
 export type MemberDelta = z.infer<typeof MemberDeltaSchema>;
 
 /**
- * Association-level operations: create, update multiplicities, delete.
- * Aggregation, name, roles, and aggregationEnd are optional so legacy deltas stay valid.
- * Unit 13d fix C: create multiplicities are optional (an end may start
- * unspecified), and the update carriers are NULLABLE — `null` CLEARS an end
- * back to unspecified, a string sets it, and `undefined` keeps it (tri-state).
+ * Operaciones a nivel de asociación: create, updateMultiplicity, delete.
+ * Agregación, nombre, roles y aggregationEnd son opcionales para retrocompatibilidad.
+ * Corrección de unidad 13d C: en create las multiplicidades son opcionales (un extremo puede
+ * iniciar sin especificar), y en update son anulables — `null` RESTABLECE el extremo
+ * a no especificado, un string lo establece, y `undefined` lo conserva (tri-estado).
  */
 export const AssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('association'),
   op: z.enum(['create', 'updateMultiplicity', 'delete']),
   associationId: z.string().uuid(),
-  // For create
+  // Para create
   sourceClassId: z.string().uuid().optional(),
   targetClassId: z.string().uuid().optional(),
   sourceMultiplicity: MultiplicitySchema.optional(),
   targetMultiplicity: MultiplicitySchema.optional(),
   directed: z.boolean().optional(),
-  // Unit 10: optional aggregation, name, roles on create
+  // Unidad 10: agregación, nombre y roles opcionales en create
   aggregation: AggregationKindSchema.optional(),
   aggregationEnd: z.enum(['source', 'target']).optional(),
   name: z.string().optional(),
   sourceRole: z.string().optional(),
   targetRole: z.string().optional(),
-  // For updateMultiplicity (null = clear to unspecified)
+  // Para updateMultiplicity (null = restablecer a no especificado)
   newSourceMultiplicity: MultiplicitySchema.nullable().optional(),
   newTargetMultiplicity: MultiplicitySchema.nullable().optional(),
 }).strict();
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 
 /**
- * Generalization-level operations: create (subclass → superclass), update
- * (editable label — unit 13c) and delete. A `create` must carry both ends
- * (schema gate); an `update` must carry `name` (schema gate, mirroring the
- * class-update gate). Engine invariants (both classes exist, no duplicates,
- * no cycles) are enforced by applyDelta — unit 11.2.
+ * Operaciones a nivel de generalización: create (subclase → superclase), update
+ * (etiqueta editable — unidad 13c) y delete. Un `create` debe transportar ambos extremos
+ * (filtro de esquema); un `update` debe transportar `name` (filtro de esquema). Las invariantes
+ * del motor (ambas clases existen, sin duplicados, sin ciclos) son verificadas por applyDelta — unidad 11.2.
  */
 export const GeneralizationDeltaSchema = DeltaBase.extend({
   kind: z.literal('generalization'),
   op: z.enum(['create', 'update', 'delete']),
   generalizationId: z.string().uuid(),
-  // For create: both ends required (enforced by the refinement below)
+  // Para create: ambos extremos requeridos (verificado por el superRefine)
   subClassId: z.string().uuid().optional(),
   superClassId: z.string().uuid().optional(),
-  // For update: the optional edge label (unit 13c)
+  // Para update: etiqueta opcional de arista (unidad 13c)
   name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.subClassId || !delta.superClassId)) {
@@ -124,20 +123,19 @@ export const GeneralizationDeltaSchema = DeltaBase.extend({
 export type GeneralizationDelta = z.infer<typeof GeneralizationDeltaSchema>;
 
 /**
- * Realization-level operations: create (client class → supplier interface),
- * update (editable label — unit 13c) and delete. A `create` must carry both
- * ends (schema gate); an `update` must carry `name` (schema gate). Engine
- * invariants (both exist, supplier is an interface, no duplicates) are
- * enforced by applyDelta — unit 12.2.
+ * Operaciones a nivel de realización: create (clase cliente → interfaz proveedora),
+ * update (etiqueta editable — unidad 13c) y delete. Un `create` debe transportar ambos
+ * extremos (filtro de esquema); un `update` debe transportar `name`. Las invariantes
+ * del motor (ambos existen, proveedor es interfaz, sin duplicados) son verificadas por applyDelta — unidad 12.2.
  */
 export const RealizationDeltaSchema = DeltaBase.extend({
   kind: z.literal('realization'),
   op: z.enum(['create', 'update', 'delete']),
   realizationId: z.string().uuid(),
-  // For create: both ends required (enforced by the refinement below)
+  // Para create: ambos extremos requeridos (verificado por el superRefine)
   clientClassId: z.string().uuid().optional(),
   supplierInterfaceId: z.string().uuid().optional(),
-  // For update: the optional edge label (unit 13c)
+  // Para update: etiqueta opcional de arista (unidad 13c)
   name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierInterfaceId)) {
@@ -156,21 +154,19 @@ export const RealizationDeltaSchema = DeltaBase.extend({
 export type RealizationDelta = z.infer<typeof RealizationDeltaSchema>;
 
 /**
- * Dependency-level operations: create (client class → supplier class or
- * interface), update (editable label — unit 13c) and delete. A `create`
- * must carry both ends (schema gate); an `update` must carry `name`
- * (schema gate). Engine invariants (both exist, no duplicates) are
- * enforced by applyDelta — unit 12.2 (12b half). The supplier may be ANY
- * classifier (no interface requirement) and there is NO multiplicity.
+ * Operaciones a nivel de dependencia: create (clase cliente → clase o interfaz proveedora),
+ * update (etiqueta editable — unidad 13c) y delete. Un `create` debe transportar ambos extremos;
+ * un `update` debe transportar `name`. Invariantes verificadas por applyDelta — unidad 12.2 (12b).
+ * El proveedor puede ser CUALQUIER clasificador (sin requisito de ser interfaz) y NO lleva multiplicidad.
  */
 export const DependencyDeltaSchema = DeltaBase.extend({
   kind: z.literal('dependency'),
   op: z.enum(['create', 'update', 'delete']),
   dependencyId: z.string().uuid(),
-  // For create: both ends required (enforced by the refinement below)
+  // Para create: ambos extremos requeridos
   clientClassId: z.string().uuid().optional(),
   supplierClassId: z.string().uuid().optional(),
-  // For update: the optional edge label (unit 13c)
+  // Para update: etiqueta opcional de arista (unidad 13c)
   name: z.string().optional(),
 }).strict().superRefine((delta, ctx) => {
   if (delta.op === 'create' && (!delta.clientClassId || !delta.supplierClassId)) {
@@ -189,21 +185,19 @@ export const DependencyDeltaSchema = DeltaBase.extend({
 export type DependencyDelta = z.infer<typeof DependencyDeltaSchema>;
 
 /**
- * N-ary association-level operations: create (>=3 member ends), update
- * (name and/or member ends — unit 13d fix A) and delete. A `create` must
- * carry memberEnds (schema gate); an `update` must carry at least one of
- * `name` / `memberEnds` (schema gate, mirroring the class-update gate). The
- * engine invariants — every member class exists, >=3 ends, no duplicate
- * classId within one association — are enforced by applyDelta for BOTH
- * create and update (unit 13.1 / 13d). The ≥3 floor is deliberately NOT a
- * schema gate so a 2-end payload surfaces as a typed engine error
- * (NaryAssociationMinEndsError) instead of a thrown ZodError.
+ * Operaciones a nivel de asociación n-aria: create (>=3 extremos miembros), update
+ * (nombre y/o extremos miembros — corrección unidad 13d A) y delete. Un `create` debe
+ * transportar memberEnds; un `update` debe transportar al menos uno de `name` o `memberEnds`.
+ * Las invariantes del motor (todas las clases existen, >=3 extremos, sin clases duplicadas)
+ * son verificadas por applyDelta tanto para create como para update (unidad 13.1 / 13d).
+ * El piso ≥3 deliberadamente NO es filtro de esquema para que un payload de 2 extremos
+ * se reporte como error tipado del motor (NaryAssociationMinEndsError) en vez de ZodError.
  */
 export const NaryAssociationDeltaSchema = DeltaBase.extend({
   kind: z.literal('naryAssociation'),
   op: z.enum(['create', 'update', 'delete']),
   naryAssociationId: z.string().uuid(),
-  // For create (required) and update (optional replacement): member ends.
+  // Para create (requerido) y update (reemplazo opcional): extremos miembros.
   memberEnds: z.array(z.object({
     classId: z.string().uuid(),
     multiplicity: MultiplicitySchema,
@@ -227,7 +221,7 @@ export const NaryAssociationDeltaSchema = DeltaBase.extend({
 export type NaryAssociationDelta = z.infer<typeof NaryAssociationDeltaSchema>;
 
 /**
- * Batch delta: atomic application of multiple deltas (all or nothing).
+ * Delta de lote (batch): aplicación atómica de múltiples deltas (todo o nada).
  */
 export const BatchDeltaSchema = DeltaBase.extend({
   kind: z.literal('batch'),
@@ -244,8 +238,8 @@ export const BatchDeltaSchema = DeltaBase.extend({
 export type BatchDelta = z.infer<typeof BatchDeltaSchema>;
 
 /**
- * Discriminated union of all delta types.
- * This is the single schema used for validation and LLM structured output.
+ * Unión discriminada de todos los tipos de deltas.
+ * Es el esquema único utilizado para validación y salida estructurada del LLM.
  */
 export const DeltaSchema = z.discriminatedUnion('kind', [
   ClassDeltaSchema,
@@ -260,9 +254,9 @@ export const DeltaSchema = z.discriminatedUnion('kind', [
 export type Delta = z.infer<typeof DeltaSchema>;
 
 /**
- * LLM-facing JSON Schema generated from the Zod delta union.
- * This is the single source of truth for LLM structured outputs (design D3).
- * Uses Zod v4's `z.toJSONSchema()`.
+ * JSON Schema orientado al LLM generado a partir de la unión Zod de deltas.
+ * Es la fuente única de verdad para las salidas estructuradas del LLM (diseño D3).
+ * Utiliza `z.toJSONSchema()` de Zod v4.
  */
 export const deltaJsonSchema = z.toJSONSchema(DeltaSchema, {
   target: 'jsonSchema-2020-12',

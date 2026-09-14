@@ -1,11 +1,11 @@
 /**
- * Member-end edge of a UML 2.5.1 n-ary association (unit 13.2): a plain
- * solid line from the central diamond node to one member class, labeled
- * with that end's multiplicity (and its optional role name).
+ * Arista de extremo miembro de una asociación n-aria UML 2.5.1 (unidad 13.2): una línea
+ * sólida continua desde el nodo diamante central hacia una clase miembro, etiquetada
+ * con la multiplicidad de dicho extremo (y su nombre de rol opcional).
  *
- * Markers are not used on this edge (n-ary member ends are undirected
- * plain lines in UML notation) — and per the PR 10 lesson, any marker
- * reference stays a `url(#id)` string, never a MarkerType object.
+ * No se usan marcadores en esta arista (los extremos miembros n-arios son líneas
+ * continuas sin dirección en la notación UML) — y según la lección del PR 10, cualquier
+ * referencia a marcador permanece como una cadena `url(#id)`, nunca un objeto MarkerType.
  */
 import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
 
@@ -19,10 +19,10 @@ export interface NaryEndEdgeData {
 export function NaryEndEdge(props: EdgeProps<NaryEndEdgeData>) {
   const { data, sourceX, sourceY, targetX, targetY } = props;
 
-  // unit 13e — EA-style orthogonal routing (diamond → member class).
+  // unidad 13e — enrutamiento ortogonal estilo EA (diamante → clase miembro).
   const [path, labelX, labelY] = getSmoothStepPath(props);
 
-  // Fallback for edges without end data (defensive).
+  // Respaldo para aristas sin datos de extremo (defensivo).
   if (!data?.end) {
     return <path d={path} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
   }
@@ -34,8 +34,8 @@ export function NaryEndEdge(props: EdgeProps<NaryEndEdgeData>) {
     <>
       <BaseEdge path={path} strokeWidth={1.5} stroke="#1a1a2e" />
 
-      {/* Per-end multiplicity label (editor:R N-ary scenario "each end
-          stores its own multiplicity"). */}
+      {/* Etiqueta de multiplicidad por extremo (escenario editor:R N-aria "cada extremo
+          almacena su propia multiplicidad"). */}
       <text
         x={cx}
         y={cy - 8}
@@ -51,7 +51,7 @@ export function NaryEndEdge(props: EdgeProps<NaryEndEdgeData>) {
         {data.end.multiplicity}
       </text>
 
-      {/* Optional role name, just under the multiplicity. */}
+      {/* Nombre de rol opcional, justo debajo de la multiplicidad. */}
       {data.end.role !== undefined && (
         <text
           x={cx}

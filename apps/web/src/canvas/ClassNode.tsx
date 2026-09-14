@@ -1,14 +1,14 @@
 /**
- * UML class node rendered inside a React Flow canvas.
- * Handles are placed left (target) and right (source) for association edges.
+ * Nodo de clase UML renderizado dentro de un lienzo de React Flow.
+ * Los handles se colocan a la izquierda (target) y a la derecha (source) para aristas de asociación.
  *
- * editor:R2 — inline rename: double-click the title to edit; commit on
- * blur/Enter (via the onRename callback, which emits a rename delta).
+ * editor:R2 — renombrado en línea: doble clic en el título para editar; confirmar con
+ * blur/Enter (mediante el callback onRename, que emite un delta de renombrado).
  *
- * unit 13e — EA-style classifier box: three 1px-ruled compartments (name /
- * attributes / operations, empty ones kept as thin bands), the stereotype
- * above the centered bold name, and the signature folded-corner tab at the
- * top-right. `uml-class--selected` drives the EA blue selection border.
+ * unidad 13e — caja clasificadora estilo EA: tres compartimentos delimitados por 1px (nombre /
+ * atributos / operaciones, los vacíos se mantienen como franjas delgadas), el estereotipo
+ * sobre el nombre en negrita centrado y la clásica pestaña de esquina doblada en la
+ * esquina superior derecha. `uml-class--selected` maneja el borde de selección azul de EA.
  */
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
@@ -17,7 +17,7 @@ import type { Attribute, ClassKind, Method, Parameter, Visibility } from '@app/c
 
 import { useT } from '../i18n';
 
-/** UML adornments carried by member add/edit operations (unit 9). */
+/** Adornos UML transportados por operaciones de agregar/editar miembros (unidad 9). */
 export interface MemberAdornments {
   visibility?: Visibility;
   isStatic?: boolean;
@@ -29,12 +29,12 @@ export type ClassNodeData = Record<string, unknown> & {
   name: string;
   attributes: readonly Attribute[];
   methods: readonly Method[];
-  /** Unit 12.1: classifier kind ('class' | 'interface') and abstract marking. */
+  /** Unidad 12.1: tipo de clasificador ('class' | 'interface') y marca abstracta. */
   kind: ClassKind;
   isAbstract: boolean;
-  /** Other classes in the diagram — candidates for "make subclass of" (unit 11.4). */
+  /** Otras clases en el diagrama — candidatas para "hacer subclase de" (unidad 11.4). */
   otherClasses: readonly { id: string; name: string }[];
-  /** Interfaces in the diagram — candidates for "realize" (unit 12.4). */
+  /** Interfaces en el diagrama — candidatas para "realizar" (unidad 12.4). */
   otherInterfaces: readonly { id: string; name: string }[];
   onRename: (newName: string) => void;
   onDelete: () => void;
@@ -44,32 +44,32 @@ export type ClassNodeData = Record<string, unknown> & {
   onAddMethod: (name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) => void;
   onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) => void;
   onRemoveMethod: (memberId: string) => void;
-  /** Unit 11.4: emit a generalization create with this class as the subClass. */
+  /** Unidad 11.4: emitir una creación de generalización con esta clase como subClass. */
   onMakeSubclass: (superClassId: string) => void;
-  /** Unit 12.4: toggle the abstract marker via a class update delta. */
+  /** Unidad 12.4: alternar la marca abstracta mediante un delta de actualización de clase. */
   onToggleAbstract: (isAbstract: boolean) => void;
-  /** Unit 12.4: emit a realization create with this class as the client. */
+  /** Unidad 12.4: emitir una creación de realización con esta clase como cliente. */
   onRealize: (supplierInterfaceId: string) => void;
-  /** Unit 12.4 (12b): emit a dependency create with this class as the client. */
+  /** Unidad 12.4 (12b): emitir una creación de dependencia con esta clase como cliente. */
   onDependOn: (supplierClassId: string) => void;
-  /** Unit 11.4: select this class to show its generalization list in the panel. */
+  /** Unidad 11.4: seleccionar esta clase para mostrar su lista de generalizaciones en el panel. */
   onSelect: () => void;
   /**
-   * Unit 13c — node-wide drag-to-connect: when an edge tool is armed the
-   * canvas renders a full-node transparent source handle so a connection can
-   * START anywhere on the body, not just on the small handle dots. When not
-   * armed the overlay does not exist, so node dragging is untouched.
+   * Unidad 13c — arrastrar para conectar en todo el nodo: cuando una herramienta de borde está
+   * armada, el lienzo renderiza un handle origen transparente que cubre todo el nodo para que una
+   * conexión pueda COMENZAR en cualquier parte del cuerpo, no solo en los pequeños puntos de conexión.
+   * Cuando no está armada la superposición no existe, por lo que el arrastre del nodo queda intacto.
    */
   connectArmed?: boolean;
   /**
-   * Unit 13d — EA-style Quick Linker: true when this node is the canvas's
-   * selected element. The corner arrow renders ONLY then (hidden otherwise).
+   * Unidad 13d — Quick Linker estilo EA: true cuando este nodo es el elemento
+   * seleccionado del lienzo. La flecha de esquina se renderiza ÚNICAMENTE en ese caso (oculta en caso contrario).
    */
   selected?: boolean;
   /**
-   * Unit 13d — pointer-down on the Quick Linker arrow starts the quick-link
-   * drag; the canvas tracks the cursor and resolves the drop (connector menu
-   * over an element, element menu over empty canvas).
+   * Unidad 13d — pointer-down en la flecha de Quick Linker inicia el arrastre de
+   * enlace rápido; el lienzo sigue el cursor y resuelve la soltada (menú de conector
+   * sobre un elemento, menú de elemento sobre el lienzo vacío).
    */
   onQuickLinkStart?: (clientX: number, clientY: number) => void;
 };
@@ -77,9 +77,9 @@ export type ClassNodeData = Record<string, unknown> & {
 export type ClassFlowNode = import('@xyflow/react').Node<ClassNodeData, 'class'>;
 
 /**
- * editor:R3 — comma-separated parameter entries of the form `name: type`;
- * a missing type defaults to `any`. Blank entries are dropped so the
- * emitted delta always satisfies MemberDeltaSchema (parameter name/type min 1).
+ * editor:R3 — entradas de parámetros separadas por coma con la forma `nombre: tipo`;
+ * la ausencia de tipo recurre a `any`. Las entradas en blanco se descartan para que el
+ * delta emitido siempre cumpla con MemberDeltaSchema (nombre/tipo de parámetro mín. 1).
  */
 function parseParameters(input: string): Parameter[] {
   return input
@@ -96,8 +96,8 @@ function parseParameters(input: string): Parameter[] {
 }
 
 /**
- * UML 2.5.1 member rendering (unit 9.3): visibility prefix, `/` for derived,
- * `[mult]` after the type, static names underlined via the CSS class.
+ * Renderizado de miembros UML 2.5.1 (unidad 9.3): prefijo de visibilidad, `/` para derivados,
+ * `[mult]` tras el tipo, nombres estáticos subrayados mediante la clase CSS.
  */
 export function renderAttribute(attr: Attribute): string {
   const vis = attr.visibility ?? '+';
@@ -113,14 +113,14 @@ export function renderMethod(method: Method): string {
 }
 
 export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
-  // unit 13e.10 — every context-menu/member-editing string goes through the
-  // i18n dictionary; useT() re-renders this node live on language toggle.
+  // unidad 13e.10 — cada cadena del menú contextual/edición de miembros pasa por el
+  // diccionario i18n; useT() vuelve a renderizar este nodo en vivo al alternar el idioma.
   const { t } = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.name);
   const doneRef = useRef(false);
 
-  // Unit 11.4 — class context menu ("make subclass of").
+  // Unidad 11.4 — menú contextual de clase ("hacer subclase de").
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [attrName, setAttrName] = useState('');
@@ -138,7 +138,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   const [methodStatic, setMethodStatic] = useState(false);
   const [methodError, setMethodError] = useState<string | null>(null);
 
-  // editor:R3 — in-place member editing state (one member edited at a time).
+  // editor:R3 — estado de edición de miembro in situ (un miembro editado a la vez).
   const [editingMember, setEditingMember] = useState<
     { kind: 'attribute' | 'method'; id: string } | null
   >(null);
@@ -175,8 +175,8 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   const submitAttribute = (): void => {
     const name = attrName.trim();
     const type = attrType.trim();
-    // editor:R3 — blank-name attributes are rejected before any delta is emitted,
-    // so the model (Y.Doc) stays unchanged.
+    // editor:R3 — los atributos con nombre en blanco se rechazan antes de emitir cualquier delta,
+    // para que el modelo (Y.Doc) permanezca sin cambios.
     if (name.length === 0) {
       setAttrError(t('node.attrNameRequired'));
       return;
@@ -197,9 +197,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
   const submitMethod = (): void => {
     const name = methodName.trim();
-    // editor:R3 — blank-name methods are rejected before any delta is emitted,
-    // so the model (Y.Doc) stays unchanged. A blank return type defaults to
-    // `void` so the emitted delta always satisfies MemberDeltaSchema (min 1).
+    // editor:R3 — los métodos con nombre en blanco se rechazan antes de emitir cualquier delta,
+    // para que el modelo (Y.Doc) permanezca sin cambios. Un tipo de retorno en blanco recurre a
+    // `void` para que el delta emitido siempre cumpla con MemberDeltaSchema (mín. 1).
     if (name.length === 0) {
       setMethodError(t('node.methodNameRequired'));
       return;
@@ -245,10 +245,10 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
   };
 
   /**
-   * editor:R3 — commit an in-place member edit. A blank name or (return) type
-   * is rejected BEFORE any delta is emitted: core's `DeltaSchema.parse`
-   * throws on min(1) strings, so this guard keeps the model (Y.Doc)
-   * unchanged and shows a validation message instead.
+   * editor:R3 — confirmar una edición de miembro in situ. Un nombre o tipo (de retorno) en blanco
+   * se rechaza ANTES de emitir cualquier delta: `DeltaSchema.parse` de core
+   * lanza error ante cadenas con min(1), por lo que esta guarda mantiene el modelo (Y.Doc)
+   * sin cambios y muestra un mensaje de validación en su lugar.
    */
   const commitEdit = (): void => {
     if (editingMember === null) {
@@ -292,9 +292,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       className={`uml-class${isInterface ? ' uml-class--interface' : ''}${data.selected === true ? ' uml-class--selected' : ''}`}
       onClick={data.onSelect}
       onContextMenu={(event) => {
-        // editor:R Generalization (unit 11.4) — right-click opens the
-        // "make subclass of" menu; the browser menu is suppressed.
-        // Unit 12.4 adds "realize <interface>" and the abstract toggle.
+        // editor:R Generalización (unidad 11.4) — clic derecho abre el
+        // menú "hacer subclase de"; el menú del navegador se suprime.
+        // La unidad 12.4 añade "realizar <interfaz>" y el alternador abstracto.
         event.preventDefault();
         setMenuOpen(true);
       }}
@@ -320,8 +320,8 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
               </button>
             ))
           )}
-          {/* Unit 12.4 — realize an interface (client = this class). Interfaces only:
-              the engine rejects non-interface suppliers anyway. */}
+          {/* Unidad 12.4 — realizar una interfaz (cliente = esta clase). Solo interfaces:
+              el motor rechaza proveedores que no sean interfaz de todos modos. */}
           {data.otherInterfaces.map((iface) => (
             <button
               key={iface.id}
@@ -337,9 +337,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
               {t('node.realize', { name: iface.name })}
             </button>
           ))}
-          {/* Unit 12.4 (12b) — depends on (client = this class). The supplier may
-              be ANY other classifier (class or interface) — unlike realization.
-              13e.10: reuses panel.dependsOn — byte-identical EN/ES wording. */}
+          {/* Unidad 12.4 (12b) — depende de (cliente = esta clase). El proveedor puede
+              ser CUALQUIER otro clasificador (clase o interfaz) — a diferencia de realización.
+              13e.10: reutiliza panel.dependsOn — redacción idéntica en bytes EN/ES. */}
           {data.otherClasses.map((other) => (
             <button
               key={`dep-${other.id}`}
@@ -355,7 +355,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
               {t('panel.dependsOn', { name: other.name })}
             </button>
           ))}
-          {/* Unit 12.4 — abstract toggle (interfaces are implicitly abstract; hide it there). */}
+          {/* Unidad 12.4 — alternador abstracto (las interfaces son implícitamente abstractas; ocultarlo allí). */}
           {!isInterface && (
             <button
               type="button"
@@ -382,11 +382,11 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           </button>
         </div>
       )}
-      {/* unit 13d — EA-style Quick Linker: the corner arrow at the TOP-RIGHT
-          of the SELECTED element. Pointer-down starts a quick-link drag
-          (connector menu over a target element, element menu over empty
-          canvas). Hidden when the node is not selected; `nodrag` keeps React
-          Flow from turning the gesture into a node move. */}
+      {/* unidad 13d — Quick Linker estilo EA: la flecha de esquina en la PARTE SUPERIOR DERECHA
+          del elemento SELECCIONADO. Pointer-down inicia un arrastre de enlace rápido
+          (menú de conector sobre un elemento destino, menú de elemento sobre lienzo
+          vacío). Oculto cuando el nodo no está seleccionado; `nodrag` evita que React
+          Flow convierta el gesto en un movimiento de nodo. */}
       {data.selected === true && (
         <button
           type="button"
@@ -412,12 +412,12 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           </svg>
         </button>
       )}
-      {/* unit 13e — EA signature: the folded-corner tab at the top-right of
-          every classifier box (the most recognizable Sparx-EA cue). Purely
-          decorative; the Quick Linker arrow (13d) floats over it when the
-          node is selected. */}
+      {/* unidad 13e — firma de EA: la pestaña de esquina doblada en la parte superior derecha de
+          cada caja clasificadora (el rasgo más reconocible de Sparx-EA). Puramente
+          decorativo; la flecha de Quick Linker (13d) flota sobre ella cuando el
+          nodo está seleccionado. */}
       <span className="uml-class__corner-tab" aria-hidden="true" />
-      {/* unit 13e — compartment 1/3: the name (stereotype above, bold, centered). */}
+      {/* unidad 13e — compartimento 1/3: el nombre (estereotipo arriba, negrita, centrado). */}
       <div className="uml-class__compartment uml-class__compartment--name">
         {editing ? (
           <input
@@ -433,7 +433,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           />
         ) : (
           <div className="uml-class__title" onDoubleClick={startEditing}>
-            {/* Unit 12.1 — UML stereotype header for interfaces. */}
+            {/* Unidad 12.1 — encabezado de estereotipo UML para interfaces. */}
             {isInterface && <div className="uml-class__stereotype">«interface»</div>}
             <span className={`uml-class__name${isItalicName ? ' uml-class__name--italic' : ''}`}>{data.name}</span>
             <button
@@ -448,9 +448,9 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
         )}
       </div>
 
-      {/* unit 13e — compartment 2/3: attributes. Always present (empty ones
-          render as a thin band — the consistent three-box EA look); the
-          member-add row lives inside it. */}
+      {/* unidad 13e — compartimento 2/3: atributos. Siempre presente (los vacíos
+          se renderizan como una franja delgada — el aspecto consistente de tres cajas de EA); la
+          fila para agregar miembros reside dentro de él. */}
       <div className="uml-class__compartment uml-class__compartment--attributes">
         {data.attributes.length > 0 && (
           <div className="uml-class__section">
@@ -580,7 +580,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       </div>
       </div>
 
-      {/* unit 13e — compartment 3/3: operations (methods). Always present. */}
+      {/* unidad 13e — compartimento 3/3: operaciones (métodos). Siempre presente. */}
       <div className="uml-class__compartment uml-class__compartment--operations">
       {data.methods.length > 0 && (
         <div className="uml-class__section">
@@ -720,11 +720,11 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
-      {/* unit 13c — node-wide drag-to-connect: while an edge tool is armed,
-          this transparent full-node source handle makes the whole body a
-          valid connection start (and, in loose mode, a valid end). It is NOT
-          rendered when no tool is armed, so node dragging and in-node
-          editing behave exactly as before. */}
+      {/* unidad 13c — arrastre para conectar en todo el nodo: mientras una herramienta de borde está armada,
+          este handle de origen transparente de nodo completo hace que todo el cuerpo sea un
+          inicio de conexión válido (y, en modo flexible, un final válido). NO se
+          renderiza cuando no hay herramienta armada, por lo que el arrastre del nodo y la edición
+          dentro del nodo se comportan exactamente como antes. */}
       {data.connectArmed === true && (
         <Handle
           type="source"

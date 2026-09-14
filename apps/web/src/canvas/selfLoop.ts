@@ -1,41 +1,41 @@
 /**
- * unit 13e — self-loop geometry for recursive UML edges (source === target).
+ * unidad 13e — geometría de bucle autorreferencial para aristas recursivas UML (source === target).
  *
- * The bug this fixes ("no se ve lo recursivo"): getBezierPath on a self-edge
- * draws a curve that either collapses to a point (when both handles resolve
- * to the same coordinates) or passes BEHIND the opaque node body — React Flow
- * renders nodes above edges, so the recursive relation is invisible.
+ * El error que esto corrige ("no se ve lo recursivo"): getBezierPath en una arista
+ * autorreferencial dibuja una curva que o bien colapsa a un punto (cuando ambos conectores resuelven
+ * a las mismas coordenadas) o pasa POR DETRÁS del cuerpo opaco del nodo — React Flow
+ * renderiza los nodos por encima de las aristas, por lo que la relación recursiva resulta invisible.
  *
- * The fix (13e.7 refinement): a SYMMETRIC rounded arch ABOVE the node that
- * exits and re-enters at the node's TOP-CENTER — up from the top edge, across
- * an arch over the node, back down into the top edge — instead of the earlier
- * right-side bulge. This mirrors how EA draws recursive associations. The
- * exit stub sits left of center and the return stub right of center (a small
- * symmetric gap so the start/end markers never overlap); the arch apex is
- * horizontally centered on the node.
+ * La solución (refinamiento 13e.7): un arco redondeado SIMÉTRICO POR ENCIMA del nodo que
+ * sale y reingresa en el CENTRO SUPERIOR del nodo — sube desde el borde superior, cruza
+ * un arco sobre el nodo y desciende de regreso al borde superior — en lugar del ensanchamiento
+ * lateral derecho anterior. Esto refleja cómo Enterprise Architect dibuja asociaciones recursivas.
+ * El muñón de salida se ubica a la izquierda del centro y el muñón de retorno a la derecha del centro (una pequeña
+ * separación simétrica para que los marcadores de inicio/fin nunca se solapen); el ápice del arco está
+ * centrado horizontalmente en el nodo.
  *
- * Sized from the node's measured dimensions (React Flow v12 does NOT put them
- * on EdgeProps; the edge components read them from the store via useStore),
- * with a sensible default box when the node has not been measured yet (first
- * paint / jsdom). The handles sit at the node's vertical center (Left =
- * target, Right = source), so the node center X is the handles' midpoint and
- * the node top is `min(sy, ty) - h/2`.
+ * Dimensionado a partir de las medidas del nodo (React Flow v12 NO las incluye
+ * en EdgeProps; los componentes de arista las leen del almacén mediante useStore),
+ * con una caja predeterminada razonable cuando el nodo aún no ha sido medido (primer
+ * pintado / jsdom). Los conectores se ubican en el centro vertical del nodo (Left =
+ * target, Right = source), por lo que el centro X del nodo es el punto medio de los conectores y
+ * la parte superior del nodo es `min(sy, ty) - h/2`.
  *
- * The path uses only M/L/Q commands (every emitted number is an x,y pair) so
- * tests can parse its extent exactly — no arc commands. NaN-safe: every
- * non-finite input is sanitized to 0 and every dimension falls back to the
- * default box.
+ * La trayectoria usa solo comandos M/L/Q (cada número emitido es un par x,y) para que
+ * las pruebas puedan analizar su extensión con exactitud — sin comandos de arco. Seguro ante NaN: cada
+ * entrada no finita se sanitiza a 0 y cada dimensión recurre a la
+ * caja predeterminada.
  */
 
-/** Default node box used when React Flow has not measured the node yet. */
+/** Caja de nodo predeterminada utilizada cuando React Flow aún no ha medido el nodo. */
 export const SELF_LOOP_DEFAULT_WIDTH = 180;
 export const SELF_LOOP_DEFAULT_HEIGHT = 120;
 
-/** Half the horizontal distance between the exit and return stubs (px). */
+/** La mitad de la distancia horizontal entre los muñones de salida y retorno (px). */
 export const SELF_LOOP_HALF_SPAN = 24;
-/** Clearance between the node top and the arch apex (px). */
+/** Separación libre entre la parte superior del nodo y el ápice del arco (px). */
 export const SELF_LOOP_LIFT = 40;
-/** Rounded corner radius of the arch (px). */
+/** Radio de las esquinas redondeadas del arco (px). */
 export const SELF_LOOP_RADIUS = 12;
 
 export interface SelfLoopInput {
@@ -43,9 +43,9 @@ export interface SelfLoopInput {
   sourceY: number;
   targetX: number;
   targetY: number;
-  /** Measured node width; <= 0 or non-finite falls back to the default. */
+  /** Ancho medido del nodo; <= 0 o no finito recurre al valor predeterminado. */
   width?: number;
-  /** Measured node height; <= 0 or non-finite falls back to the default. */
+  /** Alto medido del nodo; <= 0 o no finito recurre al valor predeterminado. */
   height?: number;
 }
 
@@ -54,19 +54,19 @@ const positive = (v: number | undefined, fallback: number): number =>
   v !== undefined && Number.isFinite(v) && v > 0 ? v : fallback;
 
 /**
- * Full geometry for a self-loop: the path, the arch-apex label anchor and
- * the per-end label anchors (multiplicity/role live beside each vertical
- * stub, EA-style).
+ * Geometría completa para un bucle autorreferencial: la trayectoria, el ancla de etiqueta del ápice del arco y
+ * las anclas de etiqueta por extremo (multiplicidad/rol se ubican junto a cada muñón
+ * vertical, estilo EA).
  */
 export interface SelfLoopGeometry {
   path: string;
-  /** Center of the arch apex (association/dependency name). */
+  /** Centro del ápice del arco (nombre de asociación/dependencia). */
   labelX: number;
   labelY: number;
-  /** Beside the exit (source) stub — text-anchor: end. */
+  /** Junto al muñón de salida (origen) — text-anchor: end. */
   sourceLabelX: number;
   sourceLabelY: number;
-  /** Beside the return (target) stub — text-anchor: start. */
+  /** Junto al muñón de retorno (destino) — text-anchor: start. */
   targetLabelX: number;
   targetLabelY: number;
 }
@@ -79,8 +79,8 @@ export function getSelfLoopGeometry(input: SelfLoopInput): SelfLoopGeometry {
   const h = positive(input.height, SELF_LOOP_DEFAULT_HEIGHT);
   const r = Math.min(SELF_LOOP_RADIUS, SELF_LOOP_HALF_SPAN - 4);
 
-  // Handles are at the node's vertical center: their midpoint is the node
-  // center X, and the top edge is half a height above the higher handle.
+  // Los conectores están en el centro vertical del nodo: su punto medio es el
+  // centro X del nodo, y el borde superior está a media altura por encima del conector más alto.
   const centerX = (sx + tx) / 2;
   const topY = Math.min(sy, ty) - h / 2;
   const exitX = centerX - SELF_LOOP_HALF_SPAN;
@@ -107,13 +107,13 @@ export function getSelfLoopGeometry(input: SelfLoopInput): SelfLoopGeometry {
 }
 
 /**
- * Builds the symmetric rounded arch path for a self-edge plus the label
- * anchor (centered on the arch apex, above the line).
+ * Construye la trayectoria del arco redondeado simétrico para una arista autorreferencial más el
+ * ancla de etiqueta (centrada en el ápice del arco, por encima de la línea).
  *
- * Geometry: the arch exits the node's top edge left of center, rises to the
- * apex, crosses over the node and descends back into the top edge right of
- * center — markers keep orienting along the path tangents (diamond exiting
- * upward at the source stub, arrowhead entering downward at the target stub).
+ * Geometría: el arco sale del borde superior del nodo a la izquierda del centro, se eleva hasta el
+ * ápice, cruza sobre el nodo y desciende de vuelta hacia el borde superior a la derecha del
+ * centro — los marcadores continúan orientándose según las tangentes de la trayectoria (diamante saliendo
+ * hacia arriba en el muñón de origen, punta de flecha entrando hacia abajo en el muñón de destino).
  */
 export function getSelfLoopPath(input: SelfLoopInput): [path: string, labelX: number, labelY: number] {
   const g = getSelfLoopGeometry(input);

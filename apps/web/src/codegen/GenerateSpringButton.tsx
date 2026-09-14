@@ -1,17 +1,17 @@
 /**
- * GenerateSpringButton — toolbar control that drives the PR 14a/14d job API.
+ * GenerateSpringButton — control de la barra de herramientas que interactúa con la API de trabajos PR 14a/14d.
  *
- * Click flow:
+ * Flujo de clic:
  *   1. POST /diagrams/:id/generate -> jobId
- *   2. Poll GET /jobs/:id every 1s until status is 'succeeded' or 'failed'
- *   3. On success: download the zip via GET /jobs/:id/artifact and trigger
- *      a browser download.
+ *   2. Consulta periódica GET /jobs/:id cada 1s hasta que el estado sea 'succeeded' o 'failed'
+ *   3. En caso de éxito: descarga el zip mediante GET /jobs/:id/artifact y dispara
+ *      la descarga en el navegador.
  *
- * The button is disabled while a job is in flight, surfaces the current
- * status as a label, and shows any error message returned by the API.
+ * El botón se deshabilita mientras un trabajo está en curso, muestra el estado
+ * actual como etiqueta y refleja cualquier mensaje de error retornado por la API.
  *
- * It deliberately does NOT mutate the diagram — codegen is a read-only
- * consumer of the canonical model.
+ * Deliberadamente NO muta el diagrama — codegen es un consumidor de
+ * solo lectura del modelo canónico.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -28,9 +28,9 @@ import {
 } from '../api/codegenApi';
 
 export interface GenerateSpringButtonProps {
-  /** Diagram id from the URL hash. Null while loading. */
+  /** Id del diagrama desde el hash de la URL. Null mientras se carga. */
   diagramId: string | null;
-  /** Disabled when the editor is not ready or the diagram isn't saved yet. */
+  /** Deshabilitado cuando el editor no está listo o el diagrama aún no se guardó. */
   disabled?: boolean;
 }
 
@@ -46,7 +46,7 @@ const POLL_INTERVAL_MS = 1000;
 export function GenerateSpringButton({ diagramId, disabled = false }: GenerateSpringButtonProps): JSX.Element {
   const { t: tr } = useT();
   const [state, setState] = useState<LocalState>({ phase: 'idle' });
-  // Guard against state updates after unmount and overlapping polls.
+  // Protección contra actualizaciones de estado tras el desmontaje y sondeos superpuestos.
   const mountedRef = useRef(true);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -123,8 +123,8 @@ export function GenerateSpringButton({ diagramId, disabled = false }: GenerateSp
     await pollUntilDone(jobId);
   }, [diagramId, pollUntilDone, tr]);
 
-  // When the job succeeds, kick off the download. Effect, not in the click
-  // handler, so the user sees the success state before the dialog opens.
+  // Cuando el trabajo tiene éxito, iniciar la descarga. En un Effect, no en el
+  // manejador de clic, para que el usuario vea el estado de éxito antes de que se abra el diálogo.
   useEffect(() => {
     if (state.phase !== 'succeeded' || diagramId === null) {
       return;

@@ -1,18 +1,18 @@
 /**
- * ImportPhotoButton — toolbar control for photo import (PR 16, task 16.3-WEB).
+ * ImportPhotoButton — control de la barra de herramientas para importación de fotos (PR 16, tarea 16.3-WEB).
  *
- * Click flow:
- *   1. Open a file picker restricted to images
- *   2. Client-side validation (photo:R4) — zero API calls on invalid input
- *   3. Read file as base64 → POST /diagrams/:id/photo → 202 { jobId }
- *   4. Poll GET /diagrams/:id/photo/:jobId every 1s until succeeded/failed
- *   5. On success: render PhotoReviewModal (photo:R2) with extracted classes
- *   6. User edits/drops elements → approve applies the filtered BatchDelta
- *      to the Y.Doc via applyDeltaToYDoc
- *   7. Cancel discards — Y.Doc unchanged
+ * Flujo de clic:
+ *   1. Abre un selector de archivos restringido a imágenes
+ *   2. Validación del lado del cliente (photo:R4) — cero llamadas a la API ante entradas inválidas
+ *   3. Lee el archivo como base64 → POST /diagrams/:id/photo → 202 { jobId }
+ *   4. Consulta periódica GET /diagrams/:id/photo/:jobId cada 1s hasta succeeded/failed
+ *   5. En caso de éxito: renderiza PhotoReviewModal (photo:R2) con las clases extraídas
+ *   6. El usuario edita/descarta elementos → aprobar aplica el BatchDelta filtrado
+ *      al Y.Doc mediante applyDeltaToYDoc
+ *   7. Cancelar descarta — Y.Doc sin cambios
  *
- * Mirrors the polling pattern from GenerateSpringButton and the guarded
- * apply pattern from ImportXmiButton (PR15 hang-bug lesson).
+ * Refleja el patrón de sondeo de GenerateSpringButton y el patrón de aplicación
+ * protegida de ImportXmiButton (lección del error de bloqueo en PR15).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BatchDeltaSchema, type BatchDelta, type Delta } from '@app/core';
@@ -29,11 +29,11 @@ import { uploadPhoto, getPhotoJob } from './photoApi';
 import { PhotoReviewModal, type ReviewableClass } from './PhotoReviewModal';
 
 export interface ImportPhotoButtonProps {
-  /** The Y.Doc the app owns (passed down from App). */
+  /** El Y.Doc que posee la aplicación (pasado desde App). */
   doc: import('yjs').Doc;
-  /** Diagram id from the URL hash. Null while loading. */
+  /** Id del diagrama desde el hash de la URL. Null mientras se carga. */
   diagramId: string | null;
-  /** Disabled when the editor is not ready or the diagram isn't saved yet. */
+  /** Deshabilitado cuando el editor no está listo o el diagrama aún no se guardó. */
   disabled?: boolean;
 }
 
@@ -75,7 +75,7 @@ export function ImportPhotoButton({
     inputRef.current?.click();
   }, []);
 
-  // Poll until the job completes or fails (mirrors GenerateSpringButton pattern).
+  // Consultar hasta que el trabajo se complete o falle (refleja el patrón de GenerateSpringButton).
   const pollUntilDone = useCallback(
     async (currentDiagramId: string, jobId: string): Promise<void> => {
       const tick = async (): Promise<void> => {
@@ -98,7 +98,7 @@ export function ImportPhotoButton({
             setState({ phase: 'failed', message: tr('photo.noBatch') });
             return;
           }
-          // Process extraction — warn on zero elements (photo:R3).
+          // Procesar extracción — advertir ante cero elementos (photo:R3).
           const processed = processExtraction(result.batch);
           if (!processed.ok) {
             const allWarnings = [...(result.warnings ?? []), ...processed.warnings];
@@ -131,7 +131,7 @@ export function ImportPhotoButton({
           return;
         }
 
-        // Still queued or running — schedule next poll.
+        // Todavía en cola o ejecutándose — programar siguiente consulta.
         if (mountedRef.current) {
           setState({ phase: 'polling', jobId });
         }
@@ -148,7 +148,7 @@ export function ImportPhotoButton({
     async (file: File): Promise<void> => {
       if (diagramId === null) return;
 
-      // Phase 1: Client-side validation (photo:R4) — zero API calls on invalid.
+      // Fase 1: Validación del lado del cliente (photo:R4) — cero llamadas a la API si es inválido.
       setState({ phase: 'validating' });
       const fileError = validatePhotoFile(file);
       if (fileError !== null) {
@@ -156,7 +156,7 @@ export function ImportPhotoButton({
         return;
       }
 
-      // Phase 2: Read first bytes for magic-byte validation.
+      // Fase 2: Leer primeros bytes para validación de firmas mágicas.
       let firstBytes: Uint8Array;
       try {
         const ab = await file.slice(0, 8).arrayBuffer();
@@ -172,7 +172,7 @@ export function ImportPhotoButton({
         return;
       }
 
-      // Phase 3: Convert to base64 and upload.
+      // Fase 3: Convertir a base64 y subir.
       setState({ phase: 'uploading' });
       let base64: string;
       try {
@@ -204,7 +204,7 @@ export function ImportPhotoButton({
     [diagramId, tr, pollUntilDone],
   );
 
-  // Cleanup poll timer on unmount.
+  // Limpiar temporizador de sondeo al desmontar.
   useEffect(() => {
     return () => {
       if (pollTimerRef.current !== null) {
@@ -241,7 +241,7 @@ export function ImportPhotoButton({
   const handleApprove = useCallback((): void => {
     if (state.phase !== 'review') return;
 
-    // Build the filtered batch: remove dropped elements, apply name edits.
+    // Construir el lote filtrado: eliminar elementos descartados, aplicar ediciones de nombres.
     const visible = state.classes.filter((c) => !c.dropped);
     const nameMap = new Map(state.classes.map((c) => [c.classId, c.name]));
 
@@ -258,7 +258,7 @@ export function ImportPhotoButton({
       if (d.kind === 'class' && d.op === 'create') {
         return visible.some((c) => c.classId === (d as { classId: string }).classId);
       }
-      // Keep non-class deltas (associations etc.) if both endpoints survived.
+      // Conservar deltas que no sean de clase (asociaciones, etc.) si ambos extremos sobrevivieron.
       return true;
     });
 
@@ -267,7 +267,7 @@ export function ImportPhotoButton({
       deltas: filteredDeltas as BatchDelta['deltas'],
     };
 
-    // Validate with BatchDeltaSchema before applying (PR15 hang-bug lesson).
+    // Validar con BatchDeltaSchema antes de aplicar (lección del error de bloqueo en PR15).
     let validated: BatchDelta;
     try {
       validated = BatchDeltaSchema.parse(filteredBatch);
@@ -278,7 +278,7 @@ export function ImportPhotoButton({
 
     setState({ phase: 'applying' });
 
-    // Apply through the canonical path — guarded against schema/apply errors.
+    // Aplicar a través de la ruta canónica — protegido contra errores de esquema/aplicación.
     let applied: ReturnType<typeof applyDeltaToYDoc>;
     try {
       applied = applyDeltaToYDoc(doc, validated);

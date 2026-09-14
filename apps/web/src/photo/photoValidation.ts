@@ -1,17 +1,17 @@
 /**
- * Photo validation (PR 16, task 16.1) — client-side pre-validation.
+ * Validación de fotos (PR 16, tarea 16.1) — prevalidación del lado del cliente.
  *
- * photo:R4 — reject invalid/oversized images LOCALLY with ZERO API calls.
- * - Magic-bytes check catches a PDF renamed to .png (reject).
- * - Size cap rejects oversized uploads before any network round-trip.
- * - Supported formats: PNG, JPEG, GIF, WebP (raster formats per spec).
+ * photo:R4 — rechazar imágenes inválidas/excesivas LOCALMENTE con CERO llamadas a la API.
+ * - La verificación de magic-bytes detecta un PDF renombrado a .png (rechazar).
+ * - El límite de tamaño rechaza cargas excesivas antes de cualquier viaje de red.
+ * - Formatos soportados: PNG, JPEG, GIF, WebP (formatos ráster según especificación).
  */
 import type { BatchDelta } from '@app/core';
 
-/** Maximum upload size: 10 MB. */
+/** Tamaño máximo de subida: 10 MB. */
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
-/** Supported MIME types for photo import. */
+/** Tipos MIME soportados para importación de fotos. */
 export const SUPPORTED_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -19,15 +19,15 @@ export const SUPPORTED_MIME_TYPES = new Set([
   'image/webp',
 ]);
 
-/** Magic-byte signatures for supported image formats. */
+/** Firmas de magic-bytes para los formatos de imagen soportados. */
 const MAGIC_BYTES: Record<string, number[]> = {
   'image/png': [0x89, 0x50, 0x4e, 0x47], // \x89PNG
-  'image/jpeg': [0xff, 0xd8, 0xff], // JPEG SOI marker
+  'image/jpeg': [0xff, 0xd8, 0xff], // Marcador SOI de JPEG
   'image/gif': [0x47, 0x49, 0x46, 0x38], // GIF8
-  'image/webp': [0x52, 0x49, 0x46, 0x46], // RIFF (WebP container)
+  'image/webp': [0x52, 0x49, 0x46, 0x46], // RIFF (contenedor WebP)
 };
 
-/** PDF magic bytes — used to detect a PDF renamed to .png. */
+/** Magic bytes de PDF — utilizados para detectar un PDF renombrado a .png. */
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46]; // %PDF
 
 export type PhotoValidationError =
@@ -37,8 +37,8 @@ export type PhotoValidationError =
   | { kind: 'empty_file'; message: string };
 
 /**
- * Validate a File before upload. Returns null on success, or a structured
- * error on failure. All checks happen locally — zero network calls.
+ * Valida un File antes de subirlo. Retorna null en caso de éxito, o un error
+ * estructurado ante un fallo. Todas las comprobaciones ocurren localmente — cero llamadas a la red.
  */
 export function validatePhotoFile(file: File): PhotoValidationError | null {
   if (file.size === 0) {
@@ -63,13 +63,13 @@ export function validatePhotoFile(file: File): PhotoValidationError | null {
 }
 
 /**
- * Validate magic bytes against the declared MIME type.
- * Reads the first 8 bytes and checks:
- * 1. The file does NOT start with PDF magic (catches renamed PDFs).
- * 2. The bytes match the expected signature for the declared type.
+ * Valida los magic bytes contra el tipo MIME declarado.
+ * Lee los primeros 8 bytes y comprueba:
+ * 1. El archivo NO comienza con la firma de PDF (detecta PDFs renombrados).
+ * 2. Los bytes coinciden con la firma esperada para el tipo declarado.
  *
- * This is a SECOND pass after validatePhotoFile — it requires reading bytes.
- * Returns null on success, or a structured error.
+ * Este es un SEGUNDO paso después de validatePhotoFile — requiere leer bytes.
+ * Retorna null en caso de éxito, o un error estructurado.
  */
 export function validatePhotoBytes(
   firstBytes: Uint8Array,
@@ -79,7 +79,7 @@ export function validatePhotoBytes(
     return { kind: 'empty_file', message: 'File is empty' };
   }
 
-  // Check for PDF magic (catches PDF renamed to .png)
+  // Comprobar la firma mágica de PDF (detecta PDF renombrado a .png)
   if (matchesMagic(firstBytes, PDF_MAGIC)) {
     return {
       kind: 'magic_bytes_mismatch',
@@ -107,17 +107,17 @@ function matchesMagic(bytes: Uint8Array, magic: number[]): boolean {
 }
 
 /**
- * Result of a photo extraction — either a valid batch or a warning with
- * zero elements. Never fabricates classes (photo:R3).
+ * Resultado de una extracción de foto — ya sea un lote válido o una advertencia con
+ * cero elementos. Nunca inventa clases (photo:R3).
  */
 export type PhotoExtractionResult =
   | { ok: true; batch: BatchDelta; warnings: string[] }
   | { ok: false; warnings: string[] };
 
 /**
- * Process a raw extraction from the vision adapter. If the batch has zero
- * elements, produce a warning instead of an empty batch. Never fabricates
- * placeholder classes (photo:R3).
+ * Procesa una extracción en crudo del adaptador de visión. Si el lote tiene cero
+ * elementos, genera una advertencia en lugar de un lote vacío. Nunca inventa
+ * clases de relleno (photo:R3).
  */
 export function processExtraction(raw: BatchDelta): PhotoExtractionResult {
   const warnings: string[] = [];

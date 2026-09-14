@@ -1,16 +1,16 @@
 /**
- * Photo import job routes (PR 16, task 16.3 + 16.4).
+ * Rutas de trabajos de importación de fotos (PR 16, tareas 16.3 + 16.4).
  *
- * POST /diagrams/:id/photo — accepts a base64-encoded image, validates it
- * (magic bytes + size cap per photo:R4), creates an async job via jobs.ts,
- * and returns { jobId } immediately (202). The job runs VisionPort.extract
- * in the background.
+ * POST /diagrams/:id/photo — acepta una imagen codificada en base64, la valida
+ * (bytes mágicos + límite de tamaño según photo:R4), crea un trabajo asíncrono vía jobs.ts,
+ * y retorna { jobId } inmediatamente (202). El trabajo ejecuta VisionPort.extract
+ * en segundo plano.
  *
- * GET /diagrams/:id/photo/:jobId — returns job status. When succeeded, the
- * result includes the extracted BatchDelta (or a warning with zero elements,
- * never fabricated — photo:R3).
+ * GET /diagrams/:id/photo/:jobId — retorna el estado del trabajo. Al completarse con éxito,
+ * el resultado incluye el BatchDelta extraído (o una advertencia si hay cero elementos,
+ * nunca fabricados — photo:R3).
  *
- * VisionPort is injected through AppOptions (FakeVision in tests).
+ * VisionPort se inyecta a través de AppOptions (FakeVision en pruebas).
  */
 import type { FastifyInstance } from 'fastify';
 import type { VisionPort } from '@app/core';
@@ -18,7 +18,7 @@ import { BatchDeltaSchema } from '@app/core';
 import { loadDiagramById, DiagramNotFoundError } from './index.js';
 import { jobRegistry } from './jobs.js';
 
-// ── Validation constants (mirrored from apps/web photoValidation.ts) ────────
+// ── Constantes de validación (reflejadas de apps/web photoValidation.ts) ───
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
@@ -40,7 +40,7 @@ function matchesMagic(bytes: Uint8Array, magic: number[]): boolean {
 }
 
 /**
- * Detect MIME type from magic bytes. Returns the MIME string or null.
+ * Detecta el tipo MIME a partir de los bytes mágicos. Retorna la cadena MIME o null.
  */
 function detectMime(bytes: Uint8Array): string | null {
   for (const [mime, magic] of Object.entries(MAGIC_BYTES)) {
@@ -50,7 +50,7 @@ function detectMime(bytes: Uint8Array): string | null {
 }
 
 export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPort) {
-  // POST /diagrams/:id/photo — create async photo import job
+  // POST /diagrams/:id/photo — crea trabajo asíncrono de importación de foto
   app.post<{ Params: { id: string }; Body: { image?: string; mimeType?: string } }>(
     '/diagrams/:id/photo',
     async (request, reply) => {
@@ -62,7 +62,7 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
         return reply.status(400).send({ error: 'image (base64) is required' });
       }
 
-      // Existence check before parsing (PR15 lesson: 404 BEFORE heavy work).
+      // Verificación de existencia antes del parseo (lección de PR15: 404 ANTES del trabajo pesado).
       try {
         await loadDiagramById(diagramId);
       } catch (error) {
@@ -74,7 +74,7 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
           .send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
       }
 
-      // Decode base64 to bytes for validation
+      // Decodifica base64 a bytes para validación
       let imageBytes: Uint8Array;
       try {
         imageBytes = new Uint8Array(Buffer.from(imageBase64, 'base64'));
@@ -82,26 +82,26 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
         return reply.status(400).send({ error: 'Invalid base64 image data' });
       }
 
-      // Size cap (photo:R4) — reject BEFORE creating a job (zero API calls)
+      // Límite de tamaño (photo:R4) — rechazar ANTES de crear un trabajo (cero llamadas a API)
       if (imageBytes.byteLength > MAX_PHOTO_BYTES) {
         return reply.status(413).send({
           error: `Image too large: ${(imageBytes.byteLength / (1024 * 1024)).toFixed(1)} MB (max ${MAX_PHOTO_BYTES / (1024 * 1024)} MB)`,
         });
       }
 
-      // Magic-bytes validation (photo:R4) — catch PDF renamed to .png
+      // Validación de bytes mágicos (photo:R4) — detectar PDF renombrado a .png
       if (imageBytes.byteLength === 0) {
         return reply.status(400).send({ error: 'Image is empty' });
       }
 
-      // Reject PDF magic regardless of declared MIME
+      // Rechazar magic bytes de PDF independientemente del MIME declarado
       if (matchesMagic(imageBytes, PDF_MAGIC)) {
         return reply.status(400).send({
           error: 'File appears to be a PDF, not an image. Supported formats: PNG, JPEG, GIF, WebP',
         });
       }
 
-      // Verify magic bytes match declared MIME type
+      // Verificar que los bytes mágicos coincidan con el tipo MIME declarado
       const detectedMime = detectMime(imageBytes);
       if (detectedMime === null) {
         return reply.status(400).send({
@@ -109,7 +109,7 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
         });
       }
 
-      // Backpressure: reject if a job is already in flight
+      // Contrapresión: rechazar si ya hay un trabajo en curso
       const existing = jobRegistry.findActiveByDiagramId(diagramId);
       if (existing) {
         return reply.status(409).send({
@@ -118,7 +118,7 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
         });
       }
 
-      // Create job and run extraction in background
+      // Crea el trabajo y ejecuta la extracción en segundo plano
       const job = jobRegistry.create(diagramId);
       setImmediate(() => void runPhotoExtraction(job.id, diagramId, imageBytes, detectedMime, vision));
 
@@ -126,13 +126,13 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
     }
   );
 
-  // GET /diagrams/:id/photo/:jobId — get job status with extraction result
+  // GET /diagrams/:id/photo/:jobId — obtiene estado del trabajo con resultado de extracción
   app.get<{ Params: { id: string; jobId: string } }>(
     '/diagrams/:id/photo/:jobId',
     async (request, reply) => {
       const { jobId } = request.params;
 
-      // Verify diagram exists
+      // Verifica que el diagrama exista
       try {
         await loadDiagramById(request.params.id);
       } catch (error) {
@@ -165,7 +165,7 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
       }
 
       if (job.status === 'succeeded' && job.artifact) {
-        // Artifact is a JSON buffer containing { batch, warnings }
+        // El artefacto es un búfer JSON que contiene { batch, warnings }
         try {
           const result = JSON.parse(job.artifact.toString('utf8')) as {
             batch: unknown;
@@ -181,13 +181,13 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
         }
       }
 
-      // queued or running — no artifact yet
+      // en cola o en ejecución — aún sin artefacto
       return base;
     }
   );
 }
 
-// ── Background extraction job ──────────────────────────────────────────────
+// ── Trabajo de extracción en segundo plano ────────────────────────────────
 
 async function runPhotoExtraction(
   jobId: string,
@@ -201,12 +201,12 @@ async function runPhotoExtraction(
 
     const batch = await vision.extract(imageBytes, mimeType);
 
-    // Validate the extracted batch against the canonical schema, then
-    // remap diagramId to the target diagram (same pattern as XMI import).
+    // Valida el lote extraído contra el esquema canónico, luego
+    // reasigna diagramId al diagrama de destino (mismo patrón que en importación XMI).
     const validated = BatchDeltaSchema.parse(batch);
     validated.diagramId = diagramId;
 
-    // Count elements and build warnings (photo:R3 — never fabricate)
+    // Cuenta elementos y construye advertencias (photo:R3 — nunca fabricar)
     const warnings: string[] = [];
     const classCount = validated.deltas.filter(
       (d) => d.kind === 'class' && d.op === 'create',
@@ -218,7 +218,7 @@ async function runPhotoExtraction(
       );
     }
 
-    // Store result as JSON buffer in the job artifact
+    // Almacena el resultado como búfer JSON en el artefacto del trabajo
     const result = JSON.stringify({ batch: validated, warnings });
     jobRegistry.setSucceeded(jobId, Buffer.from(result, 'utf8'));
   } catch (error) {

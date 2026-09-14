@@ -1,9 +1,9 @@
-/// Explicit exception thrown when the backend cannot be reached.
-/// Meets requirement mobile:R2:
-/// "GIVEN the generated backend is not running,
-///  WHEN the client attempts a request,
-///  THEN the client shows an explicit connection error,
-///  AND it MUST NOT display stale data as if it were live."
+/// Excepción explícita lanzada cuando no se puede alcanzar el backend.
+/// Cumple con el requerimiento mobile:R2:
+/// "DADO QUE el backend generado no se está ejecutando,
+///  CUANDO el cliente intenta una solicitud,
+///  ENTONCES el cliente muestra un error de conexión explícito,
+///  Y NO DEBE mostrar datos obsoletos como si estuvieran en vivo."
 class BackendConnectionException implements Exception {
   final String message;
   final dynamic cause;
@@ -14,7 +14,7 @@ class BackendConnectionException implements Exception {
   String toString() => 'BackendConnectionException: $message';
 }
 
-/// Thrown when backend returns a client or server error (e.g. 400, 404, 500).
+/// Lanzada cuando el backend retorna un error de cliente o servidor (ej. 400, 404, 500).
 class BackendApiException implements Exception {
   final int statusCode;
   final String message;

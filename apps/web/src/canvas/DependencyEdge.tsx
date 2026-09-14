@@ -1,21 +1,21 @@
 /**
- * Custom edge component for UML dependency edges: a DASHED line with an
- * OPEN (non-filled, V-shaped) arrowhead pointing toward the supplier
- * (UML 2.5.1 dependency notation). Unlike realization, the supplier may
- * be any class or interface and there is no multiplicity label.
+ * Componente de arista personalizado para dependencias UML: una línea DISCONTINUA con una
+ * punta de flecha ABIERTA (sin relleno, en forma de V) apuntando hacia el proveedor
+ * (notación de dependencia de UML 2.5.1). A diferencia de la realización, el proveedor puede
+ * ser cualquier clase o interfaz y no hay etiqueta de multiplicidad.
  *
- * The edge is drawn source = clientClass → target = supplierClass, so
- * the arrow marker sits on marker-end. Markers are referenced as
- * `url(#id)` strings — NOT MarkerType objects (PR 10 lesson, applied by
- * PR 11's GeneralizationEdge and PR 12a's RealizationEdge: React Flow
- * serializes marker objects into attributes the browser cannot resolve
- * for custom SVG defs).
+ * La arista se dibuja origen = clientClass → destino = supplierClass, por lo que
+ * el marcador de flecha se ubica en marker-end. Los marcadores se referencian como
+ * cadenas `url(#id)` — NO objetos MarkerType (lección del PR 10, aplicada por
+ * GeneralizationEdge de PR 11 y RealizationEdge de PR 12a: React Flow
+ * serializa los objetos de marcador en atributos que el navegador no puede resolver
+ * para defs SVG personalizados).
  *
- * unit 13e: non-self edges route orthogonally (getSmoothStepPath, EA's
- * default connector); self-dependencies (client === supplier, valid since
- * 13d) render a visible rounded loop via getSelfLoopPath — sized from the
- * node's measured dimensions read from the React Flow store — so the open
- * arrowhead returns into the node instead of hiding behind it.
+ * unidad 13e: las aristas no reflexivas se enrutan ortogonalmente (getSmoothStepPath, conector
+ * por defecto de EA); las autodependencias (client === supplier, válidas desde
+ * 13d) renderizan un bucle redondeado visible mediante getSelfLoopPath — dimensionado a partir
+ * de las medidas del nodo leídas del almacén de React Flow — para que la punta de flecha
+ * abierta retorne al nodo en lugar de ocultarse tras él.
  */
 import { type EdgeProps, getSmoothStepPath, useStore, BaseEdge } from '@xyflow/react';
 
@@ -27,17 +27,17 @@ interface DependencyEdgeData {
   dependency: Dependency;
 }
 
-/** Dashed stroke per UML dependency notation (client → supplier). */
+/** Trazo discontinuo según la notación de dependencia UML (cliente → proveedor). */
 const DEPENDENCY_DASH = '6 4';
 
 export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
   const { id, data, source, target, sourceX, sourceY, targetX, targetY } = props;
 
-  // unit 13e — measured size of the (shared) node for the self-loop.
+  // unidad 13e — tamaño medido del nodo (compartido) para el bucle reflexivo.
   const sourceWidth = useStore((s) => s.nodeLookup.get(source)?.measured?.width ?? 0);
   const sourceHeight = useStore((s) => s.nodeLookup.get(source)?.measured?.height ?? 0);
 
-  // Fallback for edges without dependency data (defensive).
+  // Fallback para aristas sin datos de dependencia (defensivo).
   if (!data?.dependency) {
     const [fallbackPath] = getSmoothStepPath(props);
     return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={DEPENDENCY_DASH} fill="none" />;
@@ -46,7 +46,7 @@ export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
   const arrowId = `uml-${id}-dependency-arrow`;
   const label = data.dependency.name;
 
-  // unit 13e — self-dependency: visible loop; otherwise orthogonal routing.
+  // unidad 13e — autodependencia: bucle visible; de lo contrario enrutamiento ortogonal.
   const isSelf = source === target;
   const loop = isSelf
     ? getSelfLoopGeometry({ sourceX, sourceY, targetX, targetY, width: sourceWidth, height: sourceHeight })
@@ -56,9 +56,9 @@ export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
   return (
     <>
       <defs>
-        {/* Open V-shaped arrowhead for dependency (UML 2.5.1): two strokes
-            meeting at the tip, fill NONE so the arrow stays open — the
-            distinguishing feature versus the realization triangle. */}
+        {/* Punta de flecha abierta en V para dependencia (UML 2.5.1): dos trazos
+            que se unen en la punta, relleno NONE para que la flecha permanezca abierta — el
+            rasgo distintivo frente al triángulo de realización. */}
         <marker
           id={arrowId}
           markerWidth="12"
@@ -80,8 +80,8 @@ export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
         strokeDasharray={DEPENDENCY_DASH}
       />
 
-      {/* Optional editable label (unit 13c) centered on the edge (self-loop:
-          centered on the loop's top run). */}
+      {/* Etiqueta editable opcional (unidad 13c) centrada en la arista (bucle reflexivo:
+          centrada en el tramo superior del bucle). */}
       {label ? (
         <text
           x={labelX}

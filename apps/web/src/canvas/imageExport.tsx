@@ -1,11 +1,11 @@
 /**
- * imageExport — image export for the UML diagram canvas.
+ * imageExport — exportación de imágenes para el lienzo de diagrama UML.
  *
- * image-export:R1 — filename from diagram name + id.
- * image-export:R2 — JPEG white-background compositing, fit-to-content bounds, 2x scale.
- * image-export:R3 — export is strictly read-only: zero deltas, zero API calls.
- * image-export:R4 — zero network calls with fetch blocked.
- * image-export:R5 — empty canvas guard: explicit warning, no file produced.
+ * image-export:R1 — nombre de archivo a partir del nombre del diagrama + id.
+ * image-export:R2 — composición de fondo blanco en JPEG, límites ajustados al contenido, escala 2x.
+ * image-export:R3 — la exportación es estrictamente de solo lectura: cero deltas, cero llamadas a API.
+ * image-export:R4 — cero llamadas de red con fetch bloqueado.
+ * image-export:R5 — protección contra lienzo vacío: advertencia explícita, ningún archivo producido.
  */
 import * as Y from 'yjs';
 import { useState } from 'react';
@@ -24,15 +24,15 @@ export interface ExportResult {
 }
 
 /**
- * Sanitize a string for use as a filename segment: keep alphanumeric,
- * hyphens, underscores; replace everything else with underscore.
+ * Sanitiza una cadena para su uso como segmento de nombre de archivo: conserva caracteres alfanuméricos,
+ * guiones y guiones bajos; reemplaza todo lo demás con un guion bajo.
  */
 export function sanitizeFilenameSegment(input: string): string {
   return input.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 /**
- * Build the export filename: "{diagramName}_{diagramId}.{ext}"
+ * Construye el nombre de archivo de exportación: "{diagramName}_{diagramId}.{ext}"
  */
 export function buildExportFilename(diagramName: string, diagramId: string, format: ExportFormat): string {
   const ext = format === 'jpeg' ? 'jpg' : 'png';
@@ -47,8 +47,8 @@ export interface Bounds {
 }
 
 /**
- * image-export:R2 — compute fit-to-content bounds from an array of node
- * positions. Returns null when there are no positions (empty canvas).
+ * image-export:R2 — calcula los límites ajustados al contenido a partir de un arreglo de
+ * posiciones de nodo. Retorna null cuando no hay posiciones (lienzo vacío).
  */
 export function computeExportBounds(positions: Array<{ x: number; y: number }>): Bounds | null {
   if (positions.length === 0) {
@@ -68,11 +68,11 @@ export function computeExportBounds(positions: Array<{ x: number; y: number }>):
 }
 
 /**
- * Export the diagram canvas as a PNG or JPEG image.
+ * Exporta el lienzo del diagrama como una imagen PNG o JPEG.
  *
- * - image-export:R3/R4: does NOT call fetch, does NOT bump Y.Doc version,
- *   does NOT emit any deltas. The export is purely a DOM capture.
- * - image-export:R5: returns a warning (no data) when the canvas has no nodes.
+ * - image-export:R3/R4: NO llama a fetch, NO incrementa la versión de Y.Doc,
+ *   NO emite ningún delta. La exportación es puramente una captura del DOM.
+ * - image-export:R5: retorna una advertencia (sin datos) cuando el lienzo no tiene nodos.
  */
 export async function exportDiagramImage(
   doc: Y.Doc,
@@ -82,13 +82,13 @@ export async function exportDiagramImage(
   const diagram = projectYDocToDiagram(doc);
   const filename = buildExportFilename(diagram.name, diagram.id, format);
 
-  // image-export:R5 — empty-canvas guard.
+  // image-export:R5 — protección contra lienzo vacío.
   if (diagram.classes.length === 0) {
     return { dataUrl: null, filename, warning: 'No diagram content to export' };
   }
 
-  // image-export:R2 — JPEG uses white background; both formats render at 2x.
-  // (Built conditionally to satisfy exactOptionalPropertyTypes.)
+  // image-export:R2 — JPEG usa fondo blanco; ambos formatos renderizan a 2x.
+  // (Construido condicionalmente para satisfacer exactOptionalPropertyTypes.)
   const options = format === 'jpeg' ? { backgroundColor: '#ffffff', pixelRatio: 2 } : { pixelRatio: 2 };
 
   try {
@@ -106,18 +106,18 @@ export async function exportDiagramImage(
 
 export interface ExportToolbarButtonsProps {
   doc: Y.Doc;
-  /** Optional display metadata; the filename is derived from the Y.Doc itself. */
+  /** Metadatos de visualización opcionales; el nombre de archivo se deriva del propio Y.Doc. */
   diagramName?: string;
   diagramId?: string;
 }
 
 /**
- * Toolbar buttons for Export PNG / Export JPEG (unit 16b).
+ * Botones de la barra de herramientas para Export PNG / Export JPEG (unidad 16b).
  *
- * Each button calls `exportDiagramImage` on the live React Flow viewport
- * (located via `.react-flow__viewport`), downloads the resulting data URL
- * directly through an anchor (no fetch, no object URL — image-export:R4),
- * and surfaces any empty-canvas warning (image-export:R5).
+ * Cada botón llama a `exportDiagramImage` en el viewport activo de React Flow
+ * (ubicado mediante `.react-flow__viewport`), descarga la URL de datos resultante
+ * directamente a través de un hipervínculo (sin fetch, sin object URL — image-export:R4),
+ * y muestra cualquier advertencia de lienzo vacío (image-export:R5).
  */
 export function ExportToolbarButtons({ doc }: ExportToolbarButtonsProps) {
   const { t } = useT();
@@ -134,7 +134,7 @@ export function ExportToolbarButtons({ doc }: ExportToolbarButtonsProps) {
       setWarning(result.warning ?? 'Export failed');
       return;
     }
-    // Download straight from the data URL — zero network calls.
+    // Descargar directo de la URL de datos — cero llamadas de red.
     const a = document.createElement('a');
     a.href = result.dataUrl;
     a.download = result.filename;

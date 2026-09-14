@@ -1,15 +1,15 @@
 /**
- * In-process job registry (design D8) for slow operations: codegen,
- * photo import, etc. Bounded capacity: at most `maxJobs` entries
- * (default 100), each artifact capped at `maxArtifactBytes`
- * (default 50 MB), entries older than `jobTtlMs` (default 5 min)
- * evicted on every mutation. No persistence across restarts —
- * this is intentional per design D8. See
+ * Registro de trabajos en proceso (diseño D8) para operaciones lentas: codegen,
+ * importación de fotos, etc. Capacidad acotada: como máximo `maxJobs` entradas
+ * (por defecto 100), cada artefacto limitado a `maxArtifactBytes`
+ * (por defecto 50 MB), entradas más antiguas que `jobTtlMs` (por defecto 5 min)
+ * desalojadas en cada mutación. Sin persistencia tras reinicios —
+ * esto es intencional según el diseño D8. Ver
  * openspec/changes/ai-uml-design-tool/design.md (D8).
  *
- * Review R3-ARTIFACT-INMEM (PR 14d): the previous unbounded Map could
- * leak memory under sustained traffic. Bounds here keep the registry
- * O(maxJobs) regardless of input rate.
+ * Revisión R3-ARTIFACT-INMEM (PR 14d): el Map sin límites previo podía
+ * fugar memoria bajo tráfico sostenido. Los límites aquí mantienen el registro
+ * en O(maxJobs) sin importar la tasa de entrada.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -22,8 +22,8 @@ export interface Job {
   status: JobStatus;
   createdAt: Date;
   updatedAt: Date;
-  artifact?: Buffer; // zip buffer when succeeded
-  error?: string; // error message when failed
+  artifact?: Buffer; // búfer zip al completarse con éxito
+  error?: string; // mensaje de error al fallar
 }
 
 export interface JobRegistryLimits {
@@ -55,18 +55,18 @@ export class JobRegistry {
   }
 
   /**
-   * Test-only: drop every entry. Not used in production code.
-   * Production cleanup is the per-mutation eviction + TTL cap.
+   * Solo para pruebas: elimina cada entrada. No se usa en código de producción.
+   * La limpieza en producción es el desalojo por mutación + límite de TTL.
    */
   clear(): void {
     this.jobs.clear();
   }
 
   /**
-   * Return the most recent non-terminal (queued or running) job for the
-   * given diagram, or undefined. Used to enforce backpressure on
-   * `POST /diagrams/:id/generate` — if a job is already in flight, the
-   * new request is rejected with 409 and this id is returned.
+   * Retorna el trabajo no terminal (en cola o en ejecución) más reciente para
+   * el diagrama dado, o undefined. Se usa para aplicar contrapresión en
+   * `POST /diagrams/:id/generate` — si ya hay un trabajo en curso, la nueva
+   * solicitud se rechaza con 409 y se retorna este id.
    */
   findActiveByDiagramId(diagramId: string): Job | undefined {
     let latest: Job | undefined;
@@ -110,8 +110,8 @@ export class JobRegistry {
     const job = this.jobs.get(id);
     if (!job) return;
     if (artifact.byteLength > this.limitsConfig.maxArtifactBytes) {
-      // Do NOT store the oversized buffer. Mark as failed and report bytes
-      // so the caller can decide what to do (downstream stays in 5xx/409).
+      // NO almacenar el búfer sobredimensionado. Marcar como fallido y reportar bytes
+      // para que el invocador decida qué hacer (aguas abajo se mantiene en 5xx/409).
       this.setFailed(
         id,
         `artifact too large: ${artifact.byteLength} bytes (max ${this.limitsConfig.maxArtifactBytes} bytes)`,
@@ -139,7 +139,7 @@ export class JobRegistry {
   }
 
   /**
-   * Remove jobs older than `jobTtlMs` (by updatedAt). Idempotent.
+   * Elimina trabajos más antiguos que `jobTtlMs` (por updatedAt). Idempotente.
    */
   private evict(): void {
     const cutoff = Date.now() - this.limitsConfig.jobTtlMs;
@@ -151,9 +151,9 @@ export class JobRegistry {
   }
 
   /**
-   * After insertion, drop the oldest by updatedAt until at or under cap.
-   * Map iteration is insertion order; we sort the snapshot by updatedAt
-   * to evict truly-LRU rather than FIFO.
+   * Tras la inserción, descarta el más antiguo por updatedAt hasta estar dentro del límite.
+   * La iteración del Map es en orden de inserción; ordenamos la instantánea por updatedAt
+   * para desalojar por LRU real en lugar de FIFO.
    */
   private enforceMaxJobs(): void {
     if (this.jobs.size <= this.limitsConfig.maxJobs) return;

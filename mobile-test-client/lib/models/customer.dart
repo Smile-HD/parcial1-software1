@@ -1,5 +1,5 @@
-/// Demo entity Customer representing records from the generated backend.
-/// Meets requirements for mobile:R2 (full CRUD cycle).
+/// Entidad de demostración Customer que representa registros del backend generado.
+/// Cumple con los requerimientos de mobile:R2 (ciclo CRUD completo).
 class Customer {
   final int? id;
   final String name;

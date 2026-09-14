@@ -1,14 +1,14 @@
 /**
- * Delta-preview modal (task 7.6, interpreter:R2).
+ * Modal de vista previa de delta (tarea 7.6, interpreter:R2).
  *
- * The pending delta returned by the interpreter is shown BEFORE it is
- * applied: Confirm releases it through the canonical delta path, Reject
- * discards it and leaves the model untouched. The summary lines are
- * rendered from the delta object itself (never from the raw utterance).
+ * El delta pendiente retornado por el intérprete se muestra ANTES de ser
+ * aplicado: Confirm lo libera a través de la ruta canónica de deltas, Reject
+ * lo descarta y deja el modelo sin cambios. Las líneas de resumen se
+ * renderizan desde el propio objeto delta (nunca desde la locución original).
  */
 import type { Delta } from '@app/core';
 
-/** One human-readable line per delta kind/op. */
+/** Una línea legible por humanos por cada kind/op de delta. */
 export function describeDelta(delta: Delta): string {
   switch (delta.kind) {
     case 'class':
@@ -61,9 +61,9 @@ export interface DeltaPreviewModalProps {
 }
 
 /**
- * The modal unmounts while a confirm/reject request is in flight (the App
- * moves the interpreter to its `thinking` phase first), so the buttons need
- * no separate busy-disabled state.
+ * El modal se desmonta mientras una solicitud de confirmación/rechazo está en curso
+ * (la aplicación traslada primero el intérprete a su fase `thinking`), por lo que los
+ * botones no necesitan un estado deshabilitado por ocupado independiente.
  */
 export function DeltaPreviewModal({ delta, onConfirm, onReject }: DeltaPreviewModalProps) {
   return (

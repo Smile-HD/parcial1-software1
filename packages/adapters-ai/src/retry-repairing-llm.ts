@@ -1,27 +1,27 @@
 /**
  * RetryRepairingLlmPort (interpreter-llm-resilience, R1).
  *
- * A thin decorator over any LlmPort that adds a bounded retry+repair loop
- * on Zod delta-schema failure. The loop is BOTH user-visible (the user gets
- * a refusal-with-digest instead of a 422) and operational (the inner port is
- * given a concise repair prompt so a flaky model can self-correct without a
- * full second round-trip from the user).
+ * Un decorador ligero sobre cualquier LlmPort que añade un bucle acotado de reintento+reparación
+ * ante fallos del esquema Zod de deltas. El bucle es TANTO visible para el usuario (obtiene
+ * una negativa con resumen en lugar de un 422) como operacional (al puerto interno se le da un
+ * prompt de reparación conciso para que un modelo inestable pueda autocorregirse sin requerir
+ * un viaje de ida y vuelta completo del usuario).
  *
- * Design decisions (see design.md):
- *  D1 — decorator over LlmPort (separation of concerns).
- *  D2 — retry only on Zod failure; transport errors propagate untouched.
- *  D3 — repair payload = raw model output + a compact Zod issue digest.
- *  D4 — `OPENAI_LLM_MAX_ATTEMPTS`, default 2, clamped to [1, 3].
- *  D5 — tests drive a stub LlmPort; FakeLlm is never wrapped.
+ * Decisiones de diseño (ver design.md):
+ *  D1 — decorador sobre LlmPort (separación de responsabilidades).
+ *  D2 — reintento solo ante fallo de Zod; los errores de transporte se propagan sin cambios.
+ *  D3 — payload de reparación = salida sin procesar del modelo + resumen compacto de incidencias Zod.
+ *  D4 — `OPENAI_LLM_MAX_ATTEMPTS`, por defecto 2, acotado a [1, 3].
+ *  D5 — las pruebas controlan un LlmPort simulado; FakeLlm nunca se envuelve.
  */
 import { DeltaSchema, type Diagram, type LlmPort, type LlmResult } from '@app/core';
 
 export interface RetryRepairingLlmOptions {
-  /** Inclusive total attempts. Clamped to [1, 3]. Default 2. */
+  /** Total inclusivo de intentos. Acotado a [1, 3]. Por defecto 2. */
   maxAttempts: number;
-  /** Max chars of the Zod digest included in the repair prompt. Default 500. */
+  /** Caracteres máximos del resumen Zod incluidos en el prompt de reparación. Por defecto 500. */
   maxDigestChars: number;
-  /** Max chars of the raw model output replayed in the repair prompt. Default 4000. */
+  /** Caracteres máximos de la salida sin procesar del modelo repetida en el prompt de reparación. Por defecto 4000. */
   maxRawOutputChars: number;
 }
 
@@ -31,7 +31,7 @@ const DEFAULTS: Required<RetryRepairingLlmOptions> = {
   maxRawOutputChars: 4000,
 };
 
-/** Clamp an attempt count to the [1, 3] band. Exported for testability. */
+/** Acota un conteo de intentos a la banda [1, 3]. Exportado para pruebas. */
 export function clampMaxAttempts(value: number): number {
   if (!Number.isFinite(value)) return 1;
   const asInt = Math.floor(value);
@@ -41,8 +41,8 @@ export function clampMaxAttempts(value: number): number {
 }
 
 /**
- * Truncate `s` to at most `max` characters, appending a marker so callers
- * know the value was clipped. Exported for testability.
+ * Trunca `s` a un máximo de `max` caracteres, adjuntando un marcador para que los
+ * invocadores sepan que el valor fue recortado. Exportado para pruebas.
  */
 export function truncate(s: string, max: number, marker = ' [truncated]'): string {
   if (max <= 0) return '';
@@ -52,9 +52,9 @@ export function truncate(s: string, max: number, marker = ' [truncated]'): strin
 }
 
 /**
- * Build a compact Zod-issue digest suitable for a repair prompt.
- * Each issue is rendered as `/path: message` on its own line. The full
- * digest is then truncated to `maxDigestChars`.
+ * Construye un resumen compacto de incidencias Zod adecuado para un prompt de reparación.
+ * Cada incidencia se muestra como `/ruta: mensaje` en su propia línea. El resumen
+ * completo se trunca luego a `maxDigestChars`.
  */
 export function buildZodDigest(
   error: { issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }> },
@@ -69,10 +69,10 @@ export function buildZodDigest(
 }
 
 /**
- * Build the repair-prompt string the decorator passes to the inner port on
- * attempt N ≥ 2. Prefixed with `repair:` so the inner port / the production
- * adapter can recognize and route it (the inner port stays opaque; the
- * decorator never re-prompts with a fresh system message).
+ * Construye la cadena del prompt de reparación que el decorador pasa al puerto interno en
+ * el intento N ≥ 2. Prefijada con `repair:` para que el puerto interno o el adaptador de
+ * producción puedan reconocerla y enrutarla (el puerto interno permanece opaco; el decorador
+ * nunca vuelve a solicitar con un mensaje de sistema nuevo).
  */
 export function buildRepairUtterance(
   previousUtterance: string,
@@ -95,13 +95,13 @@ export function buildRepairUtterance(
 }
 
 /**
- * RetryRepairingLlmPort — a decorator that wraps an inner LlmPort and retries
- * on Zod delta-schema failure with a concise repair prompt. On final
- * failure it returns a synthetic `LlmResult` of `{ kind: 'refused', reason }`
- * so the caller never has to surface the banned schema-error literal.
+ * RetryRepairingLlmPort — un decorador que envuelve un LlmPort interno y reintenta
+ * ante fallos de esquema Zod con un prompt de reparación conciso. En caso de fallo final,
+ * retorna un `LlmResult` sintético de `{ kind: 'refused', reason }` para que el invocador
+ * nunca tenga que exponer el literal prohibido de error de esquema.
  *
- * Transport errors (the inner port throws) are NOT retried: the decorator
- * surfaces them untouched so the caller's 502 path stays correct.
+ * Los errores de transporte (cuando el puerto interno lanza una excepción) NO se reintentan:
+ * el decorador los propaga intactos para que la ruta 502 del invocador se mantenga correcta.
  */
 export class RetryRepairingLlmPort implements LlmPort {
   private readonly inner: LlmPort;
@@ -128,7 +128,7 @@ export class RetryRepairingLlmPort implements LlmPort {
       const result = await this.inner.interpret(callUtterance, _deltaJsonSchema, currentIr);
       lastRaw = JSON.stringify(result);
 
-      // Refusals are terminal — the inner model is explicitly saying "I can't".
+      // Las negativas son terminales — el modelo interno está diciendo explícitamente "No puedo".
       if (result.kind === 'refused') {
         return result;
       }

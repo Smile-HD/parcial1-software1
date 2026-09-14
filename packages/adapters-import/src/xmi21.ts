@@ -48,17 +48,17 @@ export type XmiModel = {
 
 const VERSION_PATTERN = /^2\.1/i;
 
-/** Coerce a fast-xml-parser child (single object, array, or missing) to an array. */
+/** Fuerza a que un hijo de fast-xml-parser (objeto único, arreglo o ausente) sea un arreglo. */
 function toArray<T>(value: T | T[] | undefined): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 }
 
 /**
- * Normalize UML visibility: XMI 2.1 exports use the semantic words
- * ("private", "public", "protected", "package"); the engine schema uses the
- * UML 2.5.1 symbols ('-', '+', '#', '~'). Symbols pass through unchanged so
- * the hand-made UML-1.x-style layout keeps working.
+ * Normaliza la visibilidad UML: las exportaciones XMI 2.1 usan palabras semánticas
+ * ("private", "public", "protected", "package"); el esquema del motor usa los
+ * símbolos UML 2.5.1 ('-', '+', '#', '~'). Los símbolos se mantienen sin cambios para
+ * que el diseño estilo UML-1.x manual continúe funcionando.
  */
 function normalizeVisibility(visibility: string | undefined): '+' | '-' | '#' | '~' {
   switch (visibility) {
@@ -72,19 +72,19 @@ function normalizeVisibility(visibility: string | undefined): '+' | '-' | '#' | 
 }
 
 /**
- * Disambiguate classifier names that collide across packages (fixture 6
- * evidence: EA allows `PackageA::Orden` and `PackageB::Orden`, and the engine
- * gates class creation on NAME — apply.ts isDuplicateClassName — so two bare
- * duplicates make the engine REJECT THE WHOLE BATCH atomically).
+ * Desambigua nombres de clasificadores que colisionan entre paquetes (evidencia del
+ * fixture 6: EA permite `PackageA::Orden` y `PackageB::Orden`, y el motor condiciona la
+ * creación de clases por NOMBRE — apply.ts isDuplicateClassName — de modo que dos
+ * duplicados simples hacen que el motor RECHACE EL LOTE COMPLETO de forma atómica).
  *
- * Policy (user directive: "do not crash and never reject the whole batch —
- * import it as the closest other thing"): only names in an actual collision
- * group are renamed, qualifying with the MINIMAL tail of the package chain
- * that makes them unique (PackageA::Orden / PackageB::Orden — matching the
- * user's example; the common root segment Package2 is not needed). If the
- * full chain still collides (identical paths — EA shouldn't emit it, but we
- * never reject), a numeric suffix keeps every name unique. Non-colliding
- * exports keep bare names: all previous fixtures are untouched.
+ * Política (directiva del usuario: "no fallar y nunca rechazar el lote completo —
+ * importarlo como la alternativa más cercana"): solo se renombran los nombres en un grupo
+ * de colisión real, calificándolos con la cola MÍNIMA de la cadena de paquetes que los haga
+ * únicos (PackageA::Orden / PackageB::Orden — coincidiendo con el ejemplo del usuario; el
+ * segmento raíz común Package2 no es necesario). Si la cadena completa aún colisiona
+ * (rutas idénticas — EA no debería emitirlo, pero nunca rechazamos), un sufijo numérico
+ * mantiene cada nombre único. Las exportaciones sin colisiones conservan nombres simples:
+ * todos los fixtures previos quedan intactos.
  */
 function disambiguateClassifierNames(model: XmiModel, chains: string[][]): void {
   const groups = new Map<string, number[]>();
@@ -109,9 +109,9 @@ function disambiguateClassifierNames(model: XmiModel, chains: string[][]): void 
       }
     }
     if (!resolved) {
-      // Full chain still collides: keep the deepest qualification and append
-      // numeric suffixes so the batch applies (closest-representation wins
-      // over rejection).
+      // La cadena completa aún colisiona: conservar la calificación más profunda y agregar
+      // sufijos numéricos para que el lote se aplique (la representación más cercana gana
+      // frente al rechazo).
       const base = idxs.map(i => {
         const chain = chains[i] ?? [];
         return chain.length ? `${chain.join('::')}::${name}` : name;
@@ -146,9 +146,9 @@ function parseXmiDocument(xml: string): XmiModel {
     naryAssociations: [],
   };
 
-  // Layout detection: real XMI 2.1 wraps everything in <xmi:XMI> and stores
-  // model content as <uml:Model>/<packagedElement>; the hand-made EA-style
-  // fixture uses <UML:Model> with direct UML:Class children. Support BOTH.
+  // Detección de diseño: XMI 2.1 real envuelve todo en <xmi:XMI> y almacena el contenido
+  // del modelo como <uml:Model>/<packagedElement>; el fixture manual estilo EA
+  // utiliza <UML:Model> con hijos UML:Class directos. Se soportan AMBOS.
   const xmiRoot = parsed?.['xmi:XMI'];
   const legacyRoot = xmiRoot ? undefined : (parsed?.['UML:Model'] || parsed?.Model || parsed);
   if (!xmiRoot && !legacyRoot) throw new Error('XMI parse error: no UML:Model root');
@@ -171,7 +171,7 @@ function parseXmiDocument(xml: string): XmiModel {
   const reals = root['UML:Realization'] || [];
   const deps = root['UML:Dependency'] || [];
 
-  // Classes
+  // Clases
   (Array.isArray(elements) ? elements : [elements]).forEach((el: any) => {
     const name = el['@_name'] || 'Unnamed';
     const id = el['@_id'] || randomUUID();
@@ -214,7 +214,7 @@ function parseXmiDocument(xml: string): XmiModel {
     model.classes.push({ id, name, kind, isAbstract, attributes: classAttrs, methods: classMethods });
   });
 
-  // Associations
+  // Asociaciones
   (Array.isArray(assocs) ? assocs : [assocs]).forEach((a: any) => {
     const id = a['@_id'] || randomUUID();
     const name = a['@_name'] || undefined;
@@ -244,7 +244,7 @@ function parseXmiDocument(xml: string): XmiModel {
     });
   });
 
-  // Generalizations
+  // Generalizaciones
   (Array.isArray(gens) ? gens : [gens]).forEach((g: any) => {
     const id = g['@_id'] || randomUUID();
     const sub = g['@_child'] || '';
@@ -252,7 +252,7 @@ function parseXmiDocument(xml: string): XmiModel {
     if (sub && sup) model.generalizations.push({ id, subClassId: sub, superClassId: sup });
   });
 
-  // Realizations
+  // Realizaciones
   (Array.isArray(reals) ? reals : [reals]).forEach((r: any) => {
     const id = r['@_id'] || randomUUID();
     const client = r['@_client'] || '';
@@ -260,7 +260,7 @@ function parseXmiDocument(xml: string): XmiModel {
     if (client && supplier) model.realizations.push({ id, clientId: client, supplierId: supplier });
   });
 
-  // Dependencies
+  // Dependencias
   (Array.isArray(deps) ? deps : [deps]).forEach((d: any) => {
     const id = d['@_id'] || randomUUID();
     const client = d['@_client'] || '';
@@ -268,7 +268,7 @@ function parseXmiDocument(xml: string): XmiModel {
     if (client && supplier) model.dependencies.push({ id, clientId: client, supplierId: supplier });
   });
 
-  // N-ary (if present)
+  // N-arias (si están presentes)
   const naries = root['UML:NaryAssociation'] || [];
   (Array.isArray(naries) ? naries : [naries]).forEach((n: any) => {
     const id = n['@_id'] || randomUUID();
@@ -286,41 +286,41 @@ function parseXmiDocument(xml: string): XmiModel {
     }
   });
 
-  // Same never-reject policy for the hand-made layout; no package chains are
-  // known here, so an actual collision (none exists in any fixture) would
-  // fall through to the numeric-suffix guard rather than be rejected.
+  // Misma política de nunca rechazar para el diseño manual; aquí no se conocen cadenas
+  // de paquetes, por lo que una colisión real (no existe en ningún fixture) recurriría
+  // a la protección por sufijo numérico en lugar de ser rechazada.
   disambiguateClassifierNames(model, model.classes.map(() => []));
 
   return model;
 }
 
 /**
- * Parse a REAL XMI 2.1 document (Enterprise Architect 6.5 layout):
+ * Parsea un documento XMI 2.1 REAL (diseño de Enterprise Architect 6.5):
  * <xmi:XMI> → <uml:Model> → <packagedElement xmi:type="uml:Class|uml:Package|uml:Association">
- * with arbitrary package nesting. Element kind comes from the `xmi:type`
- * attribute, never from the tag name.
+ * con anidación arbitraria de paquetes. El tipo de elemento proviene del atributo
+ * `xmi:type`, nunca del nombre de la etiqueta.
  *
- * Strictness rules (spec xmi:R2 / 15.4 / 15.5):
- * - Nothing from <xmi:Extension> leaks into the IR. The ONLY permitted use is
- *   the <primitivetypes> subtree as an id→name lookup table (to resolve
- *   `xmi:idref="EAJava_string"` into type "string").
- * - EA diagram geometry is ignored: grid layout owns positions downstream.
+ * Reglas de rigurosidad (especificación xmi:R2 / 15.4 / 15.5):
+ * - Nada de <xmi:Extension> se filtra al IR. El ÚNICO uso permitido es el subárbol
+ *   <primitivetypes> como tabla de búsqueda id→nombre (para resolver
+ *   `xmi:idref="EAJava_string"` en el tipo "string").
+ * - Se ignora la geometría de diagrama de EA: el diseño en cuadrícula determina las posiciones posteriormente.
  */
 function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   const umlModel = xmiRoot?.['uml:Model'];
 
-  // ---- Pass 1: recursive package descent. Collect class/interface,
-  // association and realization raw nodes in document order; uml:Package is
-  // transparent (recurse through), uml:PrimitiveType is skipped as an element.
-  // uml:AssociationClass is imported with a DUAL MAPPING (round-3 policy,
-  // evidence-driven): as a classifier BOX (class node) AND as the connector
-  // its memberEnds describe. Round 2 dropped the box, but fixture 3 proves
-  // real models reference the AssociationClass id as an association-end TYPE
-  // (association "hola" types Class5), and a missing box would make those
-  // ends dangle and silently vanish at delta-emit time.
+  // ---- Paso 1: descenso recursivo de paquetes. Recolectar nodos crudos de clase/interfaz,
+  // asociación y realización en orden de documento; uml:Package es transparente
+  // (recorrido recursivo), uml:PrimitiveType se omite como elemento.
+  // uml:AssociationClass se importa con un MAPEO DUAL (política de ronda 3, basada en
+  // evidencia): como una CAJA clasificadora (nodo de clase) Y como el conector que
+  // describen sus memberEnds. La ronda 2 descartó la caja, pero el fixture 3 demuestra
+  // que modelos reales hacen referencia al id de AssociationClass como TIPO de extremo
+  // de asociación (la asociación "hola" tipifica Class5), y una caja faltante haría que
+  // esos extremos queden colgando y desaparezcan silenciosamente al emitir deltas.
   const classNodes: any[] = [];
-  // Package ancestry per class node (index-aligned with classNodes), used by
-  // the collision-disambiguation policy below.
+  // Ascendencia de paquetes por nodo de clase (alineada por índice con classNodes), utilizada por
+  // la política de desambiguación de colisiones a continuación.
   const classNodeChains: string[][] = [];
   const associationNodes: any[] = [];
   const realizationNodes: any[] = [];
@@ -337,7 +337,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       } else if (type === 'uml:Association' || type === 'uml:AssociationClass') {
         associationNodes.push(el);
         if (type === 'uml:AssociationClass') {
-          // Dual mapping: the same node is also a class box (see comment).
+          // Mapeo dual: el mismo nodo es también una caja de clase (ver comentario).
           classNodes.push(el);
           classNodeChains.push(chain);
         }
@@ -346,15 +346,15 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       } else if (type === 'uml:Dependency') {
         dependencyNodes.push(el);
       }
-      // uml:PrimitiveType (index-only), uml:Abstraction and any other
-      // xmi:type is skipped as an element (unknown xmi:Extension-style
-      // content is tolerated, never imported).
+      // uml:PrimitiveType (solo índice), uml:Abstraction y cualquier otro
+      // xmi:type se omite como elemento (el contenido desconocido estilo
+      // xmi:Extension es tolerado, nunca importado).
     }
   };
   walkPackaged(umlModel, []);
 
-  // ---- id→name index (classes from the model + primitives from
-  // xmi:Extension/primitivetypes ONLY) used to resolve `<type xmi:idref>`.
+  // ---- Índice id→nombre (clases del modelo + primitivas ÚNICAMENTE de
+  // xmi:Extension/primitivetypes) utilizado para resolver `<type xmi:idref>`.
   const nameIndex = new Map<string, string>();
   for (const c of classNodes) {
     if (c['@_xmi:id'] && c['@_name']) nameIndex.set(c['@_xmi:id'], c['@_name']);
@@ -362,7 +362,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   const indexPrimitiveTypes = (container: any) => {
     for (const el of toArray(container?.['packagedElement'])) {
       if (el['@_xmi:id'] && el['@_name']) nameIndex.set(el['@_xmi:id'], el['@_name']);
-      indexPrimitiveTypes(el); // nested primitive-type packages
+      indexPrimitiveTypes(el); // paquetes de tipos primitivos anidados
     }
   };
   indexPrimitiveTypes(xmiRoot?.['xmi:Extension']?.['primitivetypes']);
@@ -370,9 +370,9 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   const resolveType = (idref: string | undefined): string | undefined =>
     idref ? (nameIndex.get(idref) ?? idref) : undefined;
 
-  // ---- Pass 2: build classes (features + child generalizations) and a
-  // global property index (association-owned `ownedEnd`s and class-mirrored
-  // `ownedAttribute`s are the SAME UML Properties, addressable by xmi:id).
+  // ---- Paso 2: construir clases (características + generalizaciones hijas) y un
+  // índice global de propiedades (los `ownedEnd` propiedad de la asociación y los
+  // `ownedAttribute` reflejados en la clase son las MISMAS Propiedades UML, direccionables por xmi:id).
   type EndProp = { type: string | undefined; aggregation: string | undefined; lower: string | undefined; upper: string | undefined; name: string | undefined };
   const propertyIndex = new Map<string, EndProp>();
   const memberEndRefs = new Set<string>();
@@ -401,20 +401,20 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
 
     for (const attr of toArray(el['ownedAttribute'])) {
       const attrId = attr['@_xmi:id'];
-      // Register EVERY end property (mirrored association ends included) in
-      // the index so associations can resolve them later.
+      // Registrar CADA propiedad de extremo (extremos de asociación reflejados incluidos) en
+      // el índice para que las asociaciones puedan resolverlos posteriormente.
       if (attrId) propertyIndex.set(attrId, readProp(attr));
 
-      // Association end vs feature attribute: an ownedAttribute that declares
-      // an `association` owner (or whose id is referenced by some Association's
-      // memberEnd) is a relation end, NOT a feature — never import it as an
-      // attribute (avoids Producto leaking a 4th phantom attribute).
+      // Extremo de asociación vs atributo de característica: un ownedAttribute que declara
+      // un propietario `association` (o cuyo id es referenciado por el memberEnd de alguna
+      // Asociación) es un extremo de relación, NO una característica — nunca importarlo como
+      // atributo (evita que Producto filtre un 4to atributo fantasma).
       const isRelationEnd = Boolean(attr['@_association']) || Boolean(attrId && memberEndRefs.has(attrId));
       if (isRelationEnd) continue;
 
-      // XMI 2.1 stores the feature type as a child reference, not an attribute.
+      // XMI 2.1 almacena el tipo de la característica como referencia hija, no como atributo.
       const typeId = resolveType(attr['type']?.['@_xmi:idref']);
-      // lower/upper LiteralIntegers → UML multiplicity string (1/1 → "1").
+      // LiteralIntegers lower/upper → cadena de multiplicidad UML (1/1 → "1").
       const lower = attr['lowerValue']?.['@_value'];
       const upper = attr['upperValue']?.['@_value'];
       let multiplicity: string | undefined;
@@ -434,23 +434,22 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       });
     }
 
-    // ownedOperation → methods. In EA 6.5 exports each operation's parameters
-    // are `ownedParameter` children whose type is an ATTRIBUTE idref
-    // (type="EAJava_int"), and the return "parameter" (direction="return")
-    // is the returnType — it must never leak into the parameter list.
+    // ownedOperation → métodos. En las exportaciones de EA 6.5 los parámetros de cada operación
+    // son hijos `ownedParameter` cuyo tipo es un idref de ATRIBUTO (type="EAJava_int"),
+    // y el "parámetro" de retorno (direction="return") es el returnType — nunca debe filtrarse
+    // a la lista de parámetros.
     //
-    // MULTI-RETURN POLICY (test4 evidence: Orden.test() declares TWO
-    // direction="return" parameters, which UML forbids — a user model mistake
-    // EA persists anyway): the parameter NAMED "return" wins as returnType;
-    // if none is named "return", the FIRST direction="return" parameter wins;
-    // every additional return-direction parameter is ignored (never promoted
-    // to an in-parameter).
+    // POLÍTICA DE RETORNO MÚLTIPLE (evidencia test4: Orden.test() declara DOS parámetros
+    // direction="return", lo cual UML prohíbe — un error de modelo del usuario que EA persiste
+    // de todos modos): el parámetro LLAMADO "return" prevalece como returnType; si ninguno se
+    // llama "return", prevalece el PRIMER parámetro direction="return"; todo parámetro adicional
+    // de retorno se ignora (nunca se promueve a parámetro de entrada).
     for (const op of toArray(el['ownedOperation'])) {
       let namedReturnType: string | undefined;
       let firstReturnType: string | undefined;
       const parameters: Array<{ name: string; type: string }> = [];
       for (const p of toArray(op['ownedParameter'])) {
-        // The type idref sits on the @_type attribute here (not a <type> child).
+        // El idref de tipo se encuentra aquí en el atributo @_type (no es un hijo <type>).
         const resolved = resolveType(p['@_type']);
         if (p['@_direction'] === 'return') {
           if (p['@_name'] === 'return') {
@@ -477,16 +476,16 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     model.classes.push({
       id,
       name: el['@_name'] || 'Unnamed',
-      // Engine kind is carried by xmi:type, never by the tag name.
+      // El kind del motor se transporta mediante xmi:type, nunca por el nombre de la etiqueta.
       kind: el['@_xmi:type'] === 'uml:Interface' ? 'interface' : 'class',
       isAbstract: el['@_isAbstract'] === 'true',
       attributes: classAttrs,
       methods: classMethods,
     });
 
-    // Generalization is a CHILD of the subclass in XMI 2.1:
+    // La generalización es un HIJO de la subclase en XMI 2.1:
     // <generalization xmi:type="uml:Generalization" general="SUPER_ID"/>
-    // inside the subclass. So: subClassId = this class, superClassId = @general.
+    // dentro de la subclase. Por ende: subClassId = esta clase, superClassId = @general.
     for (const g of toArray(el['generalization'])) {
       const sup = g['@_general'];
       if (sup) {
@@ -495,17 +494,16 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     }
   }
 
-  // ---- Pass 3: associations. Resolve each memberEnd idref through the
-  // property index; derive the connected pair and aggregation kind.
+  // ---- Paso 3: asociaciones. Resolver cada idref de memberEnd a través del
+  // índice de propiedades; derivar el par conectado y el tipo de agregación.
   //
-  // Composition ownership decision (documented for parity with the hand-made
-  // ea-sample fixture): in EA 6.5 exports, the end property carrying
-  // aggregation="composite|shared" has a `type` idref pointing to the WHOLE
-  // (the end where the diamond sits) — e.g. connector EAID_E31D9ED5 is
-  // ea_type=Aggregation/subtype=Strong with source=Producto/target=Class1 and
-  // its composite end types Producto. We emit source=whole, target=part and
-  // aggregationEnd='source', exactly how the hand-made fixture encodes
-  // Order◆—OrderLine (source carries the composite marker).
+  // Decisión de propiedad de la composición (documentada para paridad con el
+  // fixture manual ea-sample): en las exportaciones de EA 6.5, la propiedad del extremo
+  // que porta aggregation="composite|shared" tiene un idref `type` que apunta al TODO
+  // (el extremo donde se ubica el diamante) — p. ej. conector EAID_E31D9ED5 con
+  // ea_type=Aggregation/subtype=Strong con source=Producto/target=Class1 y su extremo
+  // compuesto tipifica Producto. Emitimos source=todo, target=parte y aggregationEnd='source',
+  // exactamente como el fixture manual codifica Order◆—OrderLine (el origen porta el marcador compuesto).
   const multiplicityOf = (e: EndProp): string | undefined => {
     if (e.lower === undefined && e.upper === undefined) return undefined;
     const l = e.lower ?? '1';
@@ -518,13 +516,13 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     const refs = toArray(assoc['memberEnd']).map((me: any) => me?.['@_xmi:idref']).filter(Boolean);
     const ends = refs.map((r: string) => propertyIndex.get(r)).filter(Boolean) as EndProp[];
     const typedEnds = ends.filter(e => e.type);
-    if (typedEnds.length < 2) continue; // dangling memberEnd-less association: skip, never invent
+    if (typedEnds.length < 2) continue; // asociación colgante sin memberEnd: omitir, nunca inventar
 
-    // ---- N-ary routing: an association with 3+ distinct typed member ends is
-    // a genuine UML n-ary association (e.g. EAID_56CC2820 binding Class2,
-    // Class4 and Class3). Emitting it as a binary source/target would silently
-    // drop the middle ends, so it goes to naryAssociations instead. Duplicate
-    // class ids within one association are collapsed (engine forbids them).
+    // ---- Enrutamiento N-ario: una asociación con 3+ extremos miembro tipificados distintos
+    // es una auténtica asociación n-aria UML (p. ej. EAID_56CC2820 vinculando Class2, Class4 y Class3).
+    // Emitirla como origen/destino binario descartaría silenciosamente los extremos intermedios,
+    // por lo que se envía a naryAssociations. Los ids de clase duplicados dentro de una misma asociación
+    // se colapsan (el motor los prohíbe).
     if (typedEnds.length >= 3) {
       const seen = new Set<string>();
       const memberEnds: XmiModel['naryAssociations'][number]['memberEnds'] = [];
@@ -549,8 +547,8 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       continue;
     }
 
-    // First/last memberEnd in document order anchor the emitted direction for
-    // plain (non-aggregated) associations.
+    // El primer/último memberEnd en orden de documento anclan la dirección emitida para
+    // asociaciones simples (no agregadas).
     const firstEnd = typedEnds[0];
     const lastEnd = typedEnds[typedEnds.length - 1];
     if (!firstEnd || !lastEnd || !firstEnd.type || !lastEnd.type) continue;
@@ -570,7 +568,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     const aggregationEnd: 'source' = 'source';
     if (diamondEnd && diamondEnd.type && typedEnds.length === 2) {
       const whole = diamondEnd.type;
-      const part = typedEnds.find(e => e.type !== whole)?.type ?? whole; // self-composition falls back to same class
+      const part = typedEnds.find(e => e.type !== whole)?.type ?? whole; // autocomposición recurre a la misma clase
       source = whole;
       target = part;
     } else {
@@ -578,8 +576,8 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       target = lastEnd.type;
     }
 
-    // Ends in real EA exports often carry no name/multiplicity: those fields
-    // stay omitted so the batch uses the PR13d empty defaults (optional).
+    // Los extremos en exportaciones reales de EA a menudo no tienen nombre/multiplicidad: esos campos
+    // permanecen omitidos para que el lote utilice los valores vacíos por defecto de PR13d (opcionales).
     const sourceMultiplicity = multiplicityOf(firstEnd);
     const targetMultiplicity = multiplicityOf(lastEnd);
     model.associations.push({
@@ -596,9 +594,9 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     });
   }
 
-  // ---- Realizations (uml:Realization as a top-level packagedElement):
-  // client realizes supplier, where supplier is the interface. The emit step
-  // resolves both through the classifier id map and skips unresolvable ends.
+  // ---- Realizaciones (uml:Realization como packagedElement de nivel superior):
+  // el cliente realiza al proveedor, donde el proveedor es la interfaz. El paso de emisión
+  // resuelve ambos mediante el mapa de ids de clasificadores y omite extremos no resolubles.
   for (const r of realizationNodes) {
     const client = r['@_client'];
     const supplier = r['@_supplier'];
@@ -607,12 +605,11 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     }
   }
 
-  // ---- Dependencies (uml:Dependency as a top-level packagedElement):
-  // client depends-on supplier. Unlike a realization, the engine allows the
-  // supplier (and client) to be ANY classifier, interface included (the
-  // RealizationTargetNotInterface gate does not apply to dependencies).
-  // Direction matches the hand-made UML:Dependency path and the engine's
-  // clientClassId -> supplierClassId delta semantics.
+  // ---- Dependencias (uml:Dependency como packagedElement de nivel superior):
+  // cliente depende-de proveedor. A diferencia de una realización, el motor permite que el
+  // proveedor (y cliente) sea CUALQUIER clasificador, interfaz incluida (la regla
+  // RealizationTargetNotInterface no aplica a dependencias). La dirección coincide con la ruta
+  // manual de UML:Dependency y la semántica delta clientClassId -> supplierClassId del motor.
   for (const dep of dependencyNodes) {
     const client = dep['@_client'];
     const supplier = dep['@_supplier'];
@@ -621,21 +618,21 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     }
   }
 
-  // ---- Collision disambiguation (fixture 6): model.classes and
-  // classNodeChains are index-aligned (both built by iterating classNodes in
-  // document order), so each classifier carries its own package ancestry.
-  // Only genuinely colliding names are qualified; everything else stays bare.
+  // ---- Desambiguación de colisiones (fixture 6): model.classes y
+  // classNodeChains están alineados por índice (ambos construidos iterando classNodes en orden de
+  // documento), por lo que cada clasificador porta su propia ascendencia de paquetes. Solo los nombres
+  // con colisiones reales se califican; todo lo demás permanece simple.
   disambiguateClassifierNames(model, classNodeChains);
 }
 
 function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
-  // Build XMI-id → UUID remap for all classes
+  // Construir remapeo de id XMI → UUID para todas las clases
   const classIdMap = new Map<string, string>();
   for (const c of model.classes) {
     classIdMap.set(c.id, randomUUID());
   }
 
-  // Build positioned classes for grid layout
+  // Construir clases posicionadas para el diseño en cuadrícula
   const positioned = model.classes.map(c => ({ id: c.id, x: 0, y: 0 }));
   gridLayout(positioned, 150);
   const positionMap = new Map<string, { x: number; y: number }>();
@@ -646,7 +643,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
   const now = new Date().toISOString();
   const deltas: Delta[] = [];
 
-  // Classes
+  // Clases
   for (const c of model.classes) {
     const uuid = classIdMap.get(c.id)!;
     const pos = positionMap.get(c.id)!;
@@ -663,10 +660,10 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       position: { x: pos.x, y: pos.y },
     } as ClassDelta);
 
-    // The engine's create op deliberately does not persist isAbstract (unit
-    // 12.4: abstract marking travels on a class `update` delta). Emit the
-    // follow-up so imported interfaces/abstract classes keep the flag on the
-    // applied diagram instead of silently reverting to false.
+    // La operación create del motor deliberadamente no persiste isAbstract (unidad
+    // 12.4: la marca abstracta viaja en un delta `update` de clase). Emitir el
+    // seguimiento para que las interfaces/clases abstractas importadas conserven el flag en el
+    // diagrama aplicado en lugar de revertir silenciosamente a false.
     if (c.isAbstract) {
       deltas.push({
         kind: 'class',
@@ -679,7 +676,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       } as ClassDelta);
     }
 
-    // Attributes
+    // Atributos
     for (const attr of c.attributes) {
       deltas.push({
         kind: 'member',
@@ -698,7 +695,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       } as MemberDelta);
     }
 
-    // Methods
+    // Métodos
     for (const method of c.methods) {
       deltas.push({
         kind: 'member',
@@ -717,7 +714,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
     }
   }
 
-  // Associations
+  // Asociaciones
   for (const a of model.associations) {
     const sourceUuid = classIdMap.get(a.source);
     const targetUuid = classIdMap.get(a.target);
@@ -731,9 +728,9 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       associationId: randomUUID(),
       sourceClassId: sourceUuid,
       targetClassId: targetUuid,
-      // Optional carriers are only emitted when defined: real EA exports have
-      // unnamed, multiplicity-less association ends and AssociationDeltaSchema
-      // is .strict() (PR13d: create multiplicities are optional).
+      // Los portadores opcionales solo se emiten cuando están definidos: exportaciones reales de EA tienen
+      // extremos de asociación sin nombre y sin multiplicidad, y AssociationDeltaSchema
+      // es .strict() (PR13d: las multiplicidades al crear son opcionales).
       ...(a.name !== undefined ? { name: a.name } : {}),
       ...(a.sourceRole !== undefined ? { sourceRole: a.sourceRole } : {}),
       ...(a.targetRole !== undefined ? { targetRole: a.targetRole } : {}),
@@ -745,7 +742,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
     } as AssociationDelta);
   }
 
-  // Generalizations
+  // Generalizaciones
   for (const g of model.generalizations) {
     const subUuid = classIdMap.get(g.subClassId);
     const superUuid = classIdMap.get(g.superClassId);
@@ -762,7 +759,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
     } as GeneralizationDelta);
   }
 
-  // Realizations
+  // Realizaciones
   for (const r of model.realizations) {
     const clientUuid = classIdMap.get(r.clientId);
     const supplierUuid = classIdMap.get(r.supplierId);
@@ -779,7 +776,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
     } as RealizationDelta);
   }
 
-  // Dependencies
+  // Dependencias
   for (const d of model.dependencies) {
     const clientUuid = classIdMap.get(d.clientId);
     const supplierUuid = classIdMap.get(d.supplierId);
@@ -796,7 +793,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
     } as DependencyDelta);
   }
 
-  // N-ary
+  // N-arias
   for (const n of model.naryAssociations) {
     const memberEnds = n.memberEnds
       .map(end => {

@@ -1,33 +1,33 @@
 /**
- * unit 13e.11 — i18n: English/Spanish UI strings with a live language toggle.
+ * unidad 13e.11 — i18n: Cadenas de UI en inglés/español con alternador de idioma en vivo.
  *
- * Design (deliberately small):
- *  - A flat dictionary keyed by string id; `en` is the source of truth and
- *    `es` is typed as `Record<TKey, string>` so a missing translation is a
- *    COMPILE error, not a runtime fallback.
- *  - A tiny external store (module state + listener set) synced with
- *    `localStorage` under STORAGE_KEY. Default is English.
- *  - `t(key, params)` is usable OUTSIDE components (guard-message builders,
- *    event handlers) and reads the current language at call time.
- *  - `useT()` subscribes the calling component to language changes via
- *    `useSyncExternalStore`, so toggling re-renders every string live.
- *  - `LanguageToggle` is the visible EN/ES segmented control used in the
- *    app toolbar.
+ * Diseño (deliberadamente reducido):
+ *  - Un diccionario plano indexado por id de cadena; `en` es la fuente de verdad y
+ *    `es` está tipado como `Record<TKey, string>` para que una traducción faltante sea un
+ *    error de COMPILACIÓN, no un fallback en tiempo de ejecución.
+ *  - Un pequeño almacén externo (estado de módulo + conjunto de listeners) sincronizado con
+ *    `localStorage` bajo STORAGE_KEY. El valor por defecto es inglés.
+ *  - `t(key, params)` es utilizable FUERA de los componentes (constructores de mensajes de guardas,
+ *    manejadores de eventos) y lee el idioma actual al momento de la llamada.
+ *  - `useT()` suscribe el componente invocador a cambios de idioma mediante
+ *    `useSyncExternalStore`, por lo que alternarlo vuelve a renderizar cada cadena en vivo.
+ *  - `LanguageToggle` es el control segmentado visible EN/ES utilizado en la
+ *    barra de herramientas de la aplicación.
  *
- * Spanish copy is neutral/professional Latin-American Spanish (product UI
- * register — no regional slang). The app title stays "UML Design Tool" in
- * both languages (13e.8).
+ * El texto en español es español neutro/profesional latinoamericano (registro de UI de
+ * producto — sin modismos regionales). El título de la aplicación permanece como "UML Design Tool" en
+ * ambos idiomas (13e.8).
  */
 import { useSyncExternalStore, type ReactElement } from 'react';
 
 export type Lang = 'en' | 'es';
 
-/** localStorage key holding the user's language choice. */
+/** Clave de localStorage que almacena la elección de idioma del usuario. */
 export const LANG_STORAGE_KEY = 'uml-design-tool-lang';
 
-/** All user-facing UI strings, English (source of truth). */
+/** Todas las cadenas de interfaz de usuario de cara al usuario, inglés (fuente de verdad). */
 const EN = {
-  // App shell (13e.8: the title has no "AI" and is identical in both langs).
+  // Shell de la aplicación (13e.8: el título no lleva "AI" y es idéntico en ambos idiomas).
   'app.title': 'UML Design Tool',
   'app.loading': 'Loading…',
   'app.loadError': 'Failed to load the diagram',
@@ -55,7 +55,7 @@ const EN = {
   'xmi.requestFailed': 'Failed to reach the import service',
   'xmi.applyFailed': 'Imported {applied} elements before a delta was rejected ({kind})',
 
-  // Photo import (PR 16, task 16.3-WEB).
+  // Importación de fotos (PR 16, tarea 16.3-WEB).
   'photo.button': 'Import Photo',
   'photo.ariaLabel': 'Import a photo of a class diagram',
   'photo.validating': 'Validating…',
@@ -71,14 +71,14 @@ const EN = {
   'photo.applySchemaError': 'The extracted result is invalid and cannot be applied',
   'photo.applyFailed': 'Applied 0 elements before a delta was rejected ({kind})',
 
-  // Image export (unit 16b).
+  // Exportación de imágenes (unidad 16b).
   'export.png': 'Export PNG',
   'export.pngAria': 'Export diagram as PNG image',
   'export.jpeg': 'Export JPEG',
   'export.jpegAria': 'Export diagram as JPEG image',
   'export.emptyWarning': 'No diagram content to export',
 
-  // Interpreter bar.
+  // Barra del intérprete.
   'interpreter.ariaLabel': 'Natural language command',
   'interpreter.placeholder': 'e.g. "add a class Product"',
   'interpreter.send': 'Send',
@@ -96,16 +96,16 @@ const EN = {
   'voice.sttFailed': 'Failed to reach the speech-to-text service',
   'voice.recordingFailed': 'Recording failed',
 
-  // Delta preview modal.
+  // Modal de vista previa de delta.
   'preview.ariaLabel': 'AI change preview',
   'preview.heading': 'AI proposes this change',
   'preview.confirm': 'Confirm',
   'preview.reject': 'Reject',
 
-  // Presence.
+  // Presencia.
   'presence.onlineUsers': 'Online users',
 
-  // Toolbox (Palette).
+  // Caja de herramientas (Paleta).
   'toolbox.header': 'Toolbox',
   'toolbox.objects': 'Objects',
   'toolbox.relations': 'Relations',
@@ -130,7 +130,7 @@ const EN = {
   'palette.armToolTitle': 'Click, then drag between two nodes to create a {label}',
   'palette.naryTitle': 'Click, then pick at least three classes',
 
-  // Canvas toolbar.
+  // Barra de herramientas del lienzo.
   'canvas.addClass': 'Add class',
   'canvas.addInterface': 'Add interface',
   'canvas.linkClasses': 'Link classes',
@@ -141,7 +141,7 @@ const EN = {
   'canvas.selectTarget': 'Select target class',
   'canvas.edgeToolHint': '{tool} tool armed — drag from a source node to a target node. Press Esc to cancel.',
 
-  // N-ary pick panel.
+  // Panel de selección N-aria.
   'nary.panelTitle': 'N-ary association — {n} of 3+ classes selected',
   'nary.multiplicityFor': 'Multiplicity for {name}',
   'nary.name': 'Name',
@@ -150,7 +150,7 @@ const EN = {
   'nary.create': 'Create',
   'nary.createAria': 'Create n-ary association',
 
-  // Unified edge editor.
+  // Editor unificado de aristas.
   'editor.associationName': 'Association name',
   'editor.label': 'Label',
   'editor.labelAria': '{type} label',
@@ -168,7 +168,7 @@ const EN = {
   'editor.close': 'Close',
   'editor.closeAria': 'Close edge editor',
 
-  // N-ary diamond editor.
+  // Editor del diamante N-ario.
   'naryEditor.title': 'N-ary association',
   'naryEditor.nameAria': 'N-ary name',
   'naryEditor.endMultiplicityAria': 'N-ary end multiplicity for {name}',
@@ -176,7 +176,7 @@ const EN = {
   'naryEditor.deleteAria': 'Delete n-ary association {id}',
   'naryEditor.closeAria': 'Close n-ary editor',
 
-  // Per-class relation panels.
+  // Paneles de relaciones por clase.
   'panel.generalizationsFor': 'Generalizations for {name}',
   'panel.realizationsFor': 'Realizations for {name}',
   'panel.dependenciesFor': 'Dependencies for {name}',
@@ -194,7 +194,7 @@ const EN = {
   'panel.removeDependency': 'Remove dependency',
   'panel.removeDependencyAria': 'Delete dependency {id}',
 
-  // Connection guards / engine rejections.
+  // Guardas de conexión / rechazos del motor.
   'guard.bothEndsClasses': 'Both ends of the connection must be classes.',
   'guard.endpointsExist': 'Both endpoints must be existing classes.',
   'guard.invalidEndpoints': '{label} rejected: invalid endpoints.',
@@ -209,7 +209,7 @@ const EN = {
   'reason.classNotFound': 'a referenced class does not exist',
   'reason.unknown': 'the model rejected the change and is unchanged',
 
-  // Class node (context menu + member editing).
+  // Nodo de clase (menú contextual + edición de miembros).
   'node.deleteAria': 'Delete {name}',
   'node.noOtherClasses': 'No other classes',
   'node.makeSubclassOf': 'Make subclass of {name}',
@@ -256,7 +256,7 @@ const EN = {
 
 export type TKey = keyof typeof EN;
 
-/** Spanish — neutral/professional product UI register (no regional slang). */
+/** Español — registro de UI de producto neutro/profesional (sin modismos regionales). */
 const ES: Record<TKey, string> = {
   'app.title': 'UML Design Tool',
   'app.loading': 'Cargando…',
@@ -285,7 +285,7 @@ const ES: Record<TKey, string> = {
   'xmi.requestFailed': 'No se pudo contactar al servicio de importación',
   'xmi.applyFailed': 'Se importaron {applied} elementos antes de rechazar un delta ({kind})',
 
-  // Photo import (PR 16, task 16.3-WEB).
+  // Importación de fotos (PR 16, tarea 16.3-WEB).
   'photo.button': 'Importar Foto',
   'photo.ariaLabel': 'Importar una foto de un diagrama de clases',
   'photo.validating': 'Validando…',
@@ -301,7 +301,7 @@ const ES: Record<TKey, string> = {
   'photo.applySchemaError': 'El resultado extraído no es válido y no se puede aplicar',
   'photo.applyFailed': 'Se aplicaron 0 elementos antes de rechazar un delta ({kind})',
 
-  // Image export (unit 16b).
+  // Exportación de imágenes (unidad 16b).
   'export.png': 'Exportar PNG',
   'export.pngAria': 'Exportar diagrama como imagen PNG',
   'export.jpeg': 'Exportar JPEG',
@@ -494,14 +494,14 @@ export function getLang(): Lang {
   return current;
 }
 
-/** Switch the UI language live and persist the choice. */
+/** Cambia el idioma de la UI en vivo y persiste la elección. */
 export function setLang(lang: Lang): void {
   current = lang;
   try {
     window.localStorage.setItem(LANG_STORAGE_KEY, lang);
   } catch {
-    // Private-mode / disabled storage: the session still switches, it just
-    // does not survive a reload. Never break the UI over persistence.
+    // Modo privado / almacenamiento deshabilitado: la sesión igual cambia, solo que
+    // no sobrevive a una recarga. Nunca romper la UI por problemas de persistencia.
   }
   for (const listener of listeners) {
     listener();
@@ -516,8 +516,8 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
- * Translate a UI string, reading the CURRENT language at call time (usable
- * outside React). `{param}` placeholders are filled from `params`.
+ * Traduce una cadena de UI, leyendo el idioma ACTUAL al momento de la llamada (utilizable
+ * fuera de React). Los marcadores `{param}` se completan a partir de `params`.
  */
 export function t(key: TKey, params?: Record<string, string | number>): string {
   let value: string = STRINGS[current][key] ?? STRINGS.en[key] ?? key;
@@ -529,13 +529,13 @@ export function t(key: TKey, params?: Record<string, string | number>): string {
   return value;
 }
 
-/** Reactive accessor: re-renders the component when the language changes. */
+/** Accesor reactivo: vuelve a renderizar el componente cuando cambia el idioma. */
 export function useT(): { t: typeof t; lang: Lang; setLang: (lang: Lang) => void } {
   const lang = useSyncExternalStore(subscribe, getLang, getLang);
   return { t, lang, setLang };
 }
 
-/** EN/ES segmented control — the visible language toggle (13e.11). */
+/** Control segmentado EN/ES — el alternador de idioma visible (13e.11). */
 export function LanguageToggle(): ReactElement {
   const { lang, setLang: choose } = useT();
   return (
