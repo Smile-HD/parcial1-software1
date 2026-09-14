@@ -1,19 +1,19 @@
 /**
- * Vitest setup for @app/web.
- * Polyfills required by @xyflow/react that are missing in jsdom.
+ * Configuración de Vitest para @app/web.
+ * Polyfills requeridos por @xyflow/react que faltan en jsdom.
  *
- * React Flow's official mock (see https://reactflow.dev/learn/advanced-use/testing):
- * - ResizeObserver fires callback on observe (nodes need to be measured for edges to render)
- * - HTMLElement offsetWidth/offsetHeight report style values or 1
- * - SVGElement getBBox returns zeros
+ * Mock oficial de React Flow (ver https://reactflow.dev/learn/advanced-use/testing):
+ * - ResizeObserver dispara el callback al observar (los nodos deben medirse para que los bordes se rendericen)
+ * - offsetWidth/offsetHeight de HTMLElement reportan valores de estilo o 1
+ * - getBBox de SVGElement retorna ceros
  */
 
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
-// vitest runs without `globals: true`, so RTL cannot auto-register its
-// afterEach(cleanup). Without this, DOM accumulates across tests in a file
-// and role/text queries find stale nodes from earlier renders.
+// vitest se ejecuta sin `globals: true`, por lo que RTL no puede autorregistrar su
+// afterEach(cleanup). Sin esto, el DOM se acumula a través de las pruebas en un archivo
+// y las consultas por rol/texto encuentran nodos obsoletos de renderizados anteriores.
 afterEach(() => {
   cleanup();
 });
@@ -26,7 +26,7 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
       this.callback = callback;
     }
     observe(_target: Element): void {
-      // Fire callback async so React Flow can measure the container.
+      // Disparar el callback de forma asíncrona para que React Flow pueda medir el contenedor.
       setTimeout(() => {
         this.callback([{ target: _target, contentRect: { width: 800, height: 600 } } as ResizeObserverEntry], this);
       }, 0);

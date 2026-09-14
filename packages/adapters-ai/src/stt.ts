@@ -1,19 +1,19 @@
 /**
- * STT adapters (PR 8, task 8.1).
+ * Adaptadores STT (PR 8, tarea 8.1).
  *
- * voice:R1 — transcription uses an EXISTING STT API (OpenAI Whisper); this
- * package implements no acoustic model. Transport/configuration failures are
- * surfaced as `SttUnavailableError` so callers can distinguish "the user
- * must use text input" from an interpretation refusal.
+ * voice:R1 — la transcripción utiliza una API STT EXISTENTE (OpenAI Whisper); este
+ * paquete no implementa ningún modelo acústico. Las fallas de transporte/configuración
+ * se exponen como `SttUnavailableError` para que los invocadores puedan distinguir
+ * "el usuario debe usar entrada de texto" de un rechazo de interpretación.
  *
- * - `FakeStt` — deterministic, zero-network: returns a configured transcript
- *   (default: the canonical demo utterance) or throws a configured error so
- *   outage paths are testable offline.
- * - `WhisperStt` — OpenAI-compatible `/audio/transcriptions` adapter.
+ * - `FakeStt` — determinista, sin red: retorna una transcripción configurada
+ *   (por defecto: la elocución canónica de demostración) o lanza un error configurado
+ *   para probar rutas de caída fuera de línea.
+ * - `WhisperStt` — adaptador de `/audio/transcriptions` compatible con OpenAI.
  */
 import type { SttPort } from '@app/core';
 
-/** Raised when the STT provider is unreachable or misconfigured (voice:R1). */
+/** Se lanza cuando el proveedor STT es inalcanzable o está mal configurado (voice:R1). */
 export class SttUnavailableError extends Error {
   constructor(message = 'Speech-to-text service is unavailable') {
     super(message);
@@ -22,9 +22,9 @@ export class SttUnavailableError extends Error {
 }
 
 export interface FakeSttOptions {
-  /** Transcript returned on every call. Default: canonical demo utterance. */
+  /** Transcripción retornada en cada llamada. Por defecto: elocución canónica de demo. */
   transcript?: string | undefined;
-  /** When set, transcribe() rejects with this error (outage simulation). */
+  /** Si se define, transcribe() rechaza con este error (simulación de interrupción de servicio). */
   error?: Error | undefined;
 }
 
@@ -47,9 +47,9 @@ export class FakeStt implements SttPort {
 
 export interface WhisperSttConfig {
   apiKey: string;
-  /** Default: https://api.openai.com/v1 — override for compatible gateways. */
+  /** Por defecto: https://api.openai.com/v1 — sobreescribir para gateways compatibles. */
   baseUrl?: string | undefined;
-  /** Default: whisper-1. */
+  /** Por defecto: whisper-1. */
   model?: string | undefined;
 }
 

@@ -1,5 +1,5 @@
-/// Runtime-configurable backend API endpoint configuration.
-/// Meets requirement mobile:R4 (retarget without rebuild).
+/// Configuración del endpoint de la API del backend configurable en tiempo de ejecución.
+/// Cumple con el requerimiento mobile:R4 (reorientación sin recompilar).
 class ApiConfig {
   static const String defaultBaseUrl = 'http://localhost:8080';
 
@@ -29,7 +29,7 @@ class ApiConfig {
       throw ArgumentError('Invalid base URL: $url. Must start with http:// or https:// and include a host.');
     }
 
-    // Strip trailing slash
+    // Eliminar barra inclinada final
     var normalized = url.trim();
     while (normalized.endsWith('/')) {
       normalized = normalized.substring(0, normalized.length - 1);

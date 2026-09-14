@@ -1,12 +1,12 @@
 /**
- * Bridge: apply a delta to the canonical Y.Doc (IR).
+ * Puente: aplica un delta al Y.Doc canonical (IR).
  *
- * 1. Project the Y.Doc → Diagram (read projection)
- * 2. applyDelta against the Diagram (pure engine)
- * 3. Write the mutated diagram back into the SAME Y.Doc instance
- *    (triggers Yjs observers so the canvas re-renders).
+ * 1. Proyecta el Y.Doc → Diagram (proyección de lectura)
+ * 2. applyDelta contra el Diagram (motor puro)
+ * 3. Escribe el diagrama mutado nuevamente en la MISMA instancia de Y.Doc
+ *    (dispara los observadores de Yjs para que el lienzo se re-renderice).
  *
- * editor:R1 — every mutation flows through applyDelta.
+ * editor:R1 — cada mutación fluye a través de applyDelta.
  */
 import * as Y from 'yjs';
 
@@ -24,7 +24,7 @@ import {
   type Realization,
 } from '@app/core';
 
-// ── Y.Doc key constants (mirrors core's Y_DOC_TYPES) ──────────────────────
+// ── Constantes de clave de Y.Doc (refleja Y_DOC_TYPES de core) ──────────────────────
 const Y_CLASSES = 'classes';
 const Y_ASSOCIATIONS = 'associations';
 const Y_GENERALIZATIONS = 'generalizations';
@@ -34,8 +34,8 @@ const Y_NARY_ASSOCIATIONS = 'naryAssociations';
 const Y_META = 'meta';
 
 /**
- * Apply a delta to the Y.Doc in-place. Returns the same `ApplyResult`
- * as `applyDelta` — callers MUST check `isApplyError(result)` before using
+ * Aplica un delta al Y.Doc in situ. Retorna el mismo `ApplyResult`
+ * que `applyDelta` — quienes llamen a esta función DEBEN verificar `isApplyError(result)` antes de usar
  * `result.diagram`.
  */
 export function applyDeltaToYDoc(doc: Y.Doc, delta: Delta): ApplyResult<Diagram> {
@@ -50,7 +50,7 @@ export function applyDeltaToYDoc(doc: Y.Doc, delta: Delta): ApplyResult<Diagram>
   return result;
 }
 
-// ── In-place Y.Doc writer (mutates the same doc instance) ─────────────────
+// ── Escritor de Y.Doc in situ (muta la misma instancia de doc) ─────────────────
 
 function writeDiagramToDoc(doc: Y.Doc, diagram: Diagram): void {
   doc.transact(() => {
@@ -103,7 +103,7 @@ function buildYClass(cls: Class): Y.Map<unknown> {
 
   yClass.set('id', cls.id);
   yClass.set('name', cls.name);
-  // Unit 12.1: classifier kind + abstract marking round-trip through the bridge.
+  // Unidad 12.1: el tipo de clasificador + marca abstracta hacen round-trip a través del puente.
   yClass.set('kind', cls.kind ?? 'class');
   yClass.set('isAbstract', cls.isAbstract ?? false);
 
@@ -157,12 +157,12 @@ function buildYAssociation(assoc: Association): Y.Map<unknown> {
   yAssoc.set('id', assoc.id);
   yAssoc.set('sourceClassId', assoc.sourceClassId);
   yAssoc.set('targetClassId', assoc.targetClassId);
-  // Unit 13d fix C: optional multiplicities — an unspecified end stores NO
-  // key (absence ≠ '1'), mirroring core's ydoc codec.
+  // Unidad 13d corrección C: multiplicidades opcionales — un extremo sin especificar NO almacena
+  // ninguna clave (ausencia ≠ '1'), reflejando el códec ydoc de core.
   if (assoc.sourceMultiplicity !== undefined) yAssoc.set('sourceMultiplicity', assoc.sourceMultiplicity);
   if (assoc.targetMultiplicity !== undefined) yAssoc.set('targetMultiplicity', assoc.targetMultiplicity);
   yAssoc.set('directed', assoc.directed);
-  // Unit 10: aggregation/name/roles must round-trip through the Y.Doc bridge
+  // Unidad 10: agregación/nombre/roles deben hacer round-trip a través del puente Y.Doc
   yAssoc.set('aggregation', assoc.aggregation ?? 'none');
   yAssoc.set('aggregationEnd', assoc.aggregationEnd ?? 'source');
   if (assoc.name !== undefined) yAssoc.set('name', assoc.name);
@@ -176,8 +176,8 @@ function buildYGeneralization(gen: Generalization): Y.Map<unknown> {
   yGen.set('id', gen.id);
   yGen.set('subClassId', gen.subClassId);
   yGen.set('superClassId', gen.superClassId);
-  // Unit 13c: the optional label must survive the bridge's full rewrite,
-  // otherwise any unrelated delta would silently drop edge names.
+  // Unidad 13c: la etiqueta opcional debe sobrevivir a la reescritura completa del puente;
+  // de lo contrario, cualquier delta no relacionado descartaría silenciosamente los nombres de aristas.
   if (gen.name !== undefined) yGen.set('name', gen.name);
   return yGen;
 }
@@ -204,8 +204,8 @@ function buildYNaryAssociation(nary: NaryAssociation): Y.Map<unknown> {
   const yNary = new Y.Map<unknown>();
   yNary.set('id', nary.id);
   if (nary.name !== undefined) yNary.set('name', nary.name);
-  // memberEnds is an ordered Y.Array of Y.Maps — same blob-preserving
-  // shape as attributes/methods/parameters in core's ydoc codec (unit 13).
+  // memberEnds es un Y.Array ordenado de Y.Maps — misma forma que preserva
+  // blobs que attributes/methods/parameters en el códec ydoc de core (unidad 13).
   const yEnds = new Y.Array<Y.Map<unknown>>();
   for (const end of nary.memberEnds) {
     const yEnd = new Y.Map<unknown>();

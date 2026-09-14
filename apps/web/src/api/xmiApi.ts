@@ -1,12 +1,12 @@
 /**
- * XMI import REST client (PR 15) — sends an XMI 2.1 file to the API and
- * returns the parsed batch delta. The web client applies it atomically to its
- * Y.Doc; the server does NOT mutate the diagram (the response carries
- * the batch delta, not the new diagram state).
+ * Cliente REST de importación XMI (PR 15) — envía un archivo XMI 2.1 a la API y
+ * retorna el delta de lote parseado. El cliente web lo aplica atómicamente a su
+ * Y.Doc; el servidor NO muta el diagrama (la respuesta transporta
+ * el delta de lote, no el nuevo estado del diagrama).
  *
  * Endpoint: POST /diagrams/:id/import/xmi
- * Body:     { xmi: string }   (raw XMI text)
- * Reply:    { deltaId, batch: BatchDelta, summary: {...counts...} }
+ * Cuerpo:   { xmi: string }   (texto XMI sin procesar)
+ * Respuesta:{ deltaId, batch: BatchDelta, summary: {...conteos...} }
  */
 import type { BatchDelta } from '@app/core';
 
@@ -43,7 +43,7 @@ export async function importXmi(diagramId: string, xmiText: string): Promise<Xmi
         message = body.error;
       }
     } catch {
-      // ignore non-JSON body
+      // ignorar cuerpo no-JSON
     }
     throw new DiagramApiError(response.status, message);
   }
@@ -70,9 +70,9 @@ export async function importXmi(diagramId: string, xmiText: string): Promise<Xmi
 }
 
 /**
- * Export a diagram as XMI 2.1 for download (PR 15b).
+ * Exporta un diagrama como XMI 2.1 para descarga (PR 15b).
  * Endpoint: GET /diagrams/:id/export/xmi
- * Reply:    .xmi file as attachment (application/xml)
+ * Respuesta: archivo .xmi como adjunto (application/xml)
  */
 export async function exportXmi(diagramId: string): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/export/xmi`);
@@ -84,7 +84,7 @@ export async function exportXmi(diagramId: string): Promise<Blob> {
         message = body.error;
       }
     } catch {
-      // ignore non-JSON body
+      // ignorar cuerpo no-JSON
     }
     throw new DiagramApiError(response.status, message);
   }

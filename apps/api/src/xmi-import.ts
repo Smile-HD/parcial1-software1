@@ -11,9 +11,9 @@ export function registerXmiImportRoutes(app: FastifyInstance) {
       const diagramId = request.params.id;
       const { xmi } = request.body;
 
-      // Check if diagram exists. loadDiagramById throws DiagramNotFoundError
-      // for a missing row (it never returns null), so 404 must be derived
-      // from the caught error — same pattern as POST /diagrams/:id/generate.
+      // Comprueba si el diagrama existe. loadDiagramById lanza DiagramNotFoundError
+      // para una fila inexistente (nunca retorna null), por lo que el 404 debe derivarse
+      // del error capturado — el mismo patrón que en POST /diagrams/:id/generate.
       try {
         await loadDiagramById(diagramId);
       } catch (error) {
@@ -34,7 +34,7 @@ export function registerXmiImportRoutes(app: FastifyInstance) {
 
       const batch = xmiToDeltaBatch(model, diagramId);
 
-      // Validate the batch against the canonical schema before returning
+      // Valida el lote contra el esquema canónico antes de retornarlo
       const validatedBatch = BatchDeltaSchema.parse(batch);
 
       return reply.send({

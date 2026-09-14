@@ -1,9 +1,9 @@
 /**
- * @app/codegen — IR → Spring backend generation core.
+ * @app/codegen — Núcleo de generación de backend Spring desde IR.
  *
- * 14a ships the name sanitizer + output-root guard and the in-memory IR→file
- * map (mapping tables + warning collector). Handlebars templates, the golden
- * build and the HTTP job API land in 14b/14c/14d.
+ * 14a incluye el sanitizador de nombres + guarda de raíz de salida y el mapa
+ * en memoria IR→archivo (tablas de mapeo + recolector de advertencias). Las plantillas
+ * Handlebars, la compilación de referencia y la API de trabajos HTTP llegan en 14b/14c/14d.
  */
 export const PACKAGE_NAME = '@app/codegen' as const;
 

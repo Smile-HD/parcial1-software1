@@ -1,6 +1,6 @@
 /**
- * Browser-safe base64 helpers for Yjs update blobs.
- * Chunked so large docs never blow the Function.apply argument limit.
+ * Funciones auxiliares de base64 seguras para el navegador para blobs de actualización de Yjs.
+ * Procesadas en fragmentos para que documentos grandes nunca superen el límite de argumentos de Function.apply.
  */
 export function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';

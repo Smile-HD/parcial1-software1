@@ -1,12 +1,12 @@
 /**
- * @app/adapters-ai — LLM adapters for the text interpreter (PR 7, task 7.3).
+ * @app/adapters-ai — Adaptadores LLM para el intérprete de texto (PR 7, tarea 7.3).
  *
- * - `FakeLlm` — deterministic pattern matcher used by tests and offline dev
- *   (zero network). Understands the bounded command vocabulary and refuses
- *   whole-design generation requests (interpreter:R3).
- * - `OpenAiLlm` — OpenAI-compatible chat-completions adapter with JSON
- *   structured output. The returned delta is ALWAYS Zod-validated by the
- *   caller (interpreter:R1) — the model's text never touches the model.
+ * - `FakeLlm` — comparador de patrones determinista usado por pruebas y desarrollo
+ *   offline (sin red). Entiende el vocabulario acotado de comandos y rechaza
+ *   solicitudes de generación de diseño completo (interpreter:R3).
+ * - `OpenAiLlm` — adaptador de chat-completions compatible con OpenAI con salida
+ *   estructurada en JSON. El delta retornado SIEMPRE es validado por Zod por el
+ *   invocador (interpreter:R1) — el texto del modelo nunca toca el metamodelo directamente.
  */
 import {
   DeltaSchema,
@@ -32,7 +32,7 @@ export * from './stt.js';
 export * from './retry-repairing-llm.js';
 export * from './vision.js';
 
-// ── shared helpers ─────────────────────────────────────────────────────────
+// ── helpers compartidos ────────────────────────────────────────────────────
 
 function classIdByName(diagram: Diagram, name: string): string | null {
   const target = name.toLowerCase();
@@ -58,8 +58,8 @@ const WHOLE_DESIGN_REQUEST = /\b(generate|genera|generá|dise[ñn]a|dise[ñn]o)\
 // ── FakeLlm ────────────────────────────────────────────────────────────────
 
 /**
- * Deterministic interpreter for the bounded command vocabulary. Pattern-based
- * on purpose: tests (7.1/7.2/7.5) and offline dev run with zero network.
+ * Intérprete determinista para el vocabulario acotado de comandos. Basado en patrones
+ * a propósito: las pruebas (7.1/7.2/7.5) y el desarrollo offline se ejecutan sin red.
  */
 export class FakeLlm implements LlmPort {
   async interpret(utterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
@@ -70,7 +70,7 @@ export class FakeLlm implements LlmPort {
       };
     }
 
-    // Unit 9 — UML adornment heuristics from the utterance (optional).
+    // Unidad 9 — Heurísticas de adornos UML a partir de la elocución (opcional).
     const visibility = /\bprivate\b/i.test(utterance)
       ? ('-' as const)
       : /\bprotected\b/i.test(utterance)
@@ -88,9 +88,9 @@ export class FakeLlm implements LlmPort {
 
     const refused = (reason: string): LlmResult => ({ kind: 'refused', reason });
 
-    // 4 (evaluated FIRST). add attribute to an EXISTING class. Checked before
-    // the create-class pattern so "add attribute x: int to the class Customer"
-    // is not misread as a class creation (offline demo fix, unit 9).
+    // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE. Verificado antes
+    // del patrón create-class para que "add attribute x: int to the class Customer"
+    // no se interprete erróneamente como creación de clase (arreglo demo offline, unidad 9).
     const addAttribute = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:attribute|atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (addAttribute) {
       const classId = classIdByName(currentIr, addAttribute[3]!);
@@ -108,8 +108,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 0 (evaluated FIRST among creates). create interface: "create interface X"
-    // — an interface is a class with kind 'interface' (unit 12.5, 12a half).
+    // 0 (evaluado PRIMERO entre las creaciones). crear interfaz: "create interface X"
+    // — una interfaz es una clase con kind 'interface' (unidad 12.5, mitad 12a).
     const createInterface = /\b(?:create|add|make|new|crea)\b[\s\S]*?\b(?:interface|interfaz)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (createInterface) {
       const name = createInterface[1]!;
@@ -126,7 +126,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 1. create class / diagram [+ optional "with attributes a, b y c"]
+    // 1. crear clase / diagrama [+ opcional "con atributos a, b y c"]
     const createClass = /\b(?:add|create|crea|agregá|agrega|añade)\b[\s\S]*?\b(?:class(?:es)?|clase|diagrama)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (createClass) {
       const name = createClass[1]!;
@@ -172,7 +172,7 @@ export class FakeLlm implements LlmPort {
                 classId: create.classId,
                 memberId: crypto.randomUUID(),
                 name: bareMatch[1]!,
-                type: 'string', // Standard default type when omitted
+                type: 'string', // Tipo estándar por defecto cuando se omite
                 ...adornments,
               });
             }
@@ -191,7 +191,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: create };
     }
 
-    // 2. rename class
+    // 2. renombrar clase
     const rename = /\b(?:rename|renombra|renombrá)\b[\s\S]*?\b(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+(?:to|a)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (rename) {
       const classId = classIdByName(currentIr, rename[1]!);
@@ -206,7 +206,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 3. delete class
+    // 3. eliminar clase
     const deleteClass = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:class|clase)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (deleteClass) {
       const classId = classIdByName(currentIr, deleteClass[1]!);
@@ -215,7 +215,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 5. remove attribute / method
+    // 5. eliminar atributo / método
     const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo)\s+([A-Za-z_]\w*)\s+(?:from|de)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
     if (removeMember) {
       const classId = classIdByName(currentIr, removeMember[2]!);
@@ -230,7 +230,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 6. add method
+    // 6. agregar método
     const addMethod = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:method|m[ée]todo)\s+([A-Za-z_]\w*)\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)\s*([A-Za-z_][\w.]*)?\s+(?:to|a)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
     if (addMethod) {
       const classId = classIdByName(currentIr, addMethod[3]!);
@@ -248,14 +248,13 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 6b. N-ARY association (unit 13.4): "ternary association between Supplier,
+    // 6b. Asociación N-ARIA (unidad 13.4): "ternary association between Supplier,
     // Part and Project" / "n-ary association between A, B, C and D" /
-    // "asociación ternaria entre A, B y C". Evaluated BEFORE the binary
-    // association patterns (7/8): without this, the generic binary pattern
-    // would misread the tail of the member list ("Part and Project") as a
-    // two-end association. The engine enforces the >=3 / duplicate /
-    // existence invariants; the interpreter resolves names and refuses
-    // unknown classes or fewer than three members up front.
+    // "asociación ternaria entre A, B y C". Evaluada ANTES de los patrones de asociación
+    // binaria (7/8): sin esto, el patrón binario genérico interpretaría erróneamente
+    // la cola de la lista de miembros ("Part and Project") como una asociación de dos extremos.
+    // El motor aplica los invariantes de >=3 / duplicados / existencia; el intérprete
+    // resuelve nombres y rechaza de antemano clases desconocidas o menos de tres miembros.
     const naryAssociation = /\b(?:(?:ternary|ternaria|n-ary|nary)\b[\s\S]*?\b(?:association|asociaci[óo]n)\b|(?:association|asociaci[óo]n)\b[\s\S]*?\b(?:ternary|ternaria|n-ary|nary)\b)[\s\S]*?\b(?:between|entre)\s+([A-Za-z_]\w*(?:(?:\s*,\s*|\s+(?:and|y)\s+)[A-Za-z_]\w*)+)/i.exec(utterance);
     if (naryAssociation) {
       const names = naryAssociation[1]!
@@ -281,8 +280,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 7. named association with roles: "association X Y named Z role A role B"
-    // Must be checked BEFORE the generic association pattern
+    // 7. asociación nombrada con roles: "association X Y named Z role A role B"
+    // Debe verificarse ANTES del patrón genérico de asociación
     const namedAssociation = /\b(?:association|link|asocia(?:ci[óo]n)?)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:(?:with|con|y|and)\s+)?([A-Za-z_]\w*)\s+(?:named|called|llama(?:da)?)\s+([A-Za-z_]\w*)(?:(?:\s+(?:role|rol)\s+([A-Za-z_]\w*))?(?:\s+(?:role|rol)\s+([A-Za-z_]\w*))?)?/i.exec(utterance);
     if (namedAssociation) {
       const sourceClassId = classIdByName(currentIr, namedAssociation[1]!);
@@ -306,7 +305,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 8. association between two classes (plain)
+    // 8. asociación entre dos clases (simple)
     const association = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
@@ -328,11 +327,11 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 9. composition: "X is composed of Y" or "X composes Y" — X is the whole (container), Y is the part
+    // 9. composición: "X is composed of Y" o "X composes Y" — X es el todo (contenedor), Y es la parte
     const composition = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:composed\s+of|composes|compone)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (composition) {
-      const sourceClassId = classIdByName(currentIr, composition[1]!); // whole/container
-      const targetClassId = classIdByName(currentIr, composition[2]!); // part
+      const sourceClassId = classIdByName(currentIr, composition[1]!); // todo/contenedor
+      const targetClassId = classIdByName(currentIr, composition[2]!); // parte
       if (sourceClassId === null) return refused(`Unknown class "${composition[1]}"`);
       if (targetClassId === null) return refused(`Unknown class "${composition[2]}"`);
       const delta: AssociationDelta = {
@@ -346,19 +345,19 @@ export class FakeLlm implements LlmPort {
         targetMultiplicity: '0..*',
         directed: false,
         aggregation: 'composite',
-        aggregationEnd: 'source', // whole is at source end
+        aggregationEnd: 'source', // el todo está en el extremo origen (source)
       };
       return { kind: 'delta', value: delta };
     }
 
-    // 9b. reversed composition phrasing: "X is part of Y" or "X belongs to Y" — Y is the whole, X is the part
+    // 9b. fraseo inverso de composición: "X is part of Y" o "X belongs to Y" — Y es el todo, X es la parte
     const partOf = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:part\s+of|belongs\s+to)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (partOf) {
-      const partClassId = classIdByName(currentIr, partOf[1]!); // part
-      const wholeClassId = classIdByName(currentIr, partOf[2]!); // whole/container
+      const partClassId = classIdByName(currentIr, partOf[1]!); // parte
+      const wholeClassId = classIdByName(currentIr, partOf[2]!); // todo/contenedor
       if (partClassId === null) return refused(`Unknown class "${partOf[1]}"`);
       if (wholeClassId === null) return refused(`Unknown class "${partOf[2]}"`);
-      // Determine which end is the whole and set aggregationEnd accordingly
+      // Determina cuál extremo es el todo y establece aggregationEnd en consecuencia
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -370,12 +369,12 @@ export class FakeLlm implements LlmPort {
         targetMultiplicity: '1',
         directed: false,
         aggregation: 'composite',
-        aggregationEnd: 'target', // whole is at target end
+        aggregationEnd: 'target', // el todo está en el extremo destino (target)
       };
       return { kind: 'delta', value: delta };
     }
 
-    // 10. shared aggregation: "aggregation between X and Y" or "X has a Y" (shared)
+    // 10. agregación compartida: "aggregation between X and Y" o "X has a Y" (compartida)
     const sharedAgg = /\b(?:aggregation|shared)\b[\s\S]*?\b(?:between\s+)?([A-Za-z_]\w*)\s+(?:and|with|y)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (sharedAgg) {
       const sourceClassId = classIdByName(currentIr, sharedAgg[1]!);
@@ -393,12 +392,12 @@ export class FakeLlm implements LlmPort {
         targetMultiplicity: '0..*',
         directed: false,
         aggregation: 'shared',
-        aggregationEnd: 'source', // default to source for shared
+        aggregationEnd: 'source', // por defecto origen para agregación compartida
       };
       return { kind: 'delta', value: delta };
     }
 
-    // 11. generalization DELETE (checked BEFORE create so negations win):
+    // 11. ELIMINACIÓN de generalización (verificado ANTES de create para que las negaciones tengan prioridad):
     // "X does not inherit from Y", "remove inheritance from X",
     // "remove inheritance between X and Y".
     const existingGens: readonly Generalization[] = currentIr.generalizations ?? [];
@@ -428,8 +427,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 12. generalization CREATE: "X is a kind of Y", "X inherits from Y",
-    // "X is a subclass of Y" — X is the subClass, Y is the superClass.
+    // 12. CREACIÓN de generalización: "X is a kind of Y", "X inherits from Y",
+    // "X is a subclass of Y" — X es subClass, Y es superClass.
     const generalization = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:a\s+kind\s+of|inherits\s+from|a\s+subclass\s+of)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (generalization) {
       const subClassId = classIdByName(currentIr, generalization[1]!);
@@ -447,9 +446,9 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 13. realization CREATE (unit 12.5, 12a half): "X realizes Y" /
-    // "X implements Y" — X is the client class, Y the supplier interface.
-    // The engine enforces the interface-target invariant at apply time.
+    // 13. CREACIÓN de realización (unidad 12.5, mitad 12a): "X realizes Y" /
+    // "X implements Y" — X es la clase cliente, Y la interfaz proveedora.
+    // El motor aplica el invariante de destino de interfaz al aplicar el delta.
     const realization = /\b([A-Za-z_]\w*)\s+(?:realizes|realiza|implements|implementa)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (realization) {
       const clientClassId = classIdByName(currentIr, realization[1]!);
@@ -467,9 +466,9 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 13b. dependency DELETE (unit 12.5, 12b half; checked BEFORE create so
-    // negations win, mirroring generalization): "X does not depend on Y",
-    // "remove dependency between X and Y", "remove dependency from X".
+    // 13b. ELIMINACIÓN de dependencia (unidad 12.5, mitad 12b; verificada ANTES de create
+    // para que las negaciones tengan prioridad, imitando a la generalización):
+    // "X does not depend on Y", "remove dependency between X and Y", "remove dependency from X".
     const existingDeps: readonly Dependency[] = currentIr.dependencies ?? [];
     const notDepend = /\b([A-Za-z_]\w*)\s+does\s+not\s+depend\s+on\s+([A-Za-z_]\w*)/i.exec(utterance);
     const removeDependency = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\bdependen(?:cy|cia)\b[\s\S]*?\b(?:between|from|de|entre)\s+([A-Za-z_]\w*)(?:\s+(?:and|y|con)\s+([A-Za-z_]\w*))?/i.exec(utterance);
@@ -497,9 +496,9 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 13c. dependency CREATE (unit 12.5, 12b half): "X depends on Y" /
-    // "X uses Y" — X is the client, Y the supplier (ANY class or interface;
-    // no interface-target requirement, unlike realization).
+    // 13c. CREACIÓN de dependencia (unidad 12.5, mitad 12b): "X depends on Y" /
+    // "X uses Y" — X es el cliente, Y el proveedor (CUALQUIER clase o interfaz;
+    // sin requerimiento de interfaz como destino, a diferencia de la realización).
     const dependency = /\b([A-Za-z_]\w*)\s+(?:depends\s+on|depende\s+de|uses|utiliza|usa)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (dependency) {
       const clientClassId = classIdByName(currentIr, dependency[1]!);
@@ -517,8 +516,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 14. abstract marking (unit 12.5, 12a half): "make X abstract" /
-    // "mark X abstract" — class update delta carrying isAbstract.
+    // 14. marcado abstracto (unidad 12.5, mitad 12a): "make X abstract" /
+    // "mark X abstract" — delta de actualización de clase que incluye isAbstract.
     const makeAbstract = /\b(?:make|mark)\s+(?:the\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+abstract/i.exec(utterance);
     if (makeAbstract) {
       const classId = classIdByName(currentIr, makeAbstract[1]!);
@@ -541,17 +540,17 @@ export class FakeLlm implements LlmPort {
 
 export interface OpenAiLlmConfig {
   apiKey: string;
-  /** Default: https://api.openai.com/v1 — override for compatible gateways. */
+  /** Por defecto: https://api.openai.com/v1 — sobreescribir para gateways compatibles. */
   baseUrl?: string | undefined;
-  /** Default: gpt-4o-mini (cheap tier is enough for delta interpretation). */
+  /** Por defecto: gpt-4o-mini (el nivel económico es suficiente para interpretar deltas). */
   model?: string | undefined;
 }
 
 /**
- * OpenAI-compatible adapter (task 7.3). Uses JSON-object structured output
- * and instructs the model with the delta JSON Schema; the CALLER still
- * Zod-validates every returned delta (interpreter:R1), so a malformed model
- * response can never reach the canonical model.
+ * Adaptador compatible con OpenAI (tarea 7.3). Utiliza salida estructurada en objeto JSON
+ * e instruye al modelo con el JSON Schema de deltas; el INVOCADOR aún así valida con
+ * Zod cada delta retornado (interpreter:R1), evitando que una respuesta malformada
+ * del modelo alcance el metamodelo canónico.
  */
 export class OpenAiLlm implements LlmPort {
   private readonly apiKey: string;
@@ -710,13 +709,13 @@ export class OpenAiLlm implements LlmPort {
       return { kind: 'refused', reason: parsed.reason ?? 'Refused.' };
     }
     if (parsed.action === 'apply' && parsed.delta !== undefined) {
-      // Repair known provider quirks (e.g. Groq gpt-oss hallucinating
-      // non-hex UUID characters) BEFORE validation: ids this tool generates
-      // anyway are regenerated when malformed. The caller's Zod gate
-      // (interpreter:R1) still validates the FULL delta afterwards.
+      // Repara particularidades conocidas del proveedor (ej. Groq gpt-oss alucinando
+      // caracteres UUID no hexadecimales) ANTES de la validación: los IDs que esta
+      // herramienta genera de todos modos se regeneran cuando están malformados. La compuerta
+      // Zod del invocador (interpreter:R1) aún valida el delta COMPLETO posteriormente.
       const repaired = repairModelIdentifiers(parsed.delta);
-      // Schema-shape check happens here as a first gate; the caller still
-      // runs DeltaSchema.safeParse (interpreter:R1 is enforced there).
+      // La comprobación de forma de esquema ocurre aquí como primera compuerta; el invocador
+      // aún ejecuta DeltaSchema.safeParse (interpreter:R1 se aplica allí).
       const check = DeltaSchema.safeParse(repaired);
       if (!check.success) {
         return { kind: 'delta', value: repaired };
@@ -727,20 +726,20 @@ export class OpenAiLlm implements LlmPort {
   }
 }
 
-// ── Model-output repair (provider quirk normalization) ─────────────────────
+// ── Reparación de salida del modelo (normalización de particularidades del proveedor) ───
 
-/** UUID fields the MODEL is allowed to invent; malformed values are regenerated. */
+/** Campos UUID que el MODELO tiene permitido inventar; los valores malformados se regeneran. */
 const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'dependencyId', 'naryAssociationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId', 'supplierClassId']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 /**
- * Deep-walks a model-produced delta and regenerates malformed ids/timestamps.
- * Every occurrence of the SAME invalid id string maps to the SAME generated
- * UUID (memoized), so model placeholders like "NEW_CLASS_1" stay coherent
- * across batch items (create + attribute + association reference the same
- * class). `diagramId` is deliberately NOT repairable — it must match the
- * current IR, and a mismatch is a real error the Zod gate must catch.
+ * Recorre en profundidad un delta producido por el modelo y regenera IDs/timestamps malformados.
+ * Cada ocurrencia de la MISMA cadena de ID inválida se mapea al MISMO UUID generado
+ * (memoizado), de modo que los placeholders del modelo como "NEW_CLASS_1" se mantengan
+ * coherentes a lo largo de los elementos de un lote (creación + atributo + asociación referencian
+ * la misma clase). `diagramId` NO es reparable deliberadamente — debe coincidir con el
+ * IR actual, y una discrepancia es un error real que la compuerta Zod debe capturar.
  */
 export function repairModelIdentifiers(value: unknown, memo: Map<string, string> = new Map()): unknown {
   if (Array.isArray(value)) {

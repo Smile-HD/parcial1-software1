@@ -1,51 +1,51 @@
 /**
- * Palette — the left creation rail for the UML editor (unit 13b).
+ * Palette — el riel de creación izquierdo para el editor UML (unidad 13b).
  *
- * Two interaction idioms, mirroring standard UML tools:
- *  - NODE items (Class, Interface) are HTML5-draggable: drag one onto the
- *    canvas and the drop handler creates the node at the drop position. The
- *    dragged kind travels in the dataTransfer under PALETTE_DND_MIME.
- *  - EDGE items (Association, Aggregation, Composition, Generalization,
- *    Realization, Dependency) are click-to-ARM tools: clicking one arms it
- *    (highlighted via aria-pressed and the --active class); the user then
- *    drags a React Flow connection from a source node to a target node, and
- *    the canvas emits that tool's delta on connect. Clicking the armed item
- *    again (or pressing Escape) disarms it. With no tool armed, connections
- *    are not even startable (nodesConnectable is false) — no accidental edges.
- *  - The N-ary diamond enters the EXISTING pick-≥3 mode (it needs at least
- *    three ends, so it is deliberately not an A→B drag gesture).
+ * Dos modismos de interacción, reflejando herramientas UML estándar:
+ *  - Ítems NODO (Class, Interface) son arrastrables mediante HTML5: arrastre uno
+ *    hacia el lienzo y el controlador de drop crea el nodo en la posición de soltado.
+ *    El tipo arrastrado viaja en dataTransfer bajo PALETTE_DND_MIME.
+ *  - Ítems ARISTA (Association, Aggregation, Composition, Generalization,
+ *    Realization, Dependency) son herramientas armables por clic: hacer clic en una
+ *    la arma (destacada vía aria-pressed y la clase --active); el usuario luego
+ *    arrastra una conexión de React Flow desde un nodo origen a un nodo destino, y
+ *    el lienzo emite el delta de esa herramienta al conectar. Hacer clic en el ítem
+ *    armado nuevamente (o presionar Escape) la desarma. Sin ninguna herramienta armada,
+ *    las conexiones ni siquiera se pueden iniciar (nodesConnectable es false) — sin aristas accidentales.
+ *  - El diamante N-ario entra en el modo EXISTENTE de selección ≥3 (necesita al menos
+ *    tres extremos, por lo que deliberadamente no es un gesto de arrastre A→B).
  *
- * unit 13c — the rail is organized into TWO labeled blocks: OBJECTS (the
- * draggable classifiers) and RELATIONS (every edge tool + the n-ary mode).
- * Aggregation/Composition are association tools with the diamond kind
- * preset: drawing one creates an association carrying aggregation
- * 'shared'/'composite' instead of editing it afterwards.
+ * unidad 13c — el riel se organiza en DOS bloques etiquetados: OBJETOS (los
+ * clasificadores arrastrables) y RELACIONES (cada herramienta de arista + el modo n-ario).
+ * Agregación/Composición son herramientas de asociación con el tipo de diamante
+ * preestablecido: dibujar una crea una asociación con agregación
+ * 'shared'/'composite' en lugar de editarla posteriormente.
  *
- * unit 13e.9 polish — the toolbox is restyled as a clean EA-like docked
- * panel: consistent icon tiles (crisp UML glyphs on a white chip), 12.5px
- * labels, section headers with separators, a real hover state and an obvious
- * armed state (EA-blue fill + left accent bar). All testids/aria/roles and
- * both interaction idioms are untouched.
- * unit 13e.10 — optional collapse: the canvas owns a `collapsed` flag and an
- * `onToggleCollapsed` handler (header button, data-testid="palette-toggle");
- * the CSS also auto-collapses to icon-only on narrow viewports.
- * unit 13e.11 — every label goes through the i18n dictionary (EN/ES live).
+ * unidad 13e.9 pulido — la caja de herramientas se rediseña como un panel acoplado
+ * limpio estilo EA: mosaicos de iconos consistentes (glifos UML nítidos en un chip blanco),
+ * etiquetas de 12.5px, encabezados de sección con separadores, un estado hover real y
+ * un estado armado evidente (relleno azul EA + barra de acento izquierda). Todos los
+ * testids/aria/roles y ambos modismos de interacción permanecen intactos.
+ * unidad 13e.10 — colapso opcional: el lienzo posee una bandera `collapsed` y un
+ * controlador `onToggleCollapsed` (botón de encabezado, data-testid="palette-toggle");
+ * el CSS también se autocolapsa solo a iconos en viewports estrechos.
+ * unidad 13e.11 — cada etiqueta pasa por el diccionario i18n (EN/ES en vivo).
  *
- * Glyphs reuse the visual language of the edge components (solid/dashed
- * lines, hollow triangle, open V arrow, hollow/filled diamond) so the
- * palette teaches the notation it creates.
+ * Los glifos reutilizan el lenguaje visual de los componentes de aristas (líneas
+ * continuas/punteadas, triángulo hueco, flecha en V abierta, diamante hueco/lleno)
+ * para que la paleta enseñe la notación que crea.
  */
 import type { DragEvent, ReactElement } from 'react';
 
 import { useT, type TKey } from '../i18n';
 
-/** Node kinds that can be dragged from the palette onto the canvas. */
+/** Tipos de nodo que pueden arrastrarse desde la paleta hacia el lienzo. */
 export type PaletteNodeKind = 'class' | 'interface';
 
 /**
- * Binary edge tools armed by a palette click. Aggregation and composition
- * behave exactly like association but preset the aggregation kind on the
- * created association (unit 13c).
+ * Herramientas de arista binaria armadas mediante clic en la paleta. Agregación y composición
+ * se comportan exactamente como asociación pero preestablecen el tipo de agregación en la
+ * asociación creada (unidad 13c).
  */
 export type PaletteEdgeTool =
   | 'association'
@@ -55,7 +55,7 @@ export type PaletteEdgeTool =
   | 'realization'
   | 'dependency';
 
-/** dataTransfer mime carrying the dragged node kind to the canvas drop handler. */
+/** MIME de dataTransfer que transporta el tipo de nodo arrastrado al controlador drop del lienzo. */
 export const PALETTE_DND_MIME = 'application/x-uml-palette';
 
 export interface PaletteProps {
@@ -63,9 +63,9 @@ export interface PaletteProps {
   naryMode: boolean;
   onEdgeToolChange: (tool: PaletteEdgeTool | null) => void;
   onNaryModeToggle: () => void;
-  /** unit 13e.10 — icon-only rail (canvas-owned state; optional). */
+  /** unidad 13e.10 — riel solo de iconos (estado perteneciente al lienzo; opcional). */
   collapsed?: boolean;
-  /** unit 13e.10 — renders the header toggle when provided. */
+  /** unidad 13e.10 — renderiza el alternador de encabezado cuando se proporciona. */
   onToggleCollapsed?: () => void;
 }
 
@@ -98,9 +98,9 @@ function AssociationGlyph() {
 }
 
 /**
- * unit 13c — aggregation/composition glyphs: the diamond sits on the SOURCE
- * (left) end, mirroring the default aggregationEnd='source' of the created
- * association. Hollow = shared aggregation, filled = composition.
+ * unidad 13c — glifos de agregación/composición: el diamante se ubica en el extremo
+ * ORIGEN (izquierdo), reflejando el aggregationEnd='source' predeterminado de la
+ * asociación creada. Hueco = agregación compartida, lleno = composición.
  */
 function AggregationGlyph() {
   return (
@@ -120,7 +120,7 @@ function CompositionGlyph() {
   );
 }
 
-/** Hollow triangle arrowhead (UML generalization/realization). */
+/** Punta de flecha de triángulo hueco (generalización/realización UML). */
 function triangle(x: number) {
   return <path d={`M ${x} 3 L ${x + 12} 11 L ${x} 19 Z`} fill="#fff" stroke={INK} strokeWidth="2" />;
 }
@@ -194,7 +194,7 @@ export function Palette({
       className={`palette${collapsed ? ' palette--collapsed' : ''}`}
       aria-label={t('toolbox.ariaLabel')}
     >
-      {/* unit 13e — EA-like docked toolbox header strip + collapse toggle (13e.10). */}
+      {/* unit 13e — tira de encabezado de caja de herramientas acoplada estilo EA + alternador de colapso (13e.10). */}
       <div className="palette__header">
         <span className="palette__header-text">{t('toolbox.header')}</span>
         {onToggleCollapsed !== undefined && (
@@ -211,7 +211,7 @@ export function Palette({
         )}
       </div>
 
-      {/* unit 13c — block 1: the draggable objects. */}
+      {/* unit 13c — bloque 1: los objetos arrastrables. */}
       <div className="palette__group" role="group" aria-label={t('toolbox.objects')}>
         <span className="palette__group-title">{t('toolbox.objects')}</span>
         <button
@@ -240,7 +240,7 @@ export function Palette({
         </button>
       </div>
 
-      {/* unit 13c — block 2: every relation tool, including the n-ary mode. */}
+      {/* unidad 13c — bloque 2: cada herramienta de relación, incluyendo el modo n-ario. */}
       <div className="palette__group" role="group" aria-label={t('toolbox.relations')}>
         <span className="palette__group-title">{t('toolbox.relations')}</span>
         {EDGE_TOOLS.map(({ tool, testId, labelKey, glyph }) => {

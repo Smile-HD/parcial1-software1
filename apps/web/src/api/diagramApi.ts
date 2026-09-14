@@ -1,18 +1,18 @@
 /**
- * Typed REST client for the diagram persistence API (apps/api).
+ * Cliente REST tipado para la API de persistencia de diagramas (apps/api).
  *
- * editor:R5 — the web app loads and saves the canonical diagram through
- * this client; the Y.Doc is hydrated from the API response (JSON IR) and
- * saves are projected from the Y.Doc back to JSON IR.
+ * editor:R5 — la aplicación web carga y guarda el diagrama canónico a través
+ * de este cliente; el Y.Doc se hidrata a partir de la respuesta de la API (IR JSON) y
+ * los guardados se proyectan desde el Y.Doc de regreso al IR JSON.
  */
 import type { Delta, Diagram } from '@app/core';
 
 const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
-/** Error thrown for every non-OK API response. */
+/** Error lanzado ante cualquier respuesta no-OK de la API. */
 export class DiagramApiError extends Error {
   readonly status: number;
-  /** Present on 409 conflict responses (optimistic concurrency). */
+  /** Presente en respuestas de conflicto 409 (concurrencia optimista). */
   readonly currentVersion?: number | undefined;
 
   constructor(status: number, message: string, currentVersion?: number) {
@@ -23,15 +23,16 @@ export class DiagramApiError extends Error {
   }
 }
 
-/** Diagram REST resource as returned by the API. */
+/** Recurso REST del diagrama tal como lo retorna la API. */
 export interface DiagramResource {
   id: string;
   name: string;
   diagram: Diagram;
   /**
-   * Authoritative Yjs update blob (base64). Collab-connected clients hydrate
-   * from this instead of rebuilding a doc from `diagram` so their Yjs clocks
-   * match the server's and live merges never duplicate array members (6b).
+   * Blob de actualización autoritativo de Yjs (base64). Los clientes conectados
+   * por colaboración se hidratan desde aquí en lugar de reconstruir un doc desde `diagram`
+   * para que sus relojes de Yjs coincidan con los del servidor y las fusiones en vivo
+   * nunca dupliquen elementos de arreglos (6b).
    */
   yjsState: string;
   version: number;
@@ -51,7 +52,7 @@ async function parseErrorResponse(response: Response): Promise<never> {
       currentVersion = body.currentVersion;
     }
   } catch {
-    // Non-JSON body — keep the generic status message.
+    // Cuerpo no-JSON — conservar el mensaje de estado genérico.
   }
   throw new DiagramApiError(response.status, message, currentVersion);
 }
@@ -64,7 +65,7 @@ async function parseOkResponse<T>(response: Response): Promise<T> {
   }
 }
 
-/** POST /diagrams — create a new diagram. */
+/** POST /diagrams — crea un nuevo diagrama. */
 export async function createDiagram(name: string, diagram: Diagram): Promise<DiagramResource> {
   const response = await fetch(`${API_BASE_URL}/diagrams`, {
     method: 'POST',
@@ -77,7 +78,7 @@ export async function createDiagram(name: string, diagram: Diagram): Promise<Dia
   return parseOkResponse<DiagramResource>(response);
 }
 
-/** GET /diagrams/:id — load a diagram. */
+/** GET /diagrams/:id — carga un diagrama. */
 export async function loadDiagram(id: string): Promise<DiagramResource> {
   const response = await fetch(`${API_BASE_URL}/diagrams/${id}`);
   if (!response.ok) {
@@ -87,9 +88,9 @@ export async function loadDiagram(id: string): Promise<DiagramResource> {
 }
 
 /**
- * PUT /diagrams/:id — save a diagram (optimistic concurrency by version).
- * `yjsState` carries the client's own Yjs blob so the stored state keeps the
- * clocks every connected client shares (blob-preserving save, 6b).
+ * PUT /diagrams/:id — guarda un diagrama (concurrencia optimista por versión).
+ * `yjsState` transporta el propio blob de Yjs del cliente para que el estado almacenado
+ * conserve los relojes que comparten todos los clientes conectados (guardado preservando blob, 6b).
  */
 export async function saveDiagram(
   id: string,
@@ -109,19 +110,19 @@ export async function saveDiagram(
   return parseOkResponse<DiagramResource>(response);
 }
 
-// ── Interpreter (PR 7, task 7.6) ────────────────────────────────────────────
+// ── Intérprete (PR 7, tarea 7.6) ────────────────────────────────────────────
 
-/** Outcome of POST /diagrams/:id/interpret, mirrored from apps/api. */
+/** Resultado de POST /diagrams/:id/interpret, reflejado desde apps/api. */
 export type InterpretResponse =
   | { status: 'refused'; reason: string; supportedCategories: readonly string[] }
   | { status: 'pending'; deltaId: string; delta: Delta }
   | { status: 'error'; message: string };
 
 /**
- * POST /diagrams/:id/interpret — natural language → refusal | pending delta.
- * A 422 (LLM output failed the delta-schema gate, interpreter:R1) is surfaced
- * as an explicit `error` outcome instead of a thrown error so the UI shows
- * the same message shape for every interpreter rejection.
+ * POST /diagrams/:id/interpret — lenguaje natural → rechazo | delta pendiente.
+ * Un 422 (la salida del LLM no superó la barrera del esquema delta, interpreter:R1) se expone
+ * como un resultado explícito `error` en lugar de un error lanzado para que la UI muestre
+ * la misma forma de mensaje ante cualquier rechazo del intérprete.
  */
 export async function interpretCommand(diagramId: string, text: string): Promise<InterpretResponse> {
   const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/interpret`, {
@@ -138,7 +139,7 @@ export async function interpretCommand(diagramId: string, text: string): Promise
           message = body.error;
         }
       } catch {
-        // Non-JSON body — keep the generic status message.
+        // Cuerpo no-JSON — conservar el mensaje de estado genérico.
       }
       return { status: 'error', message };
     }
@@ -147,7 +148,7 @@ export async function interpretCommand(diagramId: string, text: string): Promise
   return parseOkResponse<InterpretResponse>(response);
 }
 
-/** POST /deltas/:id/confirm — releases the pending delta to this client. */
+/** POST /deltas/:id/confirm — libera el delta pendiente para este cliente. */
 export async function confirmDelta(deltaId: string): Promise<{ status: 'confirmed'; delta: Delta; diagramId: string }> {
   const response = await fetch(`${API_BASE_URL}/deltas/${deltaId}/confirm`, { method: 'POST' });
   if (!response.ok) {
@@ -156,7 +157,7 @@ export async function confirmDelta(deltaId: string): Promise<{ status: 'confirme
   return parseOkResponse<{ status: 'confirmed'; delta: Delta; diagramId: string }>(response);
 }
 
-/** POST /deltas/:id/reject — discards the pending delta, model unchanged. */
+/** POST /deltas/:id/reject — descarta el delta pendiente, dejando el modelo sin cambios. */
 export async function rejectDelta(deltaId: string): Promise<{ status: 'rejected' }> {
   const response = await fetch(`${API_BASE_URL}/deltas/${deltaId}/reject`, { method: 'POST' });
   if (!response.ok) {

@@ -1,13 +1,13 @@
 /**
- * Custom edge component for UML realization edges: a DASHED line with a
- * hollow triangle arrowhead pointing toward the supplier interface
- * (UML 2.5.1 realization notation).
+ * Componente de arista personalizado para aristas de realización UML: una línea DISCONTINUA con una
+ * punta de flecha de triángulo hueco apuntando hacia la interfaz proveedora
+ * (notación de realización UML 2.5.1).
  *
- * The edge is drawn source = clientClass → target = supplierInterface, so
- * the triangle marker sits on marker-end. Markers are referenced as
- * `url(#id)` strings — NOT MarkerType objects (PR 10 lesson, applied by
- * PR 11's GeneralizationEdge: React Flow serializes marker objects into
- * attributes the browser cannot resolve for custom SVG defs).
+ * La arista se dibuja origen = clientClass → destino = supplierInterface, por lo que
+ * el marcador de triángulo se ubica en marker-end. Los marcadores se referencian como
+ * cadenas `url(#id)` — NO objetos MarkerType (lección del PR 10, aplicada por
+ * GeneralizationEdge del PR 11: React Flow serializa objetos de marcador en
+ * atributos que el navegador no puede resolver para definiciones SVG personalizadas).
  */
 import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
 
@@ -17,13 +17,13 @@ interface RealizationEdgeData {
   realization: Realization;
 }
 
-/** Dashed stroke per UML realization notation (client → interface). */
+/** Trazo discontinuo según la notación de realización UML (cliente → interfaz). */
 const REALIZATION_DASH = '6 4';
 
 export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
   const { id, data } = props;
 
-  // Fallback for edges without realization data (defensive).
+  // Respaldo para aristas sin datos de realización (defensivo).
   if (!data?.realization) {
     const [fallbackPath] = getSmoothStepPath(props);
     return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={REALIZATION_DASH} fill="none" />;
@@ -31,17 +31,17 @@ export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
 
   const triangleId = `uml-${id}-realization-triangle`;
 
-  // unit 13e — EA-style orthogonal routing; the tuple's label coords center
-  // the editable edge name (unit 13c) on the connector.
+  // unidad 13e — enrutamiento ortogonal estilo EA; las coordenadas de etiqueta de la tupla
+  // centran el nombre editable de la arista (unidad 13c) sobre el conector.
   const [path, labelX, labelY] = getSmoothStepPath(props);
   const label = data.realization.name;
 
   return (
     <>
       <defs>
-        {/* Hollow triangle for realization (same arrowhead shape as
-            generalization; the dashed line is what distinguishes it).
-            White fill so the line does not show through; dark stroke. */}
+        {/* Triángulo hueco para realización (misma forma de punta de flecha que
+            generalización; la línea discontinua es lo que la distingue).
+            Relleno blanco para que la línea no se trasluzca; trazo oscuro. */}
         <marker
           id={triangleId}
           markerWidth="16"
@@ -63,7 +63,7 @@ export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
         strokeDasharray={REALIZATION_DASH}
       />
 
-      {/* Optional editable label (unit 13c) centered on the edge. */}
+      {/* Etiqueta editable opcional (unidad 13c) centrada en la arista. */}
       {label ? (
         <text
           x={labelX}

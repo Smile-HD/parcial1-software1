@@ -1,4 +1,4 @@
-/// Request payload for POST /api/assistant.
+/// Carga útil de solicitud para POST /api/assistant.
 class AssistantRequest {
   final String request;
 
@@ -9,13 +9,13 @@ class AssistantRequest {
       };
 }
 
-/// Response payload returned by POST /api/assistant.
-/// Conforms to design D11 and requirement mobile:R3.
+/// Carga útil de respuesta devuelta por POST /api/assistant.
+/// Se ajusta al diseño D11 y al requerimiento mobile:R3.
 class AssistantResponse {
   final String outcome; // executed | canned | unavailable | refused
   final String? action;  // list | count | create | null
   final String? entity;  // Customer | null
-  final String response; // Result body or canned capability message
+  final String response; // Cuerpo del resultado o mensaje de capacidad predefinido
 
   AssistantResponse({
     required this.outcome,

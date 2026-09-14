@@ -1,16 +1,16 @@
 import { isAbsolute, resolve, sep } from 'node:path';
 
 /**
- * Name sanitizer + output-root containment guard for codegen.
+ * Sanitizador de nombres + guarda de contención en raíz de salida para codegen.
  *
- * Implements the design Threat Matrix row 1 ("Documentation-like paths"):
- * class/attribute names are user-controlled and feed both the generated Java
- * identifier and the output file path, so a name like `../../pom.xml` must not
- * be able to escape the job output root, and a Java reserved word like `class`
- * must not become a generated type name.
+ * Implementa la fila 1 de la Matriz de Amenazas de diseño ("Documentation-like paths"):
+ * los nombres de clase/atributo están controlados por el usuario y alimentan tanto el
+ * identificador Java generado como la ruta del archivo de salida, por lo que un nombre
+ * como `../../pom.xml` no debe poder escapar de la raíz de salida del trabajo, y una palabra
+ * reservada de Java como `class` no debe convertirse en un nombre de tipo generado.
  *
- * The policy is REJECT, not rewrite: a name outside the allow-list throws so
- * generation fails loudly rather than silently producing a mangled identifier.
+ * La política es RECHAZAR, no reescribir: un nombre fuera de la lista permitida lanza excepción
+ * para que la generación falle de forma explícita en lugar de producir silenciosamente un identificador alterado.
  */
 export class NameSanitizerError extends Error {
   constructor(message: string) {
@@ -20,16 +20,16 @@ export class NameSanitizerError extends Error {
 }
 
 /**
- * Java identifier allow-list from the threat matrix: `[A-Za-z_][A-Za-z0-9_]*`.
- * Deliberately strict — no dots, slashes, spaces or leading digits, so path
- * traversal and build-file names can never match.
+ * Lista permitida de identificadores Java de la matriz de amenazas: `[A-Za-z_][A-Za-z0-9_]*`.
+ * Deliberadamente estricta — sin puntos, barras, espacios o dígitos iniciales, de modo que el
+ * salto de directorio (path traversal) y los nombres de archivos de compilación nunca coincidan.
  */
 const JAVA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * Java keywords + the boolean/null literals that are illegal as identifiers
- * (JLS 3.9). `var`, `record`, `sealed` etc. are contextual, not reserved, so
- * they are intentionally NOT listed.
+ * Palabras clave de Java + los literales boolean/null que son ilegales como identificadores
+ * (JLS 3.9). `var`, `record`, `sealed`, etc., son contextuales, no reservados, por lo que
+ * intencionalmente NO están listados.
  */
 const JAVA_RESERVED = new Set<string>([
   'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char',
@@ -41,17 +41,17 @@ const JAVA_RESERVED = new Set<string>([
   'transient', 'try', 'void', 'volatile', 'while', 'true', 'false', 'null',
 ]);
 
-/** True when `name` is a Java reserved word or literal (case-sensitive). */
+/** True cuando `name` es una palabra reservada o literal de Java (sensible a mayúsculas/minúsculas). */
 export function isReservedJavaName(name: string): boolean {
   return JAVA_RESERVED.has(name);
 }
 
 /**
- * Validate `raw` as a Java identifier and return it unchanged.
+ * Valida `raw` como identificador de Java y lo retorna sin cambios.
  *
- * @throws {NameSanitizerError} if `raw` is not `[A-Za-z_][A-Za-z0-9_]*` or is a
- *   reserved word. This is what rejects `../../pom.xml` (bad shape) and `class`
- *   (reserved word) from the threat-matrix RED cases.
+ * @throws {NameSanitizerError} si `raw` no coincide con `[A-Za-z_][A-Za-z0-9_]*` o es una
+ *   palabra reservada. Esto es lo que rechaza `../../pom.xml` (formato inválido) y `class`
+ *   (palabra reservada) de los casos ROJOS de la matriz de amenazas.
  */
 export function sanitizeJavaName(raw: string): string {
   if (!JAVA_IDENTIFIER.test(raw)) {
@@ -66,13 +66,13 @@ export function sanitizeJavaName(raw: string): string {
 }
 
 /**
- * Resolve `relPath` against `outputRoot` and assert the result stays inside it.
+ * Resuelve `relPath` contra `outputRoot` y asegura que el resultado permanezca dentro de ella.
  *
- * Defense in depth behind {@link sanitizeJavaName}: even if a path is assembled
- * from names, an escaping path is rejected before any write is planned.
+ * Defensa en profundidad detrás de {@link sanitizeJavaName}: incluso si una ruta se construye
+ * a partir de nombres, una ruta que intente escapar es rechazada antes de planificar cualquier escritura.
  *
- * @throws {NameSanitizerError} if the resolved path equals neither the root nor
- *   a descendant of it (e.g. `../../pom.xml`, or an absolute path elsewhere).
+ * @throws {NameSanitizerError} si la ruta resuelta no es igual a la raíz ni es
+ *   descendiente de ella (ej. `../../pom.xml`, o una ruta absoluta en otro lugar).
  */
 export function assertInsideOutputRoot(outputRoot: string, relPath: string): string {
   const root = resolve(outputRoot);

@@ -1,13 +1,13 @@
 /**
- * Custom edge component for UML generalization (inheritance) edges:
- * a solid line with a hollow triangle arrowhead pointing toward the
- * superClass (UML 2.5.1 generalization notation).
+ * Componente de arista personalizado para generalización UML (herencia):
+ * una línea continua con una punta de flecha triangular hueca apuntando hacia la
+ * superClass (notación de generalización de UML 2.5.1).
  *
- * The edge is drawn source = subClass → target = superClass, so the
- * triangle marker sits on marker-end. Markers are referenced as
- * `url(#id)` strings — NOT MarkerType objects (PR 10 lesson: React Flow
- * serializes marker objects into attributes the browser cannot resolve
- * for custom SVG defs).
+ * La arista se dibuja origen = subClass → destino = superClass, por lo que el
+ * marcador triangular se ubica en marker-end. Los marcadores se referencian como
+ * cadenas `url(#id)` — NO objetos MarkerType (lección del PR 10: React Flow
+ * serializa los objetos de marcador en atributos que el navegador no puede resolver
+ * para defs SVG personalizados).
  */
 import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
 
@@ -20,7 +20,7 @@ interface GeneralizationEdgeData {
 export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
   const { id, data } = props;
 
-  // Fallback for edges without generalization data (defensive).
+  // Fallback para aristas sin datos de generalización (defensivo).
   if (!data?.generalization) {
     const [fallbackPath] = getSmoothStepPath(props);
     return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
@@ -28,16 +28,16 @@ export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
 
   const triangleId = `uml-${id}-generalization-triangle`;
 
-  // unit 13e — EA-style orthogonal routing; the tuple's label coords center
-  // the editable edge name (unit 13c) on the connector.
+  // unidad 13e — enrutamiento ortogonal estilo EA; las coordenadas de etiqueta de la tupla
+  // centran el nombre editable de la arista (unidad 13c) en el conector.
   const [path, labelX, labelY] = getSmoothStepPath(props);
   const label = data.generalization.name;
 
   return (
     <>
       <defs>
-        {/* Hollow triangle for generalization (UML inheritance arrowhead).
-            White fill so the line does not show through; dark stroke. */}
+        {/* Triángulo hueco para generalización (punta de flecha de herencia UML).
+            Relleno blanco para que la línea no se trasluzca; trazo oscuro. */}
         <marker
           id={triangleId}
           markerWidth="16"
@@ -58,7 +58,7 @@ export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
         stroke="#1a1a2e"
       />
 
-      {/* Optional editable label (unit 13c) centered on the edge. */}
+      {/* Etiqueta editable opcional (unidad 13c) centrada en la arista. */}
       {label ? (
         <text
           x={labelX}

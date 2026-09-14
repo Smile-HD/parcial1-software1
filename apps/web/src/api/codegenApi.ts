@@ -1,15 +1,16 @@
 /**
- * Codegen REST client (PR 14a/14d) — talks to apps/api's generate-over-HTTP
- * job API. The web app triggers backend artifact generation and polls job
- * status until the artifact is ready, then triggers a browser download.
+ * Cliente REST de codegen (PR 14a/14d) — se comunica con la API de trabajos
+ * generate-over-HTTP de apps/api. La aplicación web dispara la generación de artefactos
+ * en el backend y consulta el estado del trabajo hasta que el artefacto esté listo,
+ * para luego iniciar la descarga en el navegador.
  *
- * The state machine the API exposes:
+ * Máquina de estados expuesta por la API:
  *   POST /diagrams/:id/generate   -> 202 { jobId } | 404 | 409 (dedup) | 500
  *   GET  /jobs/:id                -> { id, status, artifactReady, error, ... }
  *   GET  /jobs/:id/artifact       -> application/zip | 404 | 409 | 500
  *
- * Status transitions: queued -> running -> succeeded | failed
- * artifactReady is true only when status === 'succeeded'.
+ * Transiciones de estado: queued -> running -> succeeded | failed
+ * artifactReady es true únicamente cuando status === 'succeeded'.
  */
 import { DiagramApiError } from './diagramApi';
 
@@ -27,7 +28,7 @@ export interface JobInfo {
   error: string | null;
 }
 
-/** Kicks off generation for a diagram. Resolves with the job id. */
+/** Inicia la generación para un diagrama. Se resuelve con el id del trabajo. */
 export async function startGeneration(diagramId: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/generate`, {
     method: 'POST',
@@ -40,7 +41,7 @@ export async function startGeneration(diagramId: string): Promise<string> {
         message = body.error;
       }
     } catch {
-      // body wasn't JSON — keep the generic message
+      // el cuerpo no era JSON — conservar el mensaje genérico
     }
     throw new DiagramApiError(response.status, message);
   }
@@ -51,7 +52,7 @@ export async function startGeneration(diagramId: string): Promise<string> {
   return body.jobId;
 }
 
-/** Polls job status. Throws DiagramApiError on transport / 404. */
+/** Consulta el estado del trabajo. Lanza DiagramApiError en errores de transporte / 404. */
 export async function getJob(jobId: string): Promise<JobInfo> {
   const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`);
   if (!response.ok) {
@@ -62,14 +63,14 @@ export async function getJob(jobId: string): Promise<JobInfo> {
         message = body.error;
       }
     } catch {
-      // ignore
+      // ignorar
     }
     throw new DiagramApiError(response.status, message);
   }
   return (await response.json()) as JobInfo;
 }
 
-/** Downloads the zip artifact and returns it as a Blob + suggested filename. */
+/** Descarga el artefacto zip y lo retorna como un Blob + nombre de archivo sugerido. */
 export async function downloadArtifact(
   jobId: string,
   diagramId: string,
@@ -83,7 +84,7 @@ export async function downloadArtifact(
         message = body.error;
       }
     } catch {
-      // ignore
+      // ignorar
     }
     throw new DiagramApiError(response.status, message);
   }
@@ -92,7 +93,7 @@ export async function downloadArtifact(
   return { blob, filename: `generated-${safeName}.zip` };
 }
 
-/** Triggers a browser download of the blob under the suggested filename. */
+/** Inicia la descarga en el navegador del blob con el nombre de archivo sugerido. */
 export function triggerBrowserDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -101,6 +102,6 @@ export function triggerBrowserDownload(blob: Blob, filename: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  // Give the browser a tick to start the download before revoking.
+  // Dar un tick al navegador para iniciar la descarga antes de revocar.
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }

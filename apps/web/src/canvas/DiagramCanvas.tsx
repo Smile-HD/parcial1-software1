@@ -1,9 +1,9 @@
 /**
- * DiagramCanvas — React Flow canvas rendering exclusively from a Y.Doc.
+ * DiagramCanvas — lienzo React Flow renderizado exclusivamente desde un Y.Doc.
  *
- * editor:R1 — the Y.Doc IS the canonical IR; React state is a derived
- * projection that triggers re-render when the Y.Doc changes.
- * No mutation bypasses applyDelta (see applyDeltaToYDoc).
+ * editor:R1 — el Y.Doc ES la IR canónica; el estado de React es una proyección
+ * derivada que activa el re-renderizado cuando cambia el Y.Doc.
+ * Ninguna mutación evade applyDelta (ver applyDeltaToYDoc).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { ReactFlow, Background, BackgroundVariant, type Connection, type Edge, type ReactFlowInstance, MarkerType } from '@xyflow/react';
@@ -36,16 +36,16 @@ const nodeTypes = { class: ClassNode, naryDiamond: NaryDiamondNode };
 const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge, dependency: DependencyEdge, naryEnd: NaryEndEdge };
 
 /**
- * unit 13c — the edge kinds the unified editor understands. n-ary member
- * edges (`naryEnd`) are deliberately excluded: they are edited through the
- * n-ary diamond's own context/pick flow, not the per-edge panel.
+ * unidad 13c — los tipos de arista que comprende el editor unificado. Las aristas
+ * de miembros n-arios (`naryEnd`) quedan deliberadamente excluidas: se editan a través
+ * del flujo propio de contexto/selección del diamante n-ario, no del panel individual de aristas.
  */
 type EditorEdgeType = 'association' | 'generalization' | 'realization' | 'dependency';
 
 /**
- * unit 13e.10 — edge-kind display labels come from the i18n dictionary (the
- * old hardcoded EDGE_TYPE_LABELS map → `tool.*` keys; EN values are
- * byte-identical, so every existing aria-label/testid contract survives).
+ * unidad 13e.10 — las etiquetas visuales de tipos de aristas provienen del diccionario i18n (el
+ * antiguo mapa cableado EDGE_TYPE_LABELS → claves `tool.*`; los valores en EN son
+ * idénticos byte a byte, por lo que cada contrato existente de aria-label/testid sobrevive).
  */
 const EDGE_TYPE_KEYS: Record<EditorEdgeType, TKey> = {
   association: 'tool.association',
@@ -54,8 +54,8 @@ const EDGE_TYPE_KEYS: Record<EditorEdgeType, TKey> = {
   dependency: 'tool.dependency',
 };
 
-/** unit 13e.10 — Quick Linker menu labels map to the same `tool.*` keys
- * (quickLinker.ts stays pure — the mapping lives at the render site). */
+/** unidad 13e.10 — las etiquetas del menú de Quick Linker se asignan a las mismas claves `tool.*`
+ * (quickLinker.ts se mantiene puro — el mapeo reside en el sitio de renderizado). */
 const CONNECTOR_TOOL_KEYS: Record<QuickConnectorType, TKey> = {
   association: 'tool.association',
   aggregation: 'tool.aggregation',
@@ -79,7 +79,7 @@ export interface DiagramCanvasProps {
 }
 
 /**
- * editor:R2 — drag-end: emits a reposition delta; the Y.Doc stays the source of truth.
+ * editor:R2 — fin de arrastre: emite un delta de reposicionamiento; el Y.Doc permanece como la fuente de verdad.
  */
 export function handleNodeDragStop(
   doc: Y.Doc,
@@ -98,28 +98,28 @@ export function handleNodeDragStop(
   applyDeltaToYDoc(doc, delta);
 }
 
-/** editor:R4 - link between two existing classes; multiplicities are per-endpoint editable. */
+/** editor:R4 - enlace entre dos clases existentes; las multiplicidades son editables por extremo. */
 export interface AssociationLink {
   sourceClassId: string;
   targetClassId: string;
   directed: boolean;
   /**
-   * unit 13c — optional aggregation kind preset (palette Aggregation /
-   * Composition tools). Omitted = plain association ('none' via the IR
-   * default), so every existing caller stays byte-identical.
+   * unidad 13c — preajuste de tipo de agregación opcional (herramientas de Agregación /
+   * Composición de la paleta). Omitido = asociación simple ('none' mediante el
+   * valor predeterminado de la IR), de modo que cada llamador existente permanece idéntico byte a byte.
    */
   aggregation?: 'none' | 'shared' | 'composite';
 }
 
 /**
- * editor:R4 - emits an association `create` delta via applyDeltaToYDoc.
- * Guards before emitting: the delta schema throws on invalid input, so no
- * empty class id ever reaches it. Self (recursive) associations — the same
- * class on both ends — are valid UML and allowed by the core engine (the
- * palette drag-to-connect path adds its own distinct-endpoint guard).
- * unit 13b: returns the engine result (null when the local guard rejects)
- * so the drag-to-connect path can surface rejections; existing callers
- * ignore the return value.
+ * editor:R4 - emite un delta `create` de asociación vía applyDeltaToYDoc.
+ * Protecciones antes de emitir: el esquema del delta arroja excepción ante entrada inválida,
+ * por lo que ningún id de clase vacío lo alcanza. Las asociaciones autorreferenciales (recursivas)
+ * — la misma clase en ambos extremos — son UML válido y están permitidas por el motor central
+ * (la ruta de arrastrar para conectar de la paleta agrega su propia protección de extremos distintos).
+ * unidad 13b: retorna el resultado del motor (null cuando la protección local rechaza)
+ * para que la ruta de arrastrar para conectar pueda exponer los rechazos; quienes llaman a esto
+ * actualmente ignoran el valor de retorno.
  */
 export function handleCreateAssociation(
   doc: Y.Doc,
@@ -129,10 +129,10 @@ export function handleCreateAssociation(
   if (link.sourceClassId === '' || link.targetClassId === '') {
     return null;
   }
-  // unit 13d fix C — Aggregation/Composition presets start with UNSPECIFIED
-  // multiplicities (empty ends, per UML convention: a new connector carries
-  // no assumed multiplicity). The plain Association tool keeps its documented
-  // '1'/'1' default; the paths share this function but branch on the preset.
+  // unidad 13d corrección C — los preajustes de Agregación/Composición inician con multiplicidades
+  // NO ESPECIFICADAS (extremos vacíos, según la convención UML: un nuevo conector no
+  // asume multiplicidad predeterminada). La herramienta de Asociación simple conserva su
+  // valor predeterminado documentado '1'/'1'; las rutas comparten esta función pero bifurcan según el preajuste.
   const presetAggregation = link.aggregation !== undefined && link.aggregation !== 'none';
   const delta: AssociationDelta = {
     kind: 'association',
@@ -147,8 +147,8 @@ export function handleCreateAssociation(
       ? {}
       : { sourceMultiplicity: '1', targetMultiplicity: '1' }),
     directed: link.directed,
-    // unit 13c — the palette Aggregation/Composition tools preset the kind;
-    // the diamond sits on the source end by default (aggregationEnd='source').
+    // unidad 13c — las herramientas de Agregación/Composición de la paleta preestablecen el tipo;
+    // el diamante se ubica en el extremo origen por defecto (aggregationEnd='source').
     ...(presetAggregation
       ? { aggregation: link.aggregation, aggregationEnd: 'source' as const }
       : {}),
@@ -157,14 +157,14 @@ export function handleCreateAssociation(
 }
 
 /**
- * editor:R4 - per-endpoint multiplicity edit, guarded against out-of-enum
- * values. The guard lives HERE (before emitting): `DeltaSchema.parse` in
- * core THROWS on invalid multiplicities, so `3..7` must never reach
- * applyDeltaToYDoc or the app crashes. Invalid input is silently rejected
- * and the previous value is retained (no delta is emitted).
- * unit 13d fix C — an EMPTY (or whitespace-only) value CLEARS the end to
- * unspecified via a `null` carrier (the core tri-state: undefined keeps,
- * string sets, null clears). Garbage is still rejected.
+ * editor:R4 - edición de multiplicidad por extremo, protegida contra valores fuera
+ * del enum. La protección reside AQUÍ (antes de emitir): `DeltaSchema.parse` en
+ * core ARROJA excepción ante multiplicidades inválidas, por lo que `3..7` nunca debe
+ * llegar a applyDeltaToYDoc o la aplicación fallará. La entrada inválida se rechaza
+ * silenciosamente y el valor anterior se conserva (no se emite delta).
+ * unidad 13d corrección C — un valor VACÍO (o de solo espacios) RESTABLECE el extremo
+ * a no especificado mediante un portador `null` (el tri-estado de core: undefined conserva,
+ * string establece, null limpia). Los valores basura aún se rechazan.
  */
 export function handleUpdateMultiplicity(
   doc: Y.Doc,
@@ -175,7 +175,7 @@ export function handleUpdateMultiplicity(
 ): void {
   const trimmed = value.trim();
   if (trimmed === '') {
-    // Clear to unspecified — the editor must allow emptying a multiplicity.
+    // Limpiar a no especificado — el editor debe permitir vaciar una multiplicidad.
     const clearDelta: AssociationDelta = {
       kind: 'association',
       op: 'updateMultiplicity',
@@ -190,8 +190,8 @@ export function handleUpdateMultiplicity(
     applyDeltaToYDoc(doc, clearDelta);
     return;
   }
-  // unit 9 — full UML 2.5.1 multiplicity grammar (*, integers, m..n, m..*);
-  // garbage is rejected and the previous value is retained (editor:R4).
+  // unidad 9 — gramática completa de multiplicidad UML 2.5.1 (*, enteros, m..n, m..*);
+  // los valores no válidos se rechazan y el valor anterior se conserva (editor:R4).
   const parsed = MultiplicitySchema.safeParse(trimmed);
   if (!parsed.success) {
     return;
@@ -212,8 +212,8 @@ export function handleUpdateMultiplicity(
 }
 
 /**
- * Unit 10 — update association aggregation kind, name, roles, and aggregationEnd.
- * Invalid aggregation values are rejected (no delta emitted).
+ * Unidad 10 — actualiza el tipo de agregación, nombre, roles y aggregationEnd de la asociación.
+ * Los valores de agregación inválidos se rechazan (no se emite delta).
  */
 export function handleUpdateAssociationMeta(
   doc: Y.Doc,
@@ -221,17 +221,17 @@ export function handleUpdateAssociationMeta(
   associationId: string,
   updates: { aggregation?: 'none' | 'shared' | 'composite'; aggregationEnd?: 'source' | 'target'; name?: string; sourceRole?: string; targetRole?: string },
 ): void {
-  // Validate aggregation if provided
+  // Validar agregación si se proporciona
   if (updates.aggregation !== undefined && !['none', 'shared', 'composite'].includes(updates.aggregation)) {
     return;
   }
-  // Validate aggregationEnd if provided
+  // Validar aggregationEnd si se proporciona
   if (updates.aggregationEnd !== undefined && !['source', 'target'].includes(updates.aggregationEnd)) {
     return;
   }
   const delta: AssociationDelta = {
     kind: 'association',
-    op: 'updateMultiplicity', // reuse existing op kind for backward compat; fields are optional
+    op: 'updateMultiplicity', // reutiliza el tipo de op existente para retrocompatibilidad; los campos son opcionales
     id: crypto.randomUUID(),
     diagramId,
     timestamp: new Date().toISOString(),
@@ -246,9 +246,9 @@ export function handleUpdateAssociationMeta(
 }
 
 /**
- * editor:R4 — delete an association by emitting an association `delete` delta.
- * The op exists in core since Unit 6; this wires it to the UI so associations
- * can be removed without deleting a member class.
+ * editor:R4 — elimina una asociación emitiendo un delta `delete` de asociación.
+ * La operación existe en core desde la Unidad 6; esto la conecta a la UI para que
+ * las asociaciones puedan eliminarse sin borrar una clase miembro.
  */
 export function handleDeleteAssociation(
   doc: Y.Doc,
@@ -267,11 +267,11 @@ export function handleDeleteAssociation(
 }
 
 /**
- * editor:R Generalization (unit 11.4) — emit a generalization `create` delta
- * (subClass → superClass). Engine invariants (existence, duplicates, cycles)
- * are enforced by applyDelta; a rejected delta leaves the Y.Doc unchanged.
- * unit 13b: returns the engine result so the drag-to-connect path can
- * surface cycle/duplicate rejections; existing callers ignore it.
+ * editor:R Generalización (unidad 11.4) — emite un delta `create` de generalización
+ * (subClass → superClass). Los invariantes del motor (existencia, duplicados, ciclos)
+ * son impuestos por applyDelta; un delta rechazado deja el Y.Doc sin cambios.
+ * unidad 13b: retorna el resultado del motor para que la ruta de arrastrar para conectar
+ * pueda exponer rechazos por ciclo/duplicado; los llamadores existentes lo ignoran.
  */
 export function handleCreateGeneralization(
   doc: Y.Doc,
@@ -295,7 +295,7 @@ export function handleCreateGeneralization(
 }
 
 /**
- * editor:R Generalization (unit 11.4) — emit a generalization `delete` delta.
+ * editor:R Generalización (unidad 11.4) — emite un delta `delete` de generalización.
  */
 export function handleDeleteGeneralization(
   doc: Y.Doc,
@@ -314,12 +314,12 @@ export function handleDeleteGeneralization(
 }
 
 /**
- * editor:R Interfaces (unit 12.2/12.4) — emit a realization `create` delta
- * (client class → supplier interface). Engine invariants (existence,
- * interface-target, duplicates) are enforced by applyDelta; a rejected
- * delta leaves the Y.Doc unchanged.
- * unit 13b: returns the engine result so the drag-to-connect path can
- * surface rejections; existing callers ignore it.
+ * editor:R Interfaces (unidad 12.2/12.4) — emite un delta `create` de realización
+ * (clase cliente → interfaz proveedora). Los invariantes del motor (existencia,
+ * destino de tipo interfaz, duplicados) son impuestos por applyDelta; un delta
+ * rechazado deja el Y.Doc sin cambios.
+ * unidad 13b: retorna el resultado del motor para que la ruta de arrastrar para conectar
+ * pueda exponer rechazos; los llamadores existentes lo ignoran.
  */
 export function handleCreateRealization(
   doc: Y.Doc,
@@ -343,7 +343,7 @@ export function handleCreateRealization(
 }
 
 /**
- * editor:R Interfaces (unit 12.4) — emit a realization `delete` delta.
+ * editor:R Interfaces (unidad 12.4) — emite un delta `delete` de realización.
  */
 export function handleDeleteRealization(
   doc: Y.Doc,
@@ -362,12 +362,12 @@ export function handleDeleteRealization(
 }
 
 /**
- * editor:R Interfaces (unit 12.2/12.4 — 12b half) — emit a dependency
- * `create` delta (client class → supplier class or interface). Engine
- * invariants (existence, duplicates) are enforced by applyDelta; a
- * rejected delta leaves the Y.Doc unchanged.
- * unit 13b: returns the engine result so the drag-to-connect path can
- * surface rejections; existing callers ignore it.
+ * editor:R Interfaces (unidad 12.2/12.4 — mitad 12b) — emite un delta
+ * `create` de dependencia (clase cliente → clase o interfaz proveedora). Los invariantes
+ * del motor (existencia, duplicados) son impuestos por applyDelta; un delta
+ * rechazado deja el Y.Doc sin cambios.
+ * unidad 13b: retorna el resultado del motor para que la ruta de arrastrar para conectar
+ * pueda exponer rechazos; los llamadores existentes lo ignoran.
  */
 export function handleCreateDependency(
   doc: Y.Doc,
@@ -391,7 +391,7 @@ export function handleCreateDependency(
 }
 
 /**
- * editor:R Interfaces (unit 12.4 — 12b half) — emit a dependency `delete` delta.
+ * editor:R Interfaces (unidad 12.4 — mitad 12b) — emite un delta `delete` de dependencia.
  */
 export function handleDeleteDependency(
   doc: Y.Doc,
@@ -410,8 +410,8 @@ export function handleDeleteDependency(
 }
 
 /**
- * unit 13c — update a generalization's editable label via the core `update`
- * name delta. An empty string clears the label (engine maps '' → undefined).
+ * unidad 13c — actualiza la etiqueta editable de una generalización vía el delta de nombre
+ * `update` de core. Una cadena vacía borra la etiqueta (el motor mapea '' → undefined).
  */
 export function handleUpdateGeneralizationLabel(
   doc: Y.Doc,
@@ -431,7 +431,7 @@ export function handleUpdateGeneralizationLabel(
   applyDeltaToYDoc(doc, delta);
 }
 
-/** unit 13c — update a realization's editable label (see generalization twin). */
+/** unidad 13c — actualiza la etiqueta editable de una realización (ver gemelo de generalización). */
 export function handleUpdateRealizationLabel(
   doc: Y.Doc,
   diagramId: string,
@@ -450,7 +450,7 @@ export function handleUpdateRealizationLabel(
   applyDeltaToYDoc(doc, delta);
 }
 
-/** unit 13c — update a dependency's editable label (see generalization twin). */
+/** unidad 13c — actualiza la etiqueta editable de una dependencia (ver gemelo de generalización). */
 export function handleUpdateDependencyLabel(
   doc: Y.Doc,
   diagramId: string,
@@ -470,11 +470,11 @@ export function handleUpdateDependencyLabel(
 }
 
 /**
- * editor:R N-ary (unit 13.2) — centroid of the member class positions.
- * The diamond node is positioned here and re-derived on every projection,
- * so it always sits at the center of its members (never user-dragged).
- * An empty member list degenerates to the origin (defensive only: the
- * engine guarantees >=3 ends).
+ * editor:R N-aria (unidad 13.2) — centroide de las posiciones de las clases miembros.
+ * El nodo diamante se posiciona aquí y se vuelve a derivar en cada proyección,
+ * por lo que siempre se ubica en el centro de sus miembros (nunca arrastrado por el usuario).
+ * Una lista vacía de miembros degenera al origen (defensivo únicamente: el
+ * motor garantiza >=3 extremos).
  */
 export function computeNaryCentroid(
   positions: readonly { x: number; y: number }[],
@@ -486,7 +486,7 @@ export function computeNaryCentroid(
   return { x: sum.x / positions.length, y: sum.y / positions.length };
 }
 
-/** One member end as entered in the n-ary editor UI. */
+/** Un extremo miembro según se ingresa en la UI del editor n-ario. */
 export interface NaryMemberEndInput {
   classId: string;
   multiplicity: string;
@@ -494,12 +494,12 @@ export interface NaryMemberEndInput {
 }
 
 /**
- * editor:R N-ary (unit 13.2/13.3) — emit an naryAssociation `create` delta.
- * Guards BEFORE emitting (DeltaSchema.parse throws, so garbage must never
- * reach applyDeltaToYDoc): fewer than three ends are rejected, and every
- * multiplicity must satisfy MultiplicitySchema. Engine invariants (member
- * existence, duplicate ends) are enforced by applyDelta; a rejected delta
- * leaves the Y.Doc unchanged.
+ * editor:R N-aria (unidad 13.2/13.3) — emite un delta `create` de naryAssociation.
+ * Protecciones ANTES de emitir (DeltaSchema.parse arroja excepción, por lo que basura nunca
+ * debe llegar a applyDeltaToYDoc): menos de tres extremos son rechazados, y cada
+ * multiplicidad debe satisfacer MultiplicitySchema. Los invariantes del motor (existencia
+ * de miembros, extremos duplicados) son impuestos por applyDelta; un delta rechazado
+ * deja el Y.Doc sin cambios.
  */
 export function handleCreateNaryAssociation(
   doc: Y.Doc,
@@ -538,11 +538,11 @@ export function handleCreateNaryAssociation(
 }
 
 /**
- * editor:R N-ary (unit 13d fix A) — emit an naryAssociation `update` delta
- * (the diamond editor's commits). Same pre-emit guards as create: fewer than
- * three ends or an invalid multiplicity never reach the throwing schema
- * parse; a rejected input emits NOTHING (previous value retained). `name`
- * accepts an empty string to CLEAR the label (engine maps '' → undefined).
+ * editor:R N-aria (unidad 13d corrección A) — emite un delta `update` de naryAssociation
+ * (las confirmaciones del editor de diamante). Mismas protecciones previas a la emisión que create:
+ * menos de tres extremos o una multiplicidad inválida nunca alcanzan el parseo del esquema que
+ * arroja excepción; una entrada rechazada no emite NADA (se conserva el valor anterior). `name`
+ * acepta una cadena vacía para LIMPIAR la etiqueta (el motor mapea '' → undefined).
  */
 export function handleUpdateNaryAssociation(
   doc: Y.Doc,
@@ -587,8 +587,8 @@ export function handleUpdateNaryAssociation(
 }
 
 /**
- * editor:R N-ary (unit 13.3) — emit an naryAssociation `delete` delta
- * (the diamond's context-menu action).
+ * editor:R N-aria (unidad 13.3) — emite un delta `delete` de naryAssociation
+ * (la acción del menú contextual del diamante).
  */
 export function handleDeleteNaryAssociation(
   doc: Y.Doc,
@@ -607,8 +607,8 @@ export function handleDeleteNaryAssociation(
 }
 
 /**
- * editor:R Interfaces (unit 12.4) — toggle the abstract marker via a class
- * `update` delta carrying isAbstract.
+ * editor:R Interfaces (unidad 12.4) — conmuta la marca abstracta vía un delta
+ * `update` de clase que transporta isAbstract.
  */
 export function handleSetAbstract(
   doc: Y.Doc,
@@ -629,8 +629,8 @@ export function handleSetAbstract(
 }
 
 /**
- * First free auto-name: Class1, Class2, ... (or Interface1, ... with a
- * custom prefix) skipping any existing name.
+ * Primer auto-nombre libre: Class1, Class2, ... (o Interface1, ... con un
+ * prefijo personalizado) omitiendo cualquier nombre existente.
  */
 function nextFreeClassName(existing: readonly string[], prefix = 'Class'): string {
   let n = 1;
@@ -641,15 +641,15 @@ function nextFreeClassName(existing: readonly string[], prefix = 'Class'): strin
 }
 
 /**
- * unit 13b (editor:R Class Element CRUD / Interfaces) — palette drop:
- * create a class/interface node at the canvas position where the item was
- * dropped. Emits the SAME class `create` delta the toolbar buttons use
- * (interfaces carry classKind), parameterized by drop position + kind, with
- * the next free auto-name. The toolbar handlers delegate here so there is
- * exactly one creation path.
- * unit 13d — returns the created classId so the Quick Linker's
- * element+connector gesture can chain the connector delta onto the element
- * it just created. Existing callers ignore the return value.
+ * unidad 13b (editor:R CRUD de Elemento Clase / Interfaces) — soltar de la paleta:
+ * crea un nodo de clase/interfaz en la posición del lienzo donde se soltó el
+ * elemento. Emite el MISMO delta `create` de clase que usan los botones de la barra de
+ * herramientas (las interfaces transportan classKind), parametrizado por posición de soltado + tipo, con
+ * el siguiente auto-nombre libre. Los controladores de la barra de herramientas delegan aquí para que haya
+ * exactamente una ruta de creación.
+ * unidad 13d — retorna el classId creado para que el gesto de elemento+conector
+ * del Quick Linker pueda encadenar el delta del conector sobre el elemento
+ * que acaba de crear. Los llamadores existentes ignoran el valor de retorno.
  */
 export function handlePaletteDrop(
   doc: Y.Doc,
@@ -674,16 +674,16 @@ export function handlePaletteDrop(
   return classId;
 }
 
-/** Outcome of a guarded drag-to-connect: ok, or rejected with a user message. */
+/** Resultado de un arrastrar para conectar protegido: ok, o rechazado con un mensaje para el usuario. */
 export interface ConnectGuardResult {
   ok: boolean;
   message?: string;
 }
 
 /**
- * Human-readable reason for an engine rejection surfaced in the UI.
- * unit 13e.10 — module-level `t()` at CALL time: these run inside event
- * handlers (not render), and `t` reads the current language on every call.
+ * Razón legible por humanos para un rechazo del motor mostrada en la UI.
+ * unidad 13e.10 — `t()` a nivel de módulo en tiempo de LLAMADA: estos se ejecutan dentro
+ * de controladores de eventos (no de renderizado), y `t` lee el idioma actual en cada llamada.
  */
 function describeApplyError(error: ApplyError): string {
   switch (error.kind) {
@@ -715,21 +715,21 @@ function engineGuardResult(result: ApplyResult<Diagram> | null, label: string): 
 }
 
 /**
- * unit 13b (editor:R Associations/Generalization/Realization/Dependency) —
- * the drag-to-connect core: given the ARMED edge tool and a React Flow
- * connection (source node → target node), enforce the UI-level invariants
- * the engine also enforces (so the user sees a clear message instead of a
- * silent failure) and emit the matching delta with the correct field names:
- *  - association:    sourceClassId/targetClassId, distinct existing classes
- *  - aggregation:    association with aggregation='shared' preset (13c)
- *  - composition:    association with aggregation='composite' preset (13c)
- *  - generalization: subClassId=source → superClassId=target (cycles are
- *                    rejected by the engine; the rejection is surfaced)
- *  - realization:    clientClassId=source → supplierInterfaceId=target,
- *                    target MUST be an interface
- *  - dependency:     clientClassId=source → supplierClassId=target (the
- *                    supplier may be any classifier, class or interface)
- * With no tool armed the connection is ignored — no accidental edges.
+ * unidad 13b (editor:R Asociaciones/Generalización/Realización/Dependencia) —
+ * el núcleo de arrastrar para conectar: dada la herramienta de arista ARMADA y una
+ * conexión de React Flow (nodo origen → nodo destino), impone los invariantes de nivel de UI
+ * que el motor también impone (para que el usuario vea un mensaje claro en lugar de una
+ * falla silenciosa) y emite el delta correspondiente con los nombres de campo correctos:
+ *  - association:    sourceClassId/targetClassId, clases existentes distintas
+ *  - aggregation:    asociación con preajuste aggregation='shared' (13c)
+ *  - composition:    asociación con preajuste aggregation='composite' (13c)
+ *  - generalization: subClassId=origen → superClassId=destino (los ciclos son
+ *                    rechazados por el motor; el rechazo se expone)
+ *  - realization:    clientClassId=origen → supplierInterfaceId=destino,
+ *                    el destino DEBE ser una interfaz
+ *  - dependency:     clientClassId=origen → supplierClassId=destino (el
+ *                    proveedor puede ser cualquier clasificador, clase o interfaz)
+ * Sin ninguna herramienta armada se ignora la conexión — sin aristas accidentales.
  */
 export function handleConnectWithTool(
   doc: Y.Doc,
@@ -753,7 +753,7 @@ export function handleConnectWithTool(
 
   switch (tool) {
     case 'association': {
-      // Self-association is valid UML (e.g., Employee→manages→Employee)
+      // La autoasociación es UML válido (ej., Empleado→gestiona→Empleado)
       const result = handleCreateAssociation(doc, diagramId, {
         sourceClassId: source,
         targetClassId: target,
@@ -761,11 +761,11 @@ export function handleConnectWithTool(
       });
       return engineGuardResult(result, t('tool.association'));
     }
-    // unit 13c — Aggregation/Composition reuse the association path with the
-    // diamond kind preset (shared = hollow, composite = filled).
+    // unidad 13c — Agregación/Composición reutilizan la ruta de asociación con el
+    // tipo de diamante preestablecido (shared = hueco, composite = lleno).
     case 'aggregation':
     case 'composition': {
-      // Self-aggregation/composition is valid UML (e.g., TreeNode composed of TreeNode)
+      // La autoagregación/composición es UML válido (ej., TreeNode compuesto por TreeNode)
       const result = handleCreateAssociation(doc, diagramId, {
         sourceClassId: source,
         targetClassId: target,
@@ -795,7 +795,7 @@ export function handleConnectWithTool(
       return engineGuardResult(result, t('tool.realization'));
     }
     case 'dependency': {
-      // Self-dependency is valid UML
+      // La autodependencia es UML válido
       const result = handleCreateDependency(doc, diagramId, {
         clientClassId: source,
         supplierClassId: target,
@@ -806,13 +806,13 @@ export function handleConnectWithTool(
 }
 
 /**
- * unit 13d — EA-style Quick Linker: the menu opened when the quick-link drag
- * ends. 'connector' = dropped on an existing element (menu lists the valid
- * connectors source→target); 'element' = dropped on empty canvas (menu lists
- * creatable kinds; picking one creates the element AT the drop point and then
- * chains into the connector menu — element+connector in one gesture).
- * `anchor` is the screen point the menu renders at; `dropPosition` is the
- * flow-coordinate point the new element is created at.
+ * unidad 13d — Quick Linker estilo EA: el menú abierto cuando finaliza el arrastre
+ * de enlace rápido. 'connector' = soltado sobre un elemento existente (el menú lista los
+ * conectores válidos origen→destino); 'element' = soltado sobre lienzo vacío (el menú lista
+ * los tipos creables; seleccionar uno crea el elemento EN el punto de soltado y luego
+ * encadena hacia el menú de conectores — elemento+conector en un solo gesto).
+ * `anchor` es el punto en pantalla donde se renderiza el menú; `dropPosition` es el
+ * punto en coordenadas de flujo donde se crea el nuevo elemento.
  */
 type QuickLinkerMenuState =
   | {
@@ -832,36 +832,36 @@ type QuickLinkerMenuState =
     };
 
 export function DiagramCanvas({ doc }: DiagramCanvasProps) {
-  // unit 13e.10 — reactive accessor: every JSX string below re-renders live
-  // when the language toggle flips (module-level `t` serves the handlers).
+  // unidad 13e.10 — accesor reactivo: cada cadena JSX a continuación se re-renderiza en vivo
+  // cuando cambia el alternador de idioma (`t` a nivel de módulo atiende los controladores).
   const { t: tr } = useT();
-  // Derive state from the Y.Doc — the Y.Doc is the source of truth.
+  // Derivar estado a partir del Y.Doc — el Y.Doc es la fuente de verdad.
   const [diagram, setDiagram] = useState<Diagram>(() => projectYDocToDiagram(doc));
 
-  // unit 13e.11 — the canvas owns the toolbox collapse (the toggle button
-  // only renders when onToggleCollapsed is passed).
+  // unidad 13e.11 — el lienzo posee el estado de colapso de la caja de herramientas (el botón
+  // alternador solo se renderiza cuando se pasa onToggleCollapsed).
   const [paletteCollapsed, setPaletteCollapsed] = useState(false);
-  // unit 13c — ONE editor for every edge kind: the selected edge's id + type.
+  // unidad 13c — UN solo editor para cada tipo de arista: el id + tipo de la arista seleccionada.
   const [selectedEdge, setSelectedEdge] = useState<{ id: string; type: EditorEdgeType } | null>(null);
-  // unit 13d fix A — the n-ary diamond's own editor: the selected n-ary id.
-  // Resolved from the live projection, so deleting the n-ary closes the panel.
+  // unidad 13d corrección A — el propio editor del diamante n-ario: el id n-ario seleccionado.
+  // Resuelto a partir de la proyección en vivo, de modo que eliminar el n-ario cierra el panel.
   const [selectedNaryId, setSelectedNaryId] = useState<string | null>(null);
-  // Unit 11.4 — the class whose generalization list is shown in the panel.
+  // Unidad 11.4 — la clase cuya lista de generalización se muestra en el panel.
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  // Unit 13.3 — n-ary association mode: pick >=3 classes, per-end multiplicity.
+  // Unidad 13.3 — modo de asociación n-aria: seleccionar >=3 clases, multiplicidad por extremo.
   const [naryMode, setNaryMode] = useState(false);
   const [narySelection, setNarySelection] = useState<string[]>([]);
   const [naryEnds, setNaryEnds] = useState<Record<string, string>>({});
   const [naryName, setNaryName] = useState('');
-  // Unit 13b — armed edge tool from the palette; null means connections are
-  // disabled entirely (no accidental edges). edgeMessage surfaces guard/engine
-  // rejections from the drag-to-connect path.
+  // Unidad 13b — herramienta de arista armada desde la paleta; null significa que las conexiones están
+  // deshabilitadas completamente (sin aristas accidentales). edgeMessage expone rechazos
+  // de guardia/motor de la ruta de arrastrar para conectar.
   const [edgeTool, setEdgeTool] = useState<PaletteEdgeTool | null>(null);
   const [edgeMessage, setEdgeMessage] = useState<string | null>(null);
-  // React Flow instance (via onInit) — gives screenToFlowPosition for drops.
+  // Instancia de React Flow (vía onInit) — provee screenToFlowPosition para soltados.
   const rfRef = useRef<ReactFlowInstance | null>(null);
-  // unit 13d — Quick Linker: live drag endpoints (screen coords, for the
-  // rubber band) and the menu opened when the drag ends.
+  // unidad 13d — Quick Linker: extremos de arrastre en vivo (coords de pantalla, para la
+  // banda elástica) y el menú abierto cuando finaliza el arrastre.
   const [quickLinkDrag, setQuickLinkDrag] = useState<{
     start: { x: number; y: number };
     cursor: { x: number; y: number };
@@ -878,7 +878,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     };
   }, [doc]);
 
-  // Unit 13b — Escape cancels the armed edge tool (and its last message).
+  // Unidad 13b — Escape cancela la herramienta de arista armada (y su último mensaje).
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
       if (event.key === 'Escape') {
@@ -893,13 +893,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   }, []);
 
   /**
-   * unit 13e.7 — the old toolbar's handleAddClass/handleAddInterface are GONE:
-   * the palette drag (onDrop → handlePaletteDrop) and the Quick Linker are
-   * the only creation paths. The exported pure handlers stay (tests import
-   * them directly).
+   * unidad 13e.7 — los antiguos handleAddClass/handleAddInterface de la barra de herramientas DESAPARECIERON:
+   * el arrastre de la paleta (onDrop → handlePaletteDrop) y el Quick Linker son
+   * las únicas rutas de creación. Los controladores puros exportados se mantienen (las pruebas
+   * los importan directamente).
    */
 
-  /** unit 13b — allow palette drops over the canvas. */
+  /** unidad 13b — permitir soltar elementos de la paleta sobre el lienzo. */
   const onDragOver = useCallback((event: DragEvent): void => {
     event.preventDefault();
     if (event.dataTransfer) {
@@ -908,9 +908,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   }, []);
 
   /**
-   * unit 13b — palette drop: read the dragged node kind from the
-   * dataTransfer, convert the screen point to flow coordinates, and emit
-   * the class/interface create delta at that position.
+   * unidad 13b — soltar de la paleta: lee el tipo de nodo arrastrado desde
+   * dataTransfer, convierte el punto de pantalla a coordenadas de flujo, y emite
+   * el delta de creación de clase/interfaz en esa posición.
    */
   const onDrop = useCallback(
     (event: DragEvent): void => {
@@ -923,9 +923,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         return;
       }
       const screenPos = { x: event.clientX, y: event.clientY };
-      // screenToFlowPosition needs a measured viewport; before React Flow has
-      // laid out (or in zero-size test containers) it can return NaN — fall
-      // back to the raw screen point so a drop never emits an invalid delta.
+      // screenToFlowPosition necesita un viewport medido; antes de que React Flow se haya
+      // dispuesto (o en contenedores de prueba de tamaño cero) puede retornar NaN — recurre
+      // al punto crudo de pantalla para que un soltado nunca emita un delta inválido.
       let position = screenPos;
       if (rfRef.current !== null) {
         const flow = rfRef.current.screenToFlowPosition(screenPos);
@@ -943,11 +943,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   );
 
   /**
-   * unit 13b — React Flow connection completed while an edge tool is armed:
-   * delegate to the guarded handler and surface any rejection message. On
-   * success the tool auto-disarms (single-use); on rejection it stays armed
-   * so the user can retry. Escape or clicking the palette item again also
-   * disarms it.
+   * unidad 13b — conexión de React Flow completada mientras una herramienta de arista está armada:
+   * delega al controlador protegido y expone cualquier mensaje de rechazo. En caso
+   * de éxito la herramienta se desarma automáticamente (un solo uso); en caso de rechazo permanece armada
+   * para que el usuario pueda reintentar. Escape o hacer clic en el ítem de la paleta nuevamente
+   * también la desarma.
    */
   const onConnect = useCallback(
     (connection: Connection): void => {
@@ -967,18 +967,18 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   );
 
   /**
-   * unit 13d — EA-style Quick Linker, drop resolution. Given the pointer-up
-   * screen point: convert to flow coordinates (same finite-guard as the
-   * palette drop), hit-test the class nodes (measured size when React Flow
-   * has one — jsdom never measures, so the default box applies), then open
-   * the connector menu over an element or the element menu over empty
-   * canvas. Dropping back onto the source itself opens the connector menu
-   * with self-valid connectors (association/aggregation/composition/dependency;
-   * generalization excluded because self-inheritance is a cycle).
+   * unidad 13d — Quick Linker estilo EA, resolución de soltado. Dado el punto de pantalla
+   * en pointer-up: convierte a coordenadas de flujo (misma protección de finitud que el
+   * soltado de paleta), prueba impacto en los nodos de clase (tamaño medido cuando React Flow
+   * tiene uno — jsdom nunca mide, por lo que aplica la caja predeterminada), luego abre
+   * el menú de conectores sobre un elemento o el menú de elementos sobre lienzo
+   * vacío. Soltar de vuelta sobre el propio origen abre el menú de conectores
+   * con conectores válidos para autoenlace (asociación/agregación/composición/dependencia;
+   * generalización excluida porque la autoherencia es un ciclo).
    */
   const finishQuickLink = (sourceId: string, cursor: { x: number; y: number }): void => {
-    // The Y.Doc is the source of truth: resolve everything from a FRESH
-    // projection so a collab edit during the drag can never go stale.
+    // El Y.Doc es la fuente de verdad: resolver todo desde una proyección
+    // FRESCA para que una edición colaborativa durante el arrastre nunca quede obsoleta.
     const live = projectYDocToDiagram(doc);
     let dropPoint = cursor;
     if (rfRef.current !== null) {
@@ -1001,7 +1001,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       return;
     }
     if (targetId === sourceId) {
-      // Self-link: open connector menu with self-valid connectors (excludes generalization)
+      // Autoenlace: abrir menú de conectores con conectores válidos para autoenlace (excluye generalización)
       const targetKind = sourceKind;
       setQuickLinkMenu({ mode: 'connector', anchor: cursor, sourceId, sourceKind, targetId, targetKind });
       return;
@@ -1011,11 +1011,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /**
-   * unit 13d — pointer-down on the selected node's corner arrow starts the
-   * quick-link drag: a thin rubber band follows the cursor (window-level
-   * listeners, removed on pointer-up) and the drop is resolved by
-   * `finishQuickLink`. This is the EA fast path; the 13c arm-tool +
-   * body-drag path stays fully intact.
+   * unidad 13d — pointer-down en la flecha de la esquina del nodo seleccionado inicia el
+   * arrastre de enlace rápido: una delgada banda elástica sigue al cursor (oyentes a nivel
+   * de ventana, removidos en pointer-up) y el soltado es resuelto por
+   * `finishQuickLink`. Esta es la ruta rápida estilo EA; la ruta 13c de armar herramienta +
+   * arrastrar cuerpo permanece completamente intacta.
    */
   const startQuickLink = (sourceId: string, clientX: number, clientY: number): void => {
     const start = { x: clientX, y: clientY };
@@ -1037,11 +1037,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /**
-   * unit 13d — choosing a connector from the Quick Linker menu: delegate to
-   * the SAME guarded dispatcher the drag-to-connect path uses
-   * (`handleConnectWithTool`), so every UI/engine guard (distinct endpoints,
-   * realization-interface, cycles, duplicates) applies verbatim and
-   * rejections surface through the existing message channel.
+   * unidad 13d — elegir un conector del menú de Quick Linker: delega al
+   * MISMO despachador protegido que utiliza la ruta de arrastrar para conectar
+   * (`handleConnectWithTool`), de modo que cada protección de UI/motor (extremos distintos,
+   * interfaz en realización, ciclos, duplicados) se aplica textualmente y
+   * los rechazos se muestran a través del canal de mensajes existente.
    */
   const pickQuickConnector = (tool: QuickConnectorType): void => {
     if (quickLinkMenu === null || quickLinkMenu.mode !== 'connector') {
@@ -1060,10 +1060,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /**
-   * unit 13d — choosing Class/Interface from the element menu: create the
-   * element at the drop point (shared `handlePaletteDrop` creation path),
-   * then chain straight into the connector menu for source→new element —
-   * element + connector in one gesture, exactly like EA.
+   * unidad 13d — elegir Class/Interface del menú de elementos: crea el
+   * elemento en el punto de soltado (ruta compartida de creación `handlePaletteDrop`),
+   * luego encadena directamente al menú de conectores para origen→nuevo elemento —
+   * elemento + conector en un solo gesto, exactamente como EA.
    */
   const pickQuickElement = (kind: string): void => {
     if (quickLinkMenu === null || quickLinkMenu.mode !== 'element') {
@@ -1112,14 +1112,14 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /**
-   * unit 13e.7 — the old click-to-link mode is GONE (the palette edge tools +
-   * Quick Linker replaced it). A node click now only drives the n-ary pick
-   * mode and the exclusive editor selection.
+   * unidad 13e.7 — el antiguo modo de clic para enlazar DESAPARECIÓ (las herramientas
+   * de arista de la paleta + Quick Linker lo reemplazaron). El clic en nodo ahora solo
+   * controla el modo de selección n-ario y la selección exclusiva del editor.
    */
   const handleNodeClick = (node: { id: string; type?: string }): void => {
-    // Unit 13.3 — n-ary mode: clicking classes accumulates the member
-    // selection (click again to drop it). The diamond itself is not a
-    // selectable member; only class nodes participate.
+    // Unidad 13.3 — modo n-ario: hacer clic en clases acumula la selección
+    // de miembros (hacer clic nuevamente para retirarlo). El diamante en sí no es
+    // un miembro seleccionable; solo participan los nodos de clase.
     if (naryMode) {
       if (node.type !== 'class') return;
       setNarySelection((prev) =>
@@ -1127,19 +1127,19 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       );
       return;
     }
-    // unit 13d fix A — clicking the n-ary diamond selects it and opens its
-    // editor (name + per-end multiplicities + delete), like any other
-    // element. The edge editor is exclusive: only one editor at a time.
+    // unidad 13d corrección A — hacer clic en el diamante n-ario lo selecciona y abre su
+    // editor (nombre + multiplicidades por extremo + eliminar), al igual que cualquier otro
+    // elemento. El editor de arista es exclusivo: solo un editor a la vez.
     if (node.type === 'naryDiamond') {
       setSelectedNaryId(node.id);
       setSelectedEdge(null);
       return;
     }
-    // A class click closes the n-ary editor (selection is exclusive).
+    // Un clic en clase cierra el editor n-ario (la selección es exclusiva).
     setSelectedNaryId(null);
   };
 
-  /** Unit 13.3 — commit the n-ary association from the editor panel. */
+  /** Unidad 13.3 — confirma la asociación n-aria desde el panel del editor. */
   const handleCreateNaryFromPanel = (): void => {
     const memberEnds: NaryMemberEndInput[] = narySelection
       .filter((classId) => diagram.classes.some((cls) => cls.id === classId))
@@ -1173,7 +1173,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     applyDeltaToYDoc(doc, delta);
   };
 
-  /** editor:R3 — in-place attribute edit emitted as an `editAttribute` delta. */
+  /** editor:R3 — edición in situ de atributo emitida como un delta `editAttribute`. */
   const handleEditAttribute = (classId: string, memberId: string, name: string, type: string, adornments?: MemberAdornments): void => {
     const delta: MemberDelta = {
       kind: 'member',
@@ -1226,7 +1226,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     applyDeltaToYDoc(doc, delta);
   };
 
-  /** editor:R3 — in-place method edit emitted as an `editMethod` delta. */
+  /** editor:R3 — edición in situ de método emitida como un delta `editMethod`. */
   const handleEditMethod = (
     classId: string,
     memberId: string,
@@ -1302,18 +1302,18 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           onDependOn: (supplierClassId: string) =>
             handleCreateDependency(doc, diagram.id, { clientClassId: cls.id, supplierClassId }),
           onSelect: () => setSelectedClassId(cls.id),
-          // unit 13c — while an edge tool is armed the node body itself
-          // becomes a valid connection start (full-node overlay handle).
+          // unidad 13c — mientras una herramienta de arista está armada, el cuerpo del nodo
+          // se convierte en un inicio de conexión válido (conector superpuesto en todo el nodo).
           connectArmed: edgeTool !== null,
-          // unit 13d — the Quick Linker arrow renders only on the selected
-          // node; pointer-down on it starts the quick-link drag.
+          // unidad 13d — la flecha de Quick Linker se renderiza solo en el nodo
+          // seleccionado; pointer-down sobre ella inicia el arrastre de enlace rápido.
           selected: selectedClassId === cls.id,
           onQuickLinkStart: (clientX: number, clientY: number) => startQuickLink(cls.id, clientX, clientY),
         } satisfies ClassNodeData,
       })),
-      // Unit 13.2 — one diamond node per n-ary association, positioned at the
-      // centroid of its member classes and re-derived on every projection
-      // (draggable: false — the centroid IS its position).
+      // Unidad 13.2 — un nodo diamante por asociación n-aria, posicionado en el
+      // centroide de sus clases miembros y vuelto a derivar en cada proyección
+      // (draggable: false — el centroide ES su posición).
       ...(diagram.naryAssociations ?? [])
         .map((nary) => {
           const memberPositions = nary.memberEnds
@@ -1333,9 +1333,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         })
         .filter((node): node is NaryDiamondFlowNode => node !== null),
     ],
-    // unit 13c — edgeTool joins the deps: arming/disarming toggles the
-    // node-wide connect overlays. unit 13d — selectedClassId toggles the
-    // Quick Linker corner arrow.
+    // unidad 13c — edgeTool se une a las dependencias: armar/desarmar conmuta las
+    // superposiciones de conexión en todo el nodo. unidad 13d — selectedClassId conmuta la
+    // flecha de la esquina de Quick Linker.
     [diagram, edgeTool, selectedClassId],
   );
 
@@ -1348,8 +1348,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         type: 'association' as const,
         data: { association: assoc },
       })),
-      // Unit 11.3 — generalization edges: source = subClass, target = superClass
-      // so the hollow triangle marker renders on the superclass end.
+      // Unidad 11.3 — aristas de generalización: origen = subClase, destino = superClase
+      // para que el marcador de triángulo hueco se renderice en el extremo de la superclase.
       ...diagram.generalizations.map((gen) => ({
         id: gen.id,
         source: gen.subClassId,
@@ -1357,8 +1357,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         type: 'generalization' as const,
         data: { generalization: gen },
       })),
-      // Unit 12.3 — realization edges: source = client class, target = supplier
-      // interface, so the dashed line + hollow triangle renders on the interface end.
+      // Unidad 12.3 — aristas de realización: origen = clase cliente, destino = interfaz
+      // proveedora, para que la línea discontinua + triángulo hueco se renderice en el extremo de la interfaz.
       ...(diagram.realizations ?? []).map((real) => ({
         id: real.id,
         source: real.clientClassId,
@@ -1366,8 +1366,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         type: 'realization' as const,
         data: { realization: real },
       })),
-      // Unit 12.3 (12b) — dependency edges: source = client class, target =
-      // supplier, so the dashed line + open arrow renders on the supplier end.
+      // Unidad 12.3 (12b) — aristas de dependencia: origen = clase cliente, destino =
+      // proveedor, para que la línea discontinua + flecha abierta se renderice en el extremo del proveedor.
       ...(diagram.dependencies ?? []).map((dep) => ({
         id: dep.id,
         source: dep.clientClassId,
@@ -1375,8 +1375,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         type: 'dependency' as const,
         data: { dependency: dep },
       })),
-      // Unit 13.2 — one plain edge per n-ary member end: diamond → class,
-      // labeled with that end's multiplicity (and role when present).
+      // Unidad 13.2 — una arista simple por extremo miembro n-ario: diamante → clase,
+      // etiquetada con la multiplicidad de dicho extremo (y rol cuando esté presente).
       ...(diagram.naryAssociations ?? []).flatMap((nary) =>
         nary.memberEnds.map((end) => ({
           id: `${nary.id}:${end.classId}`,
@@ -1390,9 +1390,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram],
   );
 
-  // unit 13c — the selected edge resolved from the live projection. When the
-  // edge disappears (deleted from anywhere), this becomes null and the editor
-  // closes itself — no stale panel.
+  // unidad 13c — la arista seleccionada resuelta a partir de la proyección en vivo. Cuando la
+  // arista desaparece (eliminada desde cualquier lugar), esto pasa a null y el editor
+  // se cierra automáticamente — sin panel obsoleto.
   const selectedEdgeData = useMemo(
     () => {
       if (selectedEdge === null) {
@@ -1420,17 +1420,17 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram, selectedEdge],
   );
 
-  // unit 13d fix A — the selected n-ary resolved from the live projection.
-  // When the association disappears (deleted from anywhere), this becomes
-  // null and the diamond editor closes itself — no stale panel.
+  // unidad 13d corrección A — el n-ario seleccionado resuelto a partir de la proyección en vivo.
+  // Cuando la asociación desaparece (eliminada desde cualquier lugar), esto pasa a
+  // null y el editor de diamante se cierra automáticamente — sin panel obsoleto.
   const selectedNary = useMemo(
     () => (diagram.naryAssociations ?? []).find((n) => n.id === selectedNaryId) ?? null,
     [diagram, selectedNaryId],
   );
 
   /**
-   * unit 13d fix A — commit the diamond editor's Name field (empty clears,
-   * mirroring the edge label semantics).
+   * unidad 13d corrección A — confirma el campo Name del editor de diamante (vacío borra,
+   * reflejando la semántica de etiquetas de aristas).
    */
   const commitNaryName = (value: string): void => {
     if (selectedNary === null) {
@@ -1440,10 +1440,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /**
-   * unit 13d fix A — commit one member end's multiplicity: rebuild the full
-   * memberEnds array (replace semantics of the core update delta) with only
-   * that end changed; roles and the other ends survive. Invalid input is
-   * guarded inside handleUpdateNaryAssociation (no delta emitted).
+   * unidad 13d corrección A — confirma la multiplicidad de un extremo miembro: reconstruye el arreglo
+   * completo memberEnds (semántica de reemplazo del delta update central) cambiando únicamente
+   * dicho extremo; los roles y los otros extremos se conservan. La entrada inválida está
+   * protegida dentro de handleUpdateNaryAssociation (no se emite delta).
    */
   const commitNaryEndMultiplicity = (classId: string, value: string): void => {
     if (selectedNary === null) {
@@ -1457,7 +1457,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     handleUpdateNaryAssociation(doc, diagram.id, selectedNary.id, { memberEnds });
   };
 
-  // Unit 11.4 — generalization list for the selected class (both roles).
+  // Unit 11.4 — lista de generalización para la clase seleccionada (ambos roles).
   const selectedClass = useMemo(
     () => diagram.classes.find((cls) => cls.id === selectedClassId) ?? null,
     [diagram, selectedClassId],
@@ -1474,7 +1474,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram, selectedClass],
   );
 
-  // Unit 12.4 — realization list for the selected class (both roles).
+  // Unit 12.4 — lista de realización para la clase seleccionada (ambos roles).
   const selectedClassRealizations = useMemo(
     () =>
       selectedClass === null
@@ -1485,7 +1485,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram, selectedClass],
   );
 
-  // Unit 12.4 (12b) — dependency list for the selected class (both roles).
+  // Unit 12.4 (12b) — lista de dependencias para la clase seleccionada (ambos roles).
   const selectedClassDependencies = useMemo(
     () =>
       selectedClass === null
@@ -1497,9 +1497,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   );
 
   /**
-   * unit 13b/13e.7 — the palette n-ary item toggles the pick mode (the old
-   * toolbar twin is gone). Entering it disarms any armed edge tool (the
-   * modes are exclusive).
+   * unidad 13b/13e.7 — el elemento n-ario de la paleta conmuta el modo de selección (el antiguo
+   * gemelo de la barra de herramientas desapareció). Ingresar a él desarma cualquier herramienta
+   * de arista armada (los modos son exclusivos).
    */
   const toggleNaryMode = (): void => {
     setNaryMode((prev) => !prev);
@@ -1510,7 +1510,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     setEdgeMessage(null);
   };
 
-  /** unit 13b — arm/disarm an edge tool; arming exits n-ary pick mode. */
+  /** unidad 13b — armar/desarmar una herramienta de arista; armar sale del modo de selección n-ario. */
   const changeEdgeTool = (tool: PaletteEdgeTool | null): void => {
     setEdgeTool(tool);
     setEdgeMessage(null);
@@ -1523,9 +1523,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   };
 
   /**
-   * unit 13c — commit the unified editor's Label field for whichever edge
-   * kind is selected. Associations keep the meta-update path (empty clears);
-   * the three label kinds emit the core `update` name delta (empty clears).
+   * unidad 13c — confirma el campo Label del editor unificado para cualquiera que sea el tipo
+   * de arista seleccionado. Las asociaciones conservan la ruta de actualización de metadatos (vacío borra);
+   * los tres tipos de etiqueta emiten el delta `update` de nombre de core (vacío borra).
    */
   const commitEdgeLabel = (value: string): void => {
     if (selectedEdgeData === null) {
@@ -1548,7 +1548,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     }
   };
 
-  /** unit 13c — delete the selected edge via its kind's delete delta and close. */
+  /** unidad 13c — elimina la arista seleccionada vía el delta delete de su tipo y cierra. */
   const deleteSelectedEdge = (): void => {
     if (selectedEdgeData === null) {
       return;
@@ -1572,8 +1572,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
 
   return (
     <div className="diagram-canvas" style={{ width: '100%', height: '100%' }}>
-      {/* unit 13b — left creation rail: drag nodes, arm edge tools, n-ary.
-          unit 13e.11 — the canvas owns the collapse state (header toggle). */}
+      {/* unidad 13b — riel de creación izquierdo: arrastrar nodos, armar herramientas de aristas, n-ario.
+          unidad 13e.11 — el lienzo posee el estado de colapso (alternador de encabezado). */}
       <Palette
         activeEdgeTool={edgeTool}
         naryMode={naryMode}
@@ -1582,11 +1582,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         collapsed={paletteCollapsed}
         onToggleCollapsed={() => setPaletteCollapsed((prev) => !prev)}
       />
-      {/* unit 13e.7 — the legacy `.diagram-canvas__toolbar` (Add class /
-          Add interface / Link classes / N-ary association / Directed) is
-          REMOVED: the palette items + drag-to-connect + Quick Linker fully
-          replace it (user request: "quitar los botones antiguos"). */}
-      {/* unit 13b — affordances for the armed edge tool + guard feedback. */}
+      {/* unidad 13e.7 — la barra de herramientas heredada `.diagram-canvas__toolbar` (Add class /
+          Add interface / Link classes / N-ary association / Directed) fue
+          ELIMINADA: los elementos de la paleta + arrastrar para conectar + Quick Linker la
+          reemplazan por completo (solicitud del usuario: "quitar los botones antiguos"). */}
+      {/* unidad 13b — ayudas visuales para la herramienta de arista armada + retroalimentación de protección. */}
       {edgeTool !== null && (
         <div className="diagram-canvas__hint" data-testid="edge-tool-hint" role="status">
           {tr('canvas.edgeToolHint', { tool: tr(CONNECTOR_TOOL_KEYS[edgeTool]) })}
@@ -1638,10 +1638,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           </button>
         </div>
       )}
-      {/* unit 13c — ONE unified edge editor for every edge kind: label +
-          delete for all, multiplicities/roles for associations only. The
-          aggregation kind is chosen at creation time via the palette
-          (Aggregation/Composition tools), so no dropdowns live here. */}
+      {/* unidad 13c — UN solo editor de arista unificado para cada tipo de arista: etiqueta +
+          eliminar para todas, multiplicidades/roles solo para asociaciones. El
+          tipo de agregación se elige en el momento de creación vía la paleta
+          (herramientas Agregación/Composición), por lo que aquí no hay menús desplegables. */}
       {selectedEdgeData && (
         <div className="diagram-canvas__edge-editor" data-testid="edge-editor" key={selectedEdgeData.edge.id}>
           <span className="diagram-canvas__edge-editor-title">
@@ -1726,7 +1726,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                   }}
                 />
               </label>
-              {/* Flip diamond end control — only for aggregation/composition associations */}
+              {/* Control de inversión del extremo del diamante — solo para asociaciones de agregación/composición */}
               {selectedEdgeData.edge.aggregation !== 'none' && selectedEdgeData.edge.aggregationEnd !== undefined && (
                 <div className="diagram-canvas__flip-diamond">
                   <span>
@@ -1769,10 +1769,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           </button>
         </div>
       )}
-      {/* unit 13d fix A — the n-ary diamond's own editor (same pattern as the
-          unified edge editor): editable name, one multiplicity input per
-          member end (labeled by class name), and Delete. Every commit emits
-          the core naryAssociation `update` delta. */}
+      {/* unidad 13d corrección A — el editor propio del diamante n-ario (mismo patrón que el
+          editor de aristas unificado): nombre editable, un campo de multiplicidad por
+          extremo miembro (etiquetado por el nombre de la clase), y Eliminar. Cada confirmación emite
+          el delta `update` de naryAssociation de core. */}
       {selectedNary && (
         <div className="diagram-canvas__edge-editor" data-testid="nary-editor" key={selectedNary.id}>
           <span className="diagram-canvas__edge-editor-title">
@@ -1815,8 +1815,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
             aria-label={tr('naryEditor.deleteAria', { id: selectedNary.id })}
             onClick={() => {
               handleDeleteNaryAssociation(doc, diagram.id, selectedNary.id);
-              // The projection-driven selectedNary resolution closes the
-              // panel; clearing the id also covers the same-tick case.
+              // La resolución de selectedNary basada en proyecciones cierra el
+              // panel; limpiar el id también cubre el caso en el mismo tick.
               setSelectedNaryId(null);
             }}
           >
@@ -1918,13 +1918,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        // unit 13b — connections are only startable while an edge tool is
-        // armed; loose mode lets the drag begin from any handle (the delta
-        // cares about node direction, not handle identity).
+        // unidad 13b — las conexiones solo se pueden iniciar mientras una herramienta de
+        // arista esté armada; el modo suelto permite iniciar el arrastre desde cualquier conector (el delta
+        // se enfoca en la dirección del nodo, no en la identidad del conector).
         nodesConnectable={edgeTool !== null}
         connectionMode="loose"
-        // unit 13c — forgiving snap radius around handles; combined with the
-        // full-node connect overlays this makes body-wide drag-to-connect.
+        // unidad 13c — radio de ajuste indulgente alrededor de los conectores; combinado con las
+        // superposiciones de conexión en todo el nodo permite arrastrar para conectar desde el cuerpo.
         connectionRadius={40}
         onConnect={onConnect}
         onEdgesChange={() => {}}
@@ -1935,19 +1935,19 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         }}
         onNodesChange={() => {}}
         onNodeClick={(_event, node) => handleNodeClick(node)}
-        // unit 13c — clicking any editor edge kind opens the ONE unified
-        // editor; n-ary member edges keep their own diamond flow.
+        // unidad 13c — hacer clic en cualquier tipo de arista de editor abre el editor
+        // ÚNICO unificado; las aristas de miembros n-arios conservan su propio flujo de diamante.
         onEdgeClick={(_event, edge) => {
           if (isEditorEdgeType(edge.type)) {
             setSelectedEdge({ id: edge.id, type: edge.type });
-            // Editors are exclusive: opening the edge editor closes the
-            // n-ary diamond editor (unit 13d fix A).
+            // Los editores son exclusivos: abrir el editor de aristas cierra el
+            // editor de diamante n-ario (unidad 13d corrección A).
             setSelectedNaryId(null);
           }
         }}
-        // unit 13d fix D — clicking empty canvas deselects: clear the
-        // selected class, close the edge/n-ary editors, and disarm any
-        // armed edge tool (the click equivalent of Escape).
+        // unidad 13d corrección D — hacer clic en el lienzo vacío deselecciona: limpia la
+        // clase seleccionada, cierra los editores de arista/n-ario, y desarma cualquier
+        // herramienta de arista armada (el equivalente con clic a Escape).
         onPaneClick={() => {
           setSelectedClassId(null);
           setSelectedEdge(null);
@@ -1958,11 +1958,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         onNodeDragStop={(_event, node) => handleNodeDragStop(doc, diagram.id, node)}
         fitView
       >
-        {/* unit 13e — EA-like canvas: subtle dot grid behind the elements. */}
+        {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos detrás de los elementos. */}
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#c9c9c9" />
       </ReactFlow>
-      {/* unit 13d — Quick Linker rubber band: a thin dashed line from the
-          corner arrow to the live cursor while the quick-link drag runs. */}
+      {/* unidad 13d — banda elástica de Quick Linker: una delgada línea discontinua desde la
+          flecha de la esquina hasta el cursor en vivo mientras corre el arrastre de enlace rápido. */}
       {quickLinkDrag !== null && (
         <svg className="quicklinker-rubberband" data-testid="quicklinker-rubberband" aria-hidden="true">
           <line
@@ -1973,9 +1973,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           />
         </svg>
       )}
-      {/* unit 13d — the metamodel-filtered menu: connector options over an
-          existing element, creatable element types over empty canvas.
-          Escape / click-away closes WITHOUT creating anything. */}
+      {/* unidad 13d — el menú filtrado por metamodelo: opciones de conector sobre un
+          elemento existente, tipos de elementos creables sobre lienzo vacío.
+          Escape / clic afuera cierra SIN crear nada. */}
       {quickLinkMenu !== null &&
         (quickLinkMenu.mode === 'connector' ? (
           <QuickLinkerMenu

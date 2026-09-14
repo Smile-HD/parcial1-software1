@@ -1,36 +1,36 @@
 /**
- * PhotoReviewModal — review extracted classes from a photo import before
- * applying them to the Y.Doc (photo:R2: mandatory human review).
+ * PhotoReviewModal — revisa las clases extraídas de una importación de fotos antes
+ * de aplicarlas al Y.Doc (photo:R2: revisión humana obligatoria).
  *
- * Each class can be renamed or dropped. The approve action applies the
- * filtered BatchDelta; cancel discards everything. Zero-element extractions
- * show a warning and disable approve (photo:R3).
+ * Cada clase puede ser renombrada o descartada. La acción de aprobación aplica el
+ * BatchDelta filtrado; cancelar descarta todo. Las extracciones con cero elementos
+ * muestran una advertencia y deshabilitan la aprobación (photo:R3).
  */
 import type { Delta } from '@app/core';
 
 export interface ReviewableClass {
-  /** Stable class id from the extraction delta. */
+  /** Id de clase estable del delta de extracción. */
   classId: string;
-  /** Editable display name (may be corrected by the user). */
+  /** Nombre para mostrar editable (puede ser corregido por el usuario). */
   name: string;
-  /** The full class-create delta (carries position, etc.). */
+  /** El delta completo de creación de clase (transporta posición, etc.). */
   delta: Delta;
-  /** Whether this class has been dropped by the user. */
+  /** Indica si esta clase fue descartada por el usuario. */
   dropped: boolean;
 }
 
 export interface PhotoReviewModalProps {
-  /** All extracted classes from the batch. */
+  /** Todas las clases extraídas del lote. */
   classes: ReviewableClass[];
-  /** Warnings from the extraction (e.g. zero-element). */
+  /** Advertencias de la extracción (p. ej. cero elementos). */
   warnings: string[];
-  /** Callback with the filtered batch (dropped elements removed). */
+  /** Callback con el lote filtrado (elementos descartados eliminados). */
   onApprove: () => void;
-  /** Callback to discard everything. */
+  /** Callback para descartar todo. */
   onCancel: () => void;
-  /** Callback to update a class name in-place. */
+  /** Callback para actualizar un nombre de clase in situ. */
   onRename: (classId: string, newName: string) => void;
-  /** Callback to toggle the dropped state of a class. */
+  /** Callback para alternar el estado descartado de una clase. */
   onDrop: (classId: string) => void;
 }
 
@@ -86,7 +86,7 @@ export function PhotoReviewModal({
         </button>
         <button
           type="button"
-          onClick={() => onApprove(/* filteredBatch — built by parent */)}
+          onClick={() => onApprove(/* filteredBatch — construido por el padre */)}
           disabled={!hasElements}
           aria-label="Approve"
         >

@@ -1,21 +1,21 @@
 /**
- * Vision adapters (PR 16, task 16.2).
+ * Adaptadores de visión (PR 16, tarea 16.2).
  *
- * photo:R1 — extraction produces schema-validated JSON (BatchDelta) from
- * an image. Prose or non-schema responses MUST be rejected.
+ * photo:R1 — la extracción produce un JSON validado por esquema (BatchDelta) a partir
+ * de una imagen. Las respuestas en prosa o fuera de esquema DEBEN ser rechazadas.
  *
- * - `FakeVision` — deterministic, zero-network: returns a golden fixture
- *   (valid 3-class batch delta) or forced-invalid / zero-element modes.
- * - `OpenAiVision` — OpenAI-compatible multimodal adapter (gpt-4o-mini
- *   with image input). The returned JSON is ALWAYS Zod-validated by the
- *   caller (same discipline as OpenAiLlm / interpreter:R1).
+ * - `FakeVision` — determinista, sin red: retorna un fixture de referencia (golden)
+ *   (batch delta válido de 3 clases) o modos de invalidez forzada / cero elementos.
+ * - `OpenAiVision` — adaptador multimodal compatible con OpenAI (gpt-4o-mini
+ *   con entrada de imagen). El JSON retornado SIEMPRE es validado con Zod por el
+ *   invocador (misma disciplina que OpenAiLlm / interpreter:R1).
  */
 import type { VisionPort } from '@app/core';
 import { BatchDeltaSchema, type BatchDelta } from '@app/core';
 
 // ── Error ───────────────────────────────────────────────────────────────────
 
-/** Raised when the vision provider is unreachable or returns invalid output. */
+/** Se lanza cuando el proveedor de visión es inalcanzable o retorna una salida inválida. */
 export class VisionExtractionError extends Error {
   constructor(message = 'Vision extraction failed') {
     super(message);
@@ -26,15 +26,15 @@ export class VisionExtractionError extends Error {
 // ── FakeVision ──────────────────────────────────────────────────────────────
 
 export interface FakeVisionOptions {
-  /** When true, extract() throws VisionExtractionError (unreachable service). */
+  /** Si es true, extract() lanza VisionExtractionError (servicio inalcanzable). */
   forceInvalid?: boolean;
-  /** When true, extract() returns an empty batch (zero-element extraction). */
+  /** Si es true, extract() retorna un lote vacío (extracción con cero elementos). */
   zeroElements?: boolean;
 }
 
 /**
- * Deterministic fake for tests and offline dev. Returns a golden 3-class
- * batch delta by default; configurable to fail or return zero elements.
+ * Fake determinista para pruebas y desarrollo sin conexión. Retorna un lote delta
+ * de referencia de 3 clases por defecto; configurable para fallar o retornar cero elementos.
  */
 export class FakeVision implements VisionPort {
   private readonly forceInvalid: boolean;
@@ -45,7 +45,7 @@ export class FakeVision implements VisionPort {
     this.forceInvalid = options.forceInvalid ?? false;
     this.zeroElements = options.zeroElements ?? false;
 
-    // Build the golden fixture once with valid UUIDs at construction time.
+    // Construye el fixture de referencia una sola vez con UUIDs válidos al instanciar.
     const batchId = crypto.randomUUID();
     const diagramId = crypto.randomUUID();
     const ts = '2026-01-01T00:00:00.000Z';
@@ -86,17 +86,17 @@ export class FakeVision implements VisionPort {
 
 export interface OpenAiVisionConfig {
   apiKey: string;
-  /** Default: https://api.openai.com/v1 — override for compatible gateways. */
+  /** Por defecto: https://api.openai.com/v1 — sobreescribir para gateways compatibles. */
   baseUrl?: string;
-  /** Default: gpt-4o-mini. */
+  /** Por defecto: gpt-4o-mini. */
   model?: string;
 }
 
 /**
- * OpenAI-compatible multimodal vision adapter. Sends the image as a
- * user message with image_url content part and expects a JSON response
- * that parses into a BatchDelta. Caller MUST Zod-validate the result
- * (same discipline as OpenAiLlm — photo:R1).
+ * Adaptador de visión multimodal compatible con OpenAI. Envía la imagen como
+ * mensaje de usuario con la parte de contenido image_url y espera una respuesta JSON
+ * analizable a un BatchDelta. El invocador DEBE validar el resultado con Zod
+ * (misma disciplina que OpenAiLlm — photo:R1).
  */
 export class OpenAiVision implements VisionPort {
   private readonly apiKey: string;
@@ -180,7 +180,7 @@ export class OpenAiVision implements VisionPort {
       throw new VisionExtractionError('Vision returned non-JSON content');
     }
 
-    // Validate against the canonical BatchDelta schema (photo:R1 gate)
+    // Valida contra el esquema canónico BatchDelta (compuerta photo:R1)
     const result = BatchDeltaSchema.safeParse(parsed);
     if (!result.success) {
       throw new VisionExtractionError(

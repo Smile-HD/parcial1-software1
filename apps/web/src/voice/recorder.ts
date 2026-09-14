@@ -1,9 +1,9 @@
 /**
- * Browser voice recorder (PR 8, task 8.3).
+ * Grabador de voz del navegador (PR 8, tarea 8.3).
  *
- * Wraps MediaRecorder + getUserMedia behind the injectable `VoiceRecorder`
- * interface so App.tsx stays testable. Returns null when the browser offers
- * no recording API — the UI hides the control then.
+ * Envuelve MediaRecorder + getUserMedia tras la interfaz inyectable `VoiceRecorder`
+ * para que App.tsx siga siendo comprobable con tests. Retorna null cuando el navegador
+ * no ofrece la API de grabación — la UI oculta el control en ese caso.
  */
 
 export interface RecordedAudio {
@@ -12,9 +12,9 @@ export interface RecordedAudio {
 }
 
 export interface VoiceRecorder {
-  /** Requests the microphone and starts recording. */
+  /** Solicita el micrófono e inicia la grabación. */
   startRecording(): Promise<void>;
-  /** Stops the active recording and resolves with the encoded audio. */
+  /** Detiene la grabación activa y se resuelve con el audio codificado. */
   stopRecording(): Promise<RecordedAudio>;
 }
 

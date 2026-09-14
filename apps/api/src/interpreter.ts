@@ -1,26 +1,26 @@
 /**
- * Interpreter service (PR 7, tasks 7.1–7.5).
+ * Servicio del intérprete (PR 7, tareas 7.1–7.5).
  *
- * Flow: utterance + current IR → LlmPort → either a refusal or a candidate
- * delta. The candidate is Zod-validated against the delta schema here
- * (interpreter:R1): malformed model output NEVER reaches the canonical model.
- * Valid candidates are stored as PENDING and are only released to the client
- * after explicit confirm (interpreter:R2) — the API never mutates the diagram
- * on behalf of the interpreter; the confirming client applies the delta to
- * its Y.Doc and propagates it through the collab transport (blob-preserving,
- * work unit 6b).
+ * Flujo: elocución + IR actual → LlmPort → o un rechazo o un delta candidato.
+ * El candidato es validado con Zod contra el esquema de deltas aquí
+ * (interpreter:R1): la salida malformada del modelo NUNCA alcanza el modelo canónico.
+ * Los candidatos válidos se guardan como PENDIENTES y solo se entregan al cliente
+ * tras confirmación explícita (interpreter:R2) — la API nunca muta el diagrama
+ * en nombre del intérprete; el cliente que confirma aplica el delta a su
+ * Y.Doc y lo propaga a través del transporte de colaboración (preservando blobs,
+ * unidad de trabajo 6b).
  */
 import { DeltaSchema, deltaJsonSchema, type Delta, type Diagram, type LlmPort, type LlmResult } from '@app/core';
 
 /**
- * Surfaced on refusals so the user knows the bounded command set
- * (interpreter:R4 + interpreter-llm-resilience R3). Covers every kind in
- * `DeltaSchema`'s discriminated union: class, member, association,
- * generalization, realization, dependency, n-ary association, AND batch.
+ * Se expone en los rechazos para que el usuario conozca el conjunto acotado de comandos
+ * (interpreter:R4 + interpreter-llm-resilience R3). Cubre cada tipo en la unión
+ * discriminada de `DeltaSchema`: class, member, association, generalization,
+ * realization, dependency, n-ary association, Y batch.
  *
- * The list is a `readonly string[]` (not a closed enum) so the user-facing
- * copy stays in natural language, but a separate `SUPPORTED_DELTA_KINDS`
- * constant pins the discriminated-union membership for compile-time safety.
+ * La lista es un `readonly string[]` (no un enum cerrado) para que el texto de cara
+ * al usuario permanezca en lenguaje natural, pero una constante separada `SUPPORTED_DELTA_KINDS`
+ * fija la pertenencia a la unión discriminada para seguridad en tiempo de compilación.
  */
 export const SUPPORTED_CATEGORIES: readonly string[] = [
   'add/rename/delete class',
@@ -36,10 +36,10 @@ export const SUPPORTED_CATEGORIES: readonly string[] = [
 ];
 
 /**
- * Compile-time pin of the discriminated-union membership of `DeltaSchema`.
- * Every entry MUST match a `kind` literal in
+ * Fijación en tiempo de compilación de la unión discriminada de `DeltaSchema`.
+ * Cada entrada DEBE coincidir con un literal `kind` en
  * `packages/core/src/delta.ts:DeltaSchema` (interpreter-llm-resilience R3:
- * SUPPORTED_CATEGORIES enumerates all 7 single kinds + batch).
+ * SUPPORTED_CATEGORIES enumera los 7 tipos individuales + batch).
  */
 export const SUPPORTED_DELTA_KINDS = [
   'class',
@@ -60,7 +60,7 @@ export interface PendingDelta {
   createdAt: string;
 }
 
-/** In-memory pending store: pending deltas live until confirmed or rejected. */
+/** Almacén en memoria de deltas pendientes: viven hasta ser confirmados o rechazados. */
 export class PendingDeltaStore {
   private readonly map = new Map<string, PendingDelta>();
 
@@ -75,7 +75,7 @@ export class PendingDeltaStore {
     return pending;
   }
 
-  /** Atomically consumes the pending delta (confirm and reject both consume). */
+  /** Consume atómicamente el delta pendiente (tanto confirm como reject lo consumen). */
   take(id: string): PendingDelta | undefined {
     const pending = this.map.get(id);
     if (pending) {
@@ -102,7 +102,7 @@ export async function interpretCommand(
   try {
     result = await llm.interpret(text, deltaJsonSchema, currentIr);
   } catch (error) {
-    // Transport/configuration failures are NOT schema-validation failures.
+    // Las fallas de transporte/configuración NO son fallas de validación de esquema.
     throw new LlmUnavailableError(error instanceof Error ? error.message : 'LLM unavailable');
   }
 
@@ -110,7 +110,7 @@ export async function interpretCommand(
     return { status: 'refused', reason: result.reason, supportedCategories: SUPPORTED_CATEGORIES };
   }
 
-  // interpreter:R1 — the gate. Free-form model output never passes through.
+  // interpreter:R1 — la compuerta. La salida de formato libre del modelo nunca pasa.
   const parsed = DeltaSchema.safeParse(result.value);
   if (!parsed.success) {
     return {

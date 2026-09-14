@@ -1,18 +1,18 @@
 /**
- * App — owns the canonical Y.Doc and the load/save/collab lifecycle.
+ * App — posee el Y.Doc canónico y el ciclo de vida de carga/guardado/colaboración.
  *
- * editor:R5 — the diagram id lives in the URL hash (`#/d/<uuid>`); load and
- * save round-trip through the API and a reloaded session is structurally
- * equivalent to the saved one. Load failure renders an explicit error and
- * never a partially loaded canvas.
+ * editor:R5 — el id del diagrama reside en el hash de la URL (`#/d/<uuid>`); la carga y
+ * el guardado hacen un round-trip a través de la API y una sesión recargada es estructuralmente
+ * equivalente a la guardada. Un fallo de carga renderiza un error explícito y
+ * nunca un lienzo parcialmente cargado.
  *
- * realtime (work unit 6b) — once loaded, the same Y.Doc is bound to the
- * collab server (`WebsocketProvider`, room = diagrams/<diagramId>, design D4).
- * The transport is not a second source of truth: the server room is
- * bootstrapped from the same persisted blob the client hydrated from, so
- * clocks match and live merges converge. Saves carry the client's own blob
- * (blob-preserving save) and retry on version conflicts raised by the collab
- * debounce writes.
+ * tiempo real (unidad de trabajo 6b) — una vez cargado, el mismo Y.Doc se vincula al
+ * servidor de colaboración (`WebsocketProvider`, sala = diagrams/<diagramId>, diseño D4).
+ * El transporte no es una segunda fuente de verdad: la sala del servidor se inicializa
+ * a partir del mismo blob persistido del que se hidrató el cliente, por lo que
+ * los relojes coinciden y las fusiones en vivo convergen. Los guardados transportan el propio blob
+ * del cliente (guardado preservando blob) y reintentan ante conflictos de versión generados por las
+ * escrituras con debounce de colaboración.
  */
 import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
@@ -46,53 +46,52 @@ import { ImportPhotoButton } from './photo/ImportPhotoButton';
 
 const DIAGRAM_NAME = 'Untitled';
 const COLLAB_URL: string = import.meta.env.VITE_COLLAB_URL ?? 'ws://localhost:1234';
-/** Save retries when the collab debounce bumped the version mid-save (6b.2). */
+/** Reintentos de guardado cuando el debounce de colaboración incrementó la versión durante el guardado (6b.2). */
 const SAVE_MAX_ATTEMPTS = 3;
 
 export interface AppProps {
-  /** Injectable canonical Y.Doc (tests). When omitted a fresh doc is created. */
+  /** Y.Doc canónico inyectable (pruebas). Si se omite, se crea un doc nuevo. */
   doc?: Y.Doc;
   /**
-   * Collab server base URL. `null` disables the provider (tests / offline).
-   * Default: VITE_COLLAB_URL, or ws://localhost:1234; disabled under vitest.
+   * URL base del servidor de colaboración. `null` deshabilita el proveedor (pruebas / offline).
+   * Por defecto: VITE_COLLAB_URL, o ws://localhost:1234; deshabilitado bajo vitest.
    */
   collabUrl?: string | null;
-  /** Injectable voice recorder (tests). Default: browser MediaRecorder. */
+  /** Grabador de voz inyectable (pruebas). Por defecto: MediaRecorder del navegador. */
   voiceRecorder?: VoiceRecorder;
 }
 
-/** Extracts the diagram id from the URL hash (`#/d/<uuid>`) or null. */
+/** Extrae el id del diagrama del hash de la URL (`#/d/<uuid>`) o null. */
 export function diagramIdFromHash(hash: string): string | null {
   const match = /^#\/d\/(.+)$/.exec(hash);
   return match?.[1] ?? null;
 }
 
-/** Empty diagram used when the app creates a brand-new session. */
+/** Diagrama vacío utilizado cuando la aplicación crea una sesión totalmente nueva. */
 export function createEmptyDiagram(id: string): Diagram {
   return { id, name: DIAGRAM_NAME, classes: [], associations: [], generalizations: [], realizations: [], dependencies: [], naryAssociations: [] };
 }
 
 /**
- * Hydrates an existing Y.Doc in place from the authoritative stored blob.
- * editor:R5 — the hydrated doc is structurally equivalent to the saved
- * diagram, AND its Yjs clocks match the server's so live collab merges
- * converge without duplicating array members (6b.1).
+ * Hidrata un Y.Doc existente in situ a partir del blob almacenado autoritativo.
+ * editor:R5 — el doc hidratado es estructuralmente equivalente al diagrama
+ * guardado, Y sus relojes de Yjs coinciden con los del servidor para que las fusiones
+ * en vivo converjan sin duplicar elementos de arreglos (6b.1).
  */
 export function hydrateDiagramIntoDoc(doc: Y.Doc, yjsStateBase64: string): Y.Doc {
   return applyUpdateToYDoc(doc, base64ToBytes(yjsStateBase64));
 }
 
-/** Result of a save attempt from the App save handler. */
+/** Resultado de un intento de guardado desde el manejador de guardado de App. */
 export type SaveOutcome =
   | { ok: true; version: number }
   | { ok: false; status: number; message: string; currentVersion?: number | undefined };
 
 /**
- * Projects the Y.Doc and saves it through the API, carrying the client's own
- * Yjs blob. On a 409 (the collab debounce bumped the version mid-save) the
- * handler re-reads `currentVersion` from the response and retries, per the
- * design invariant. Kept as an exported function so it is testable without
- * the DOM.
+ * Proyecta el Y.Doc y lo guarda a través de la API, transportando el propio blob
+ * de Yjs del cliente. Ante un 409 (el debounce de colaboración incrementó la versión en medio
+ * del guardado) el manejador vuelve a leer `currentVersion` de la respuesta y reintenta, según el
+ * invariante de diseño. Se mantiene como función exportada para que sea testeable sin el DOM.
  */
 export async function saveDiagramFromDoc(
   doc: Y.Doc,
@@ -101,7 +100,7 @@ export async function saveDiagramFromDoc(
 ): Promise<SaveOutcome> {
   let version = expectedVersion;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    // Re-project every attempt: the doc may have changed between retries.
+    // Reproyectar en cada intento: el doc puede haber cambiado entre reintentos.
     const diagram = projectYDocToDiagram(doc);
     const yjsState = bytesToBase64(encodeYDoc(doc));
     try {
@@ -147,7 +146,7 @@ function resolveCollabUrl(collabUrl: AppProps['collabUrl']): string | null {
   if (collabUrl !== undefined) {
     return collabUrl;
   }
-  // Vitest environments stay hermetic: no provider unless a test opts in.
+  // Los entornos de Vitest permanecen herméticos: sin proveedor a menos que una prueba lo solicite.
   if (import.meta.env.MODE === 'test') {
     return null;
   }
@@ -173,16 +172,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const [interpreter, setInterpreter] = useState<InterpreterState>({ phase: 'idle' });
   const [recording, setRecording] = useState(false);
 
-  // Voice recorder (PR 8). Created lazily; null when the browser offers no
-  // MediaRecorder (tests / unsupported browsers) — the button hides then.
+  // Grabador de voz (PR 8). Creado de forma perezosa; null cuando el navegador no ofrece
+  // MediaRecorder (pruebas / navegadores no compatibles) — el botón se oculta en ese caso.
   const recorderRef = useRef<VoiceRecorder | null>(null);
   if (recorderRef.current === null && voiceRecorder === undefined) {
     recorderRef.current = createBrowserVoiceRecorder();
   }
   const activeRecorder: VoiceRecorder | null = voiceRecorder ?? recorderRef.current;
 
-  // StrictMode (dev) runs effects twice per mount — the didInit guard keeps
-  // create/load idempotent so a session never POSTs two diagrams.
+  // StrictMode (dev) ejecuta los efectos dos veces por montaje — la guarda didInit mantiene
+  // create/load idempotente para que una sesión nunca haga POST de dos diagramas.
   const didInit = useRef(false);
   const userName = useRef(`User-${Math.random().toString(16).slice(2, 6)}`);
   const providerRef = useRef<WebsocketProvider | null>(null);
@@ -192,7 +191,6 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       return;
     }
     didInit.current = true;
-
     const hydrate = (resource: DiagramResource): void => {
       hydrateDiagramIntoDoc(doc, resource.yjsState);
       setVersion(resource.version);
@@ -213,10 +211,10 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       return;
     }
 
-    // First visit: create a persisted diagram and record its id in the URL
-    // so a later reload round-trips through the API (editor:R5). No client
-    // blob is sent — the API builds the authoritative one and we hydrate
-    // from its response so clocks match the server from the first sync.
+    // Primera visita: crear un diagrama persistido y registrar su id en la URL
+    // para que una recarga posterior complete el ciclo a través de la API (editor:R5). No se envía
+    // ningún blob del cliente — la API construye el autoritativo y nos hidratamos
+    // a partir de su respuesta para que los relojes coincidan con el servidor desde la primera sincronización.
     const newId = crypto.randomUUID();
     createDiagram(DIAGRAM_NAME, createEmptyDiagram(newId))
       .then((resource) => {
@@ -226,22 +224,22 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       .catch(fail);
   }, [doc]);
 
-  // 6b.1 — bind the loaded Y.Doc to the collab server (room = diagrams/<id>).
+  // 6b.1 — vincular el Y.Doc cargado al servidor de colaboración (sala = diagrams/<id>).
   const resolvedCollabUrl = resolveCollabUrl(collabUrl);
   useEffect(() => {
     if (status !== 'ready' || roomId === null || resolvedCollabUrl === null) {
       return;
     }
     if (providerRef.current !== null) {
-      return; // one provider per session
+      return; // un proveedor por sesión
     }
     const provider = new WebsocketProvider(resolvedCollabUrl, `diagrams/${roomId}`, doc, {
       connect: true,
     });
     providerRef.current = provider;
-    // setLocalStateField(fieldName, value) — the field name and value are
-    // separate arguments; passing an object as the field name silently
-    // produces an empty awareness state (found via the 6b.3 integration test).
+    // setLocalStateField(fieldName, value) — el nombre del campo y el valor son
+    // argumentos separados; pasar un objeto como nombre de campo produce silenciosamente
+    // un estado de awareness vacío (descubierto mediante la prueba de integración 6b.3).
     provider.awareness.setLocalStateField('user', { name: userName.current });
 
     const syncPresence = (): void => {
@@ -283,11 +281,11 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     });
   };
 
-  // Interpreter (task 7.6) — natural language in, previewed delta out.
-  // Refusals/errors render explicitly; only Confirm mutates the model and it
-  // goes through the SAME applyDeltaToYDoc path as canvas edits (interpreter:R2).
-  // Plain Errors carry intentional messages too (e.g. the voice client's
-  // server-provided fallback direction), so they surface as-is.
+  // Intérprete (tarea 7.6) — entrada en lenguaje natural, salida de delta previsualizado.
+  // Los rechazos/errores se renderizan explícitamente; solo Confirm muta el modelo y lo
+  // hace a través de la MISMA ruta applyDeltaToYDoc que las ediciones del lienzo (interpreter:R2).
+  // Los errores comunes también transportan mensajes intencionales (p. ej. la indicación de
+  // fallback provista por el servidor al cliente de voz), por lo que se exponen tal cual.
   const apiFailureMessage = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : fallback;
 
@@ -349,16 +347,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
         setInterpreter({ phase: 'idle' });
       })
       .catch((error: unknown) => {
-        // Already consumed server-side is as good as discarded for the client.
+        // Ya consumido en el servidor es equivalente a descartado para el cliente.
         setInterpreter({ phase: 'idle' });
         setSaveMessage(apiFailureMessage(error, t('interpreter.discardFailed')));
       });
   };
 
-  // Voice input (PR 8, tasks 8.3/8.4). The transcript lands in the SAME
-  // command input (visible + editable — voice:R3): the user can correct a
-  // misheard name and hit Send, which re-enters the identical text pipeline
-  // (voice:R2 — no privileged path).
+  // Entrada de voz (PR 8, tareas 8.3/8.4). La transcripción cae en el MISMO
+  // input de comando (visible + editable — voice:R3): el usuario puede corregir un
+  // nombre mal interpretado y presionar Enviar, reingresando al pipeline de texto idéntico
+  // (voice:R2 — sin ruta privilegiada).
   const handleToggleRecord = (): void => {
     if (activeRecorder === null || status !== 'ready' || interpreter.phase === 'thinking') {
       return;
@@ -405,7 +403,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
 
   return (
     <main className="app-shell">
-      {/* unit 13e.8 — product name WITHOUT "AI", identical in both languages. */}
+      {/* unidad 13e.8 — nombre de producto SIN "AI", idéntico en ambos idiomas. */}
       <h1 className="app-shell__title">{tr('app.title')}</h1>
       {status === 'loading' && <p>{tr('app.loading')}</p>}
       {status === 'error' && (
@@ -422,16 +420,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             <span aria-live="polite">
               {saveStatus === 'saving' ? tr('toolbar.saving') : saveStatus === 'saved' ? tr('toolbar.saved') : saveMessage ?? ''}
             </span>
-            {/* PR 14a/14d: kick off Spring Boot codegen via the job API. */}
+            {/* PR 14a/14d: iniciar la generación de código Spring Boot mediante la API de trabajos. */}
             <GenerateSpringButton diagramId={roomId} disabled={status !== 'ready'} />
-            {/* PR 15: import an Enterprise Architect XMI 2.1 file. */}
+            {/* PR 15: importar un archivo XMI 2.1 de Enterprise Architect. */}
             <ImportXmiButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
-            {/* unit 16b: client-side PNG/JPEG export — read-only, zero API calls. */}
+            {/* unidad 16b: exportación PNG/JPEG del lado del cliente — solo lectura, cero llamadas a la API. */}
             <ExportToolbarButtons doc={doc} />
-            {/* PR 16c: photo-to-UML import. */}
+            {/* PR 16c: importación de foto a UML. */}
             <ImportPhotoButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
             <PresenceBar names={peers} />
-            {/* unit 13e.9 — the EN/ES segmented control lives in the toolbar. */}
+            {/* unidad 13e.9 — el control segmentado EN/ES reside en la barra de herramientas. */}
             <LanguageToggle />
           </div>
           <div className="interpreter-bar">

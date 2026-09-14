@@ -5,7 +5,7 @@ import '../config/api_config.dart';
 import '../models/assistant_message.dart';
 import 'api_exceptions.dart';
 
-/// Service invoking the offline assistant endpoint (design D11, mobile:R3).
+/// Servicio que invoca el endpoint del asistente fuera de línea (diseño D11, mobile:R3).
 class AssistantService {
   final ApiConfig config;
   final http.Client client;
@@ -15,8 +15,8 @@ class AssistantService {
     http.Client? client,
   }) : client = client ?? http.Client();
 
-  /// Sends a natural language query to POST /api/assistant.
-  /// Handles both executed actions and canned fallback responses verbatim.
+  /// Envía una consulta en lenguaje natural a POST /api/assistant.
+  /// Maneja tanto acciones ejecutadas como respuestas predefinidas de respaldo textualmente.
   Future<AssistantResponse> sendQuery(String query) async {
     final payload = AssistantRequest(query);
 

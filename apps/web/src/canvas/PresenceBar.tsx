@@ -1,17 +1,17 @@
 /**
- * PresenceBar — connected-user names via Yjs awareness (realtime:R2, 6b.3).
- * Pure presentational component so the awareness wiring stays testable.
+ * PresenceBar — nombres de usuarios conectados mediante awareness de Yjs (realtime:R2, 6b.3).
+ * Componente puramente presentacional para que la integración con awareness se mantenga testeable.
  *
- * unit 13e.10 — the aria-label goes through the i18n dictionary (reactive).
- * unit 13e.11 — EA-style light chips: initials avatar + green online dot +
- * name, inside the existing `presence-bar__user` contract.
+ * unidad 13e.10 — el aria-label pasa por el diccionario i18n (reactivo).
+ * unidad 13e.11 — chips claros estilo EA: avatar con iniciales + punto verde en línea +
+ * nombre, dentro del contrato existente `presence-bar__user`.
  */
 import { useT } from '../i18n';
 
 /**
- * Initials for the chip avatar: the first letters of the first two
- * alphanumeric tokens of the name ("User-a1b2" → "UA", "Ana López" → "AL");
- * a single-token name contributes its first two letters.
+ * Iniciales para el avatar del chip: las primeras letras de los dos primeros
+ * tokens alfanuméricos del nombre ("User-a1b2" → "UA", "Ana López" → "AL");
+ * un nombre de un solo token aporta sus dos primeras letras.
  */
 export function presenceInitials(name: string): string {
   const tokens = name.split(/[^a-zA-Z0-9À-ɏ]+/).filter((token) => token.length > 0);
@@ -33,7 +33,7 @@ export function PresenceBar({ names }: { names: readonly string[] }) {
     <div className="presence-bar" aria-label={t('presence.onlineUsers')}>
       {names.map((name) => (
         <span key={name} className="presence-bar__user">
-          {/* EA-style chip: initials avatar + online dot + full name. */}
+          {/* Chip estilo EA: avatar con iniciales + punto en línea + nombre completo. */}
           <span className="presence-bar__avatar" aria-hidden="true">
             {presenceInitials(name)}
           </span>

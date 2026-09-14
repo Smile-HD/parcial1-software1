@@ -121,7 +121,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 }
 
 // ---------------------------------------------------------------------------
-// SCREEN 1: CRUD CLIENTES (Requirement mobile:R2)
+// PANTALLA 1: CRUD CLIENTES (Requerimiento mobile:R2)
 // ---------------------------------------------------------------------------
 class CrudScreen extends StatefulWidget {
   final CustomerService customerService;
@@ -157,7 +157,7 @@ class _CrudScreenState extends State<CrudScreen> {
       });
     } on BackendConnectionException catch (e) {
       setState(() {
-        _customers = []; // Do NOT display stale data (mobile:R2)
+        _customers = []; // NO mostrar datos obsoletos (mobile:R2)
         _errorMessage = e.message;
         _isLoading = false;
       });
@@ -409,7 +409,7 @@ class _CrudScreenState extends State<CrudScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// SCREEN 2: ASISTENTE IA OFFLINE (Requirement mobile:R3)
+// PANTALLA 2: ASISTENTE IA OFFLINE (Requerimiento mobile:R3)
 // ---------------------------------------------------------------------------
 class AssistantScreen extends StatefulWidget {
   final AssistantService assistantService;
@@ -478,7 +478,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
       ),
       body: Column(
         children: [
-          // Quick prompt chips
+          // Chips de sugerencias rápidas
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -496,7 +496,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
           ),
           const Divider(height: 1),
 
-          // Messages list
+          // Lista de mensajes
           Expanded(
             child: _messages.isEmpty
                 ? const Center(
@@ -525,7 +525,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
           if (_isThinking)
             const LinearProgressIndicator(),
 
-          // Input field
+          // Campo de entrada
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -647,7 +647,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// SCREEN 3: AJUSTES DE ENDPOINT (Requirement mobile:R4)
+// PANTALLA 3: AJUSTES DE ENDPOINT (Requerimiento mobile:R4)
 // ---------------------------------------------------------------------------
 class SettingsScreen extends StatefulWidget {
   final ApiConfig config;

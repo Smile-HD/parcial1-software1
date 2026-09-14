@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Diagram, Class, Association, Generalization, Realization, Dependency, NaryAssociation } from '@app/core';
 
-// ── XML escaping ──────────────────────────────────────────────────────────────
+// ── Escape de XML ──────────────────────────────────────────────────────────────
 
 function esc(s: string): string {
   return s
@@ -12,7 +12,7 @@ function esc(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-// ── Helpers to build UML property attributes ──────────────────────────────────
+// ── Funciones auxiliares para construir atributos de propiedad UML ────────────
 
 function visAttr(v: string | undefined): string {
   if (!v || v === '+') return '';
@@ -23,13 +23,13 @@ function boolAttr(name: string, val: boolean | undefined): string {
   return val ? ` ${name}="true"` : '';
 }
 
-// ── Multiplicity helpers ──────────────────────────────────────────────────────
+// ── Funciones auxiliares de multiplicidad ─────────────────────────────────────
 
 /**
- * Build lowerValue/upperValue child elements from a UML multiplicity string.
- * Single values like "1" become a single LiteralInteger.
- * Ranges like "0..*" become lowerValue=0, upperValue=-1 (UnlimitedNatural).
- * Returns empty string if no multiplicity.
+ * Construye elementos hijos lowerValue/upperValue a partir de una cadena de multiplicidad UML.
+ * Valores individuales como "1" se convierten en un único LiteralInteger.
+ * Rangos como "0..*" se convierten en lowerValue=0, upperValue=-1 (UnlimitedNatural).
+ * Retorna una cadena vacía si no hay multiplicidad.
  */
 function multiplicityXml(mult: string | undefined): string {
   if (!mult) return '';
@@ -45,40 +45,40 @@ function multiplicityXml(mult: string | undefined): string {
       : `<upperValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="${esc(upper)}"/>`;
     return `<lowerValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="${esc(lowerVal)}"/>${upperXml}`;
   }
-  // Plain integer: both bounds equal
+  // Entero simple: ambos límites iguales
   return `<lowerValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="${esc(mult)}"/>` +
          `<upperValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="${esc(mult)}"/>`;
 }
 
-// ── Aggregation mapping ──────────────────────────────────────────────────────
+// ── Mapeo de agregación ──────────────────────────────────────────────────────
 
 function aggregationAttr(a: Association): string {
   if (a.aggregation === 'none') return '';
   return ` aggregation="${esc(a.aggregation)}"`;
 }
 
-// ── XMI 2.1 Export ───────────────────────────────────────────────────────────
+// ── Exportación XMI 2.1 ───────────────────────────────────────────────────────────
 
 /**
- * Export a Diagram IR to a standard UML 2.x XMI 2.1 document that
- * Enterprise Architect can import.  The output uses the real EA 6.5 layout:
+ * Exporta un IR Diagram a un documento estándar UML 2.x XMI 2.1 que
+ * Enterprise Architect puede importar. La salida utiliza el diseño real de EA 6.5:
  *
  *   <xmi:XMI xmi:version="2.1">
  *     <uml:Model ...>
  *       <packagedElement xmi:type="uml:Class" ...>
- *         <ownedAttribute ...>  (class features)
- *         <ownedOperation ...>  (methods)
- *         <generalization ...>  (child of subclass)
+ *         <ownedAttribute ...>  (características de la clase)
+ *         <ownedOperation ...>  (métodos)
+ *         <generalization ...>  (hijo de la subclase)
  *       </packagedElement>
  *       <packagedElement xmi:type="uml:Association" ...>
- *         <memberEnd / ownedEnd>  (properties)
+ *         <memberEnd / ownedEnd>  (propiedades)
  *       </packagedElement>
  *       <packagedElement xmi:type="uml:Generalization" .../>
  *       <packagedElement xmi:type="uml:Realization" .../>
  *       <packagedElement xmi:type="uml:Dependency" .../>
  *     </uml:Model>
  *     <xmi:Extension>
- *       <layout>  (canvas positions, not standard UML but preserved for round-trip)
+ *       <layout>  (posiciones en el lienzo, no estándar UML pero preservadas para round-trip)
  *     </xmi:Extension>
  *   </xmi:XMI>
  */
@@ -90,16 +90,16 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   lines.push(`<xmi:XMI xmi:version="2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`);
   lines.push(`  <uml:Model xmi:type="uml:Model" xmi:id="${diagram.id}" name="${esc(diagram.name)}">`);
 
-  // ── Build id maps for cross-referencing ─────────────────────────────────
+  // ── Construir mapas de id para referencias cruzadas ─────────────────────────
   const classIdSet = new Set(diagram.classes.map(c => c.id));
   const ifaceIds = new Set(diagram.classes.filter(c => c.kind === 'interface').map(c => c.id));
 
-  // ── Classes and Interfaces ──────────────────────────────────────────────
+  // ── Clases e Interfaces ──────────────────────────────────────────────────
   for (const cls of diagram.classes) {
     const xmiType = cls.kind === 'interface' ? 'uml:Interface' : 'uml:Class';
     lines.push(`    <packagedElement xmi:type="${xmiType}" xmi:id="${cls.id}" name="${esc(cls.name)}"${boolAttr('isAbstract', cls.isAbstract)}>`);
 
-    // ownedAttribute (class features — NOT association ends)
+    // ownedAttribute (características de la clase — NO extremos de asociación)
     for (const attr of cls.attributes) {
       const attrId = attr.id;
       lines.push(`      <ownedAttribute xmi:type="uml:Property" xmi:id="${attrId}" name="${esc(attr.name)}"${visAttr(attr.visibility)}${boolAttr('isStatic', attr.isStatic)}${boolAttr('isDerived', attr.isDerived)}>`);
@@ -110,20 +110,20 @@ export function exportDiagramToXmi(diagram: Diagram): string {
       lines.push(`      </ownedAttribute>`);
     }
 
-    // Association-end mirrored attributes (ownedAttribute with association ref)
-    // We emit them as part of the association section, not here.
+    // Atributos reflejados de extremos de asociación (ownedAttribute con ref de asociación)
+    // Los emitimos como parte de la sección de asociación, no aquí.
 
-    // ownedOperation (methods)
+    // ownedOperation (métodos)
     for (const method of cls.methods) {
       const methodId = method.id;
       lines.push(`      <ownedOperation xmi:type="uml:Operation" xmi:id="${methodId}" name="${esc(method.name)}"${visAttr(method.visibility)}${boolAttr('isStatic', method.isStatic)}>`);
 
-      // In-parameters
+      // Parámetros de entrada
       for (const param of method.parameters) {
         lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="${esc(param.name)}" direction="in" type="${esc(param.type)}"/>`);
       }
 
-      // Return parameter (direction="return")
+      // Parámetro de retorno (direction="return")
       if (method.returnType && method.returnType !== 'void') {
         lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="return" direction="return" type="${esc(method.returnType)}"/>`);
       } else if (method.returnType === 'void') {
@@ -133,7 +133,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
       lines.push(`      </ownedOperation>`);
     }
 
-    // Generalization as a child of the subclass
+    // Generalización como hijo de la subclase
     const subGens = diagram.generalizations.filter(g => g.subClassId === cls.id);
     for (const gen of subGens) {
       lines.push(`      <generalization xmi:type="uml:Generalization" xmi:id="${gen.id}" general="${gen.superClassId}"/>`);
@@ -142,18 +142,18 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`    </packagedElement>`);
   }
 
-  // ── Associations (binary) ───────────────────────────────────────────────
+  // ── Asociaciones (binarias) ───────────────────────────────────────────────
   for (const assoc of diagram.associations) {
     const sourceIsWhole = assoc.aggregationEnd === 'source';
     const diamondEnd = sourceIsWhole ? assoc.sourceClassId : assoc.targetClassId;
 
     lines.push(`    <packagedElement xmi:type="uml:Association" xmi:id="${assoc.id}" name="${assoc.name ? esc(assoc.name) : ''}">`);
 
-    // memberEnd refs (two ends)
+    // Referencias memberEnd (dos extremos)
     lines.push(`      <memberEnd xmi:idref="${assoc.id}_src"/>`);
     lines.push(`      <memberEnd xmi:idref="${assoc.id}_tgt"/>`);
 
-    // Source end (ownedEnd)
+    // Extremo origen (ownedEnd)
     const srcAgg = (assoc.aggregation !== 'none' && sourceIsWhole) ? ` aggregation="${esc(assoc.aggregation)}"` : '';
     lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_src"${srcAgg}${assoc.sourceRole ? ` name="${esc(assoc.sourceRole)}"` : ''}>`);
     lines.push(`        <type xmi:idref="${assoc.sourceClassId}"/>`);
@@ -162,7 +162,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     }
     lines.push(`      </ownedEnd>`);
 
-    // Target end (ownedEnd)
+    // Extremo destino (ownedEnd)
     const tgtAgg = (assoc.aggregation !== 'none' && !sourceIsWhole) ? ` aggregation="${esc(assoc.aggregation)}"` : '';
     lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_tgt"${tgtAgg}${assoc.targetRole ? ` name="${esc(assoc.targetRole)}"` : ''}>`);
     lines.push(`        <type xmi:idref="${assoc.targetClassId}"/>`);
@@ -174,23 +174,23 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`    </packagedElement>`);
   }
 
-  // ── Generalizations (top-level — those not already emitted as children) ──
-  // Some generalizations are emitted as children of the subclass above.
-  // We also emit them as top-level for completeness (EA allows both layouts).
-  // However, to match the importer's child-of-subclass expectation, we keep
-  // them ONLY as children (already emitted above). No top-level duplicates.
+  // ── Generalizaciones (nivel superior — aquellas no emitidas ya como hijos) ──
+  // Algunas generalizaciones se emiten arriba como hijos de la subclase.
+  // También podríamos emitirlas a nivel superior para completitud (EA permite ambas distribuciones).
+  // Sin embargo, para satisfacer la expectativa del importador (hijo de la subclase), las mantenemos
+  // ÚNICAMENTE como hijos (ya emitidas arriba). Sin duplicados en el nivel superior.
 
-  // ── Realizations ────────────────────────────────────────────────────────
+  // ── Realizaciones ────────────────────────────────────────────────────────
   for (const real of diagram.realizations) {
     lines.push(`    <packagedElement xmi:type="uml:Realization" xmi:id="${real.id}" client="${real.clientClassId}" supplier="${real.supplierInterfaceId}"/>`);
   }
 
-  // ── Dependencies ────────────────────────────────────────────────────────
+  // ── Dependencias ─────────────────────────────────────────────────────────
   for (const dep of diagram.dependencies) {
     lines.push(`    <packagedElement xmi:type="uml:Dependency" xmi:id="${dep.id}" client="${dep.clientClassId}" supplier="${dep.supplierClassId}"/>`);
   }
 
-  // ── N-ary associations ──────────────────────────────────────────────────
+  // ── Asociaciones N-arias ──────────────────────────────────────────────────
   for (const nary of diagram.naryAssociations) {
     lines.push(`    <packagedElement xmi:type="uml:Association" xmi:id="${nary.id}" name="${nary.name ? esc(nary.name) : ''}">`);
     for (let i = 0; i < nary.memberEnds.length; i++) {
@@ -213,9 +213,9 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
   lines.push(`  </uml:Model>`);
 
-  // ── Layout extension (canvas positions) ─────────────────────────────────
-  // This is NOT standard UML but preserves round-trip positions.  The
-  // importer falls back to grid auto-layout when this block is absent.
+  // ── Extensión de diseño (posiciones en el lienzo) ─────────────────────────
+  // Esto NO es UML estándar pero preserva las posiciones de round-trip. El
+  // importador recurre al auto-diseño en cuadrícula cuando este bloque está ausente.
   lines.push(`  <xmi:Extension extender="UMLDesignTool">`);
   lines.push(`    <layout diagramId="${diagram.id}">`);
   for (const cls of diagram.classes) {

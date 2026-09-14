@@ -1,16 +1,16 @@
 /**
- * Central diamond node for a UML 2.5.1 n-ary association (unit 13.2).
+ * Nodo de rombo central para una asociación n-aria UML 2.5.1 (unidad 13.2).
  *
- * The node is NOT user-dragged: DiagramCanvas positions it at the
- * centroid of its member classes and re-derives that position whenever
- * the model changes (draggable: false). Right-clicking the diamond opens
- * the context menu whose only action deletes the whole n-ary association
- * through an naryAssociation `delete` delta (editor:R N-ary, unit 13.3).
+ * El nodo NO es arrastrado por el usuario: DiagramCanvas lo posiciona en el
+ * centroide de sus clases miembro y recalcula esa posición cada vez que
+ * el modelo cambia (draggable: false). Hacer clic derecho en el rombo abre
+ * el menú contextual cuya única acción elimina toda la asociación n-aria
+ * mediante un delta `delete` de naryAssociation (editor:R N-ary, unidad 13.3).
  *
- * The diamond is drawn as an inline SVG path (same visual language as the
- * association aggregation diamonds in AssociationEdge). No marker defs are
- * needed here — and per the PR 10 lesson, any marker references elsewhere
- * stay `url(#id)` strings, never MarkerType objects.
+ * El rombo se dibuja como una ruta SVG en línea (mismo lenguaje visual que los
+ * rombos de agregación de asociación en AssociationEdge). No se necesitan defs de marcadores
+ * aquí — y según la lección de PR 10, cualquier referencia a marcadores en otro lugar
+ * permanece como cadenas `url(#id)`, nunca objetos MarkerType.
  */
 import { useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
@@ -19,13 +19,13 @@ import type { NaryAssociation } from '@app/core';
 
 export type NaryDiamondNodeData = Record<string, unknown> & {
   nary: NaryAssociation;
-  /** Emit an naryAssociation delete delta for this association. */
+  /** Emite un delta de eliminación de naryAssociation para esta asociación. */
   onDelete: () => void;
 };
 
 export type NaryDiamondFlowNode = Node<NaryDiamondNodeData, 'naryDiamond'>;
 
-/** Diamond box size (px). The SVG path is drawn inside this box. */
+/** Tamaño del recuadro del rombo (px). La ruta SVG se dibuja dentro de este recuadro. */
 export const NARY_DIAMOND_SIZE = 44;
 
 export function NaryDiamondNode({ data }: NodeProps<NaryDiamondFlowNode>) {
@@ -40,8 +40,8 @@ export function NaryDiamondNode({ data }: NodeProps<NaryDiamondFlowNode>) {
       data-testid={`nary-diamond-${data.nary.id}`}
       style={{ width: NARY_DIAMOND_SIZE, height: NARY_DIAMOND_SIZE }}
       onContextMenu={(event) => {
-        // editor:R N-ary (unit 13.3) — right-click opens the delete menu;
-        // the browser menu is suppressed.
+        // editor:R N-aria (unidad 13.3) — clic derecho abre el menú de eliminación;
+        // el menú del navegador se suprime.
         event.preventDefault();
         setMenuOpen(true);
       }}
@@ -85,7 +85,7 @@ export function NaryDiamondNode({ data }: NodeProps<NaryDiamondFlowNode>) {
           </text>
         )}
       </svg>
-      {/* Single source handle: every member-end edge is drawn diamond → class. */}
+      {/* Handle de origen único: cada arista de extremo miembro se dibuja rombo → clase. */}
       <Handle type="source" position={Position.Top} />
     </div>
   );
