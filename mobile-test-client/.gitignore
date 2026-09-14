@@ -1,0 +1,4 @@
+# Dart and Flutter tooling
+.dart_tool/
+.packages
+build/

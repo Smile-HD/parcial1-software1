@@ -1,0 +1,13 @@
+name: mobile_test_client
+description: External mobile test client for verifying generated Spring Boot backend and offline assistant
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  http: ^1.2.0
+
+dev_dependencies:
+  test: ^1.24.0
