@@ -376,6 +376,64 @@ try {
       fail('GET /api/customers does not list the created entity');
     }
     log(`CRUD round-trip OK (customer id=${createdBody.id})`);
+
+    // ── 18: Assistant assertions (default mode — online, matcher path) ───
+    log('18: testing assistant endpoint…');
+
+    // (a) Bilingual matcher: "lista todos los clientes" → LIST Customer
+    const assistantList = await fetch(`${base}/api/assistant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: 'lista todos los clientes' }),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!assistantList.ok) fail(`assistant list: expected 200, got ${assistantList.status}`);
+    const assistantListBody = await assistantList.json();
+    if (assistantListBody.outcome !== 'executed') {
+      fail(`assistant list: expected outcome "executed", got "${assistantListBody.outcome}"`);
+    }
+    if (!assistantListBody.response || assistantListBody.response.length === 0) {
+      fail('assistant list: expected non-empty response payload');
+    }
+    log(`18(a): assistant list OK (outcome=${assistantListBody.outcome}, entity=${assistantListBody.entity})`);
+
+    // (b) Refused action: "borra" is not in the allowed set → canned/refused
+    const assistantRefuse = await fetch(`${base}/api/assistant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: 'borra todos los clientes' }),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!assistantRefuse.ok) fail(`assistant refuse: expected 200, got ${assistantRefuse.status}`);
+    const assistantRefuseBody = await assistantRefuse.json();
+    if (assistantRefuseBody.outcome !== 'refused' && assistantRefuseBody.outcome !== 'canned') {
+      fail(`assistant refuse: expected refused/canned, got "${assistantRefuseBody.outcome}"`);
+    }
+    // Verify CRUD unaffected: customer count should be 1 (the one created above)
+    const afterRefuse = await fetch(`${base}/api/customers`, {
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    const afterRefuseBody = await afterRefuse.json();
+    if (!Array.isArray(afterRefuseBody) || afterRefuseBody.length < 1) {
+      fail('assistant refuse: customer count should be unchanged after refused action');
+    }
+    log(`18(b): assistant refuse OK (outcome=${assistantRefuseBody.outcome})`);
+
+    // (c) Unmappable request: "¿qué hora es?" → canned or model-refused
+    const assistantCanned = await fetch(`${base}/api/assistant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: '¿qué hora es?' }),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!assistantCanned.ok) fail(`assistant canned: expected 200, got ${assistantCanned.status}`);
+    const assistantCannedBody = await assistantCanned.json();
+    if (assistantCannedBody.outcome === 'executed') {
+      fail('assistant canned: should not execute "what time is it"');
+    }
+    log(`18(c): assistant canned OK (outcome=${assistantCannedBody.outcome})`);
+
+    log('18: assistant assertions PASSED (default mode)');
     log('GOLDEN CHECK GREEN');
   }
 
@@ -494,6 +552,65 @@ try {
       fail(`Payment (abstract): GET /api/payments expected 404 (no controller generated), got ${paymentRes.status}`);
     }
     log('17.3b: abstract Payment has no CRUD route (404) as expected');
+
+    // ── 18: Assistant assertions (offline mode — dead proxy, no-proxy proof) ──
+    log('18: testing assistant endpoint (offline, dead proxy)…');
+
+    // (a) Bilingual matcher: "lista todos los clientes" → LIST Customer
+    //     Proves localhost Ollama bypass works through the dead SOCKS proxy.
+    const assistantList = await fetch(`${base}/api/assistant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: 'lista todos los clientes' }),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!assistantList.ok) fail(`assistant list (offline): expected 200, got ${assistantList.status}`);
+    const assistantListBody = await assistantList.json();
+    if (assistantListBody.outcome !== 'executed') {
+      fail(`assistant list (offline): expected outcome "executed", got "${assistantListBody.outcome}"`);
+    }
+    if (!assistantListBody.response || assistantListBody.response.length === 0) {
+      fail('assistant list (offline): expected non-empty response payload');
+    }
+    log(`18(a) offline: assistant list OK (outcome=${assistantListBody.outcome}, entity=${assistantListBody.entity})`);
+
+    // (b) Refused action: "borra" is not in the allowed set
+    const assistantRefuse = await fetch(`${base}/api/assistant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: 'borra todos los clientes' }),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!assistantRefuse.ok) fail(`assistant refuse (offline): expected 200, got ${assistantRefuse.status}`);
+    const assistantRefuseBody = await assistantRefuse.json();
+    if (assistantRefuseBody.outcome !== 'refused' && assistantRefuseBody.outcome !== 'canned') {
+      fail(`assistant refuse (offline): expected refused/canned, got "${assistantRefuseBody.outcome}"`);
+    }
+    // Verify CRUD unaffected
+    const afterRefuse = await fetch(`${base}/api/customers`, {
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    const afterRefuseBody = await afterRefuse.json();
+    if (!Array.isArray(afterRefuseBody)) {
+      fail('assistant refuse (offline): GET /api/customers failed after refused action');
+    }
+    log(`18(b) offline: assistant refuse OK (outcome=${assistantRefuseBody.outcome})`);
+
+    // (c) Unmappable request: "¿qué hora es?" → canned
+    const assistantCanned = await fetch(`${base}/api/assistant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request: '¿qué hora es?' }),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!assistantCanned.ok) fail(`assistant canned (offline): expected 200, got ${assistantCanned.status}`);
+    const assistantCannedBody = await assistantCanned.json();
+    if (assistantCannedBody.outcome === 'executed') {
+      fail('assistant canned (offline): should not execute "what time is it"');
+    }
+    log(`18(c) offline: assistant canned OK (outcome=${assistantCannedBody.outcome})`);
+
+    log('18: assistant assertions PASSED (offline mode — no-proxy verified)');
 
     // ── 17.2: H2 file persistence — survive restart ───────────────────
     log('17.2: H2 file persistence test (create → kill → restart → verify)…');

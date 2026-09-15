@@ -447,6 +447,8 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   push('pom.xml', 'build', 'pom', { basePackage, entities: [...entities.keys()] });
   push('src/main/resources/application.properties', 'resource', 'application-properties', {
     basePackage,
+    assistantModel: 'qwen2.5:1.5b',
+    assistantOllamaUrl: 'http://127.0.0.1:11434',
   });
   // 14.6b: production profile — PostgreSQL purely via env vars, nothing hardcoded.
   push('src/main/resources/application-prod.properties', 'resource', 'application-prod-properties', {
@@ -473,6 +475,23 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   push('Dockerfile', 'build', 'dockerfile', {});
   push('docker-compose.yml', 'build', 'docker-compose', {});
   push('README.md', 'resource', 'readme', { basePackage });
+
+  // ---- 18: Offline assistant (design D11 — bilingual matcher + Ollama fallback) ----
+  // Concrete entities only (abstract classes cannot back the assistant dispatch).
+  const assistantEntities = [...entities.entries()]
+    .filter(([_, e]) => !e.isAbstract)
+    .map(([name]) => name);
+  const assistantModel = {
+    packageName: basePackage,
+    entities: assistantEntities,
+    assistantModel: 'qwen2.5:1.5b',
+    assistantOllamaUrl: 'http://127.0.0.1:11434',
+  };
+  push(`src/main/java/${packagePath}/assistant/AssistantEngine.java`, 'source', 'assistant-engine', assistantModel);
+  push(`src/main/java/${packagePath}/assistant/IntentMatcher.java`, 'source', 'intent-matcher', assistantModel);
+  push(`src/main/java/${packagePath}/assistant/OllamaEngine.java`, 'source', 'ollama-engine', assistantModel);
+  push(`src/main/java/${packagePath}/assistant/AuditLog.java`, 'source', 'audit-log', assistantModel);
+  push(`src/main/java/${packagePath}/web/AssistantController.java`, 'source', 'assistant-controller', assistantModel);
 
   return { files, warnings };
 }

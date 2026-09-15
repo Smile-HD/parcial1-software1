@@ -1,0 +1,50 @@
+package {{packageName}}.assistant;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.logging.Logger;
+
+/**
+ * Append-only audit log for assistant actions (assistant:R4).
+ * Format per line: ISO-timestamp|outcome|action|sha256-of-request
+ * File: data/assistant-audit.log (relative to the working directory).
+ * Rendered by templates/spring-backend/audit-log.hbs — do not edit by hand.
+ */
+public class AuditLog {
+
+    private static final Logger log = Logger.getLogger(AuditLog.class.getName());
+    private static final Path LOG_DIR = Path.of("data");
+    private static final Path LOG_FILE = LOG_DIR.resolve("assistant-audit.log");
+
+    public void log(String outcome, String action, String request) {
+        try {
+            Files.createDirectories(LOG_DIR);
+            String sha256 = sha256(request != null ? request : "");
+            String line = Instant.now() + "|" + outcome + "|" + action + "|" + sha256 + "\n";
+            Files.write(LOG_FILE, line.getBytes(StandardCharsets.UTF_8),
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            log.warning("Failed to write audit log: " + e.getMessage());
+        }
+    }
+
+    private static String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return "digest-error";
+        }
+    }
+}

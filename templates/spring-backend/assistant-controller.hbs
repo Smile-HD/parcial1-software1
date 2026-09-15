@@ -1,0 +1,146 @@
+package {{packageName}}.web;
+
+import {{packageName}}.assistant.AssistantEngine;
+import {{packageName}}.assistant.IntentMatcher;
+import {{packageName}}.assistant.OllamaEngine;
+import {{packageName}}.assistant.AuditLog;
+import {{packageName}}.assistant.AssistantEngine.Intent;
+{{#each entities}}
+import {{../packageName}}.service.{{this}}Service;
+{{/each}}
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Logger;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * Generated REST endpoint for the offline assistant (design D11).
+ * POST /api/assistant accepts a free-text request and returns a structured
+ * response with outcome: executed | canned | unavailable | refused.
+ *
+ * Flow: intent matcher (bilingual) → execute via *Service → Ollama fallback
+ * → whitelist re-validate → canned/unavailable fallback.
+ * Every action is audited (assistant:R4).
+ * Rendered by templates/spring-backend/assistant-controller.hbs — do not edit by hand.
+ */
+@RestController
+@RequestMapping("/api/assistant")
+public class AssistantController {
+
+    private static final Logger log = Logger.getLogger(AssistantController.class.getName());
+
+    private static final Set<String> KNOWN_ENTITIES = Set.of(
+        {{#each entities}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}
+    );
+
+    private static final String CAPABILITY_MESSAGE =
+        "I can help you with: list records (e.g. 'list customers'), "
+        + "count records (e.g. 'how many products'), "
+        + "or create a record (e.g. 'create order').";
+
+    private final IntentMatcher matcher;
+    private final OllamaEngine ollama;
+    private final AuditLog auditLog;
+    {{#each entities}}
+    private final {{this}}Service {{camel this}}Service;
+    {{/each}}
+
+    public AssistantController(
+            @Value("${assistant.ollama.url:http://127.0.0.1:11434}") String ollamaUrl,
+            @Value("${assistant.model:qwen2.5:1.5b}") String model,
+            {{#each entities}}{{this}}Service {{camel this}}Service{{#unless @last}}, {{/unless}}{{/each}}
+    ) {
+        this.matcher = new IntentMatcher(KNOWN_ENTITIES);
+        this.ollama = new OllamaEngine(ollamaUrl, model, KNOWN_ENTITIES);
+        this.auditLog = new AuditLog();
+        {{#each entities}}
+        this.{{camel this}}Service = {{camel this}}Service;
+        {{/each}}
+    }
+
+    @PostMapping
+    public AssistantResponse handle(@RequestBody AssistantRequest request) {
+        String text = request.request();
+        if (text == null || text.isBlank()) {
+            return new AssistantResponse("canned", null, null, CAPABILITY_MESSAGE);
+        }
+
+        // 1. Try deterministic matcher (primary path, design D11)
+        Intent matched = matcher.classify(text);
+        if (matched.isMatched()) {
+            return executeIntent(matched, text);
+        }
+
+        // 2. Matcher miss → Ollama fallback
+        try {
+            Intent ollamaIntent = ollama.classify(text).orElse(null);
+            if (ollamaIntent != null && ollamaIntent.isMatched()) {
+                // Server-side whitelist re-validate (assistant:R2)
+                if (!KNOWN_ENTITIES.contains(ollamaIntent.entityName())) {
+                    auditLog.log("refused", "classify", text);
+                    return new AssistantResponse("refused", null, null, CAPABILITY_MESSAGE);
+                }
+                return executeIntent(ollamaIntent, text);
+            }
+        } catch (Exception e) {
+            log.warning("Ollama engine error: " + e.getMessage());
+            auditLog.log("unavailable", "classify", text);
+            return new AssistantResponse("unavailable", null, null,
+                "The AI assistant is currently unavailable. CRUD operations work normally.");
+        }
+
+        // 3. Nothing matched → canned response
+        auditLog.log("canned", "classify", text);
+        return new AssistantResponse("canned", null, null, CAPABILITY_MESSAGE);
+    }
+
+    @SuppressWarnings("unchecked")
+    private AssistantResponse executeIntent(Intent intent, String originalRequest) {
+        String action = intent.action().name().toLowerCase();
+        String entity = intent.entityName();
+
+        try {
+            return switch (intent.action()) {
+                case LIST -> {
+                    List<?> results = listEntity(entity);
+                    auditLog.log("executed", action, originalRequest);
+                    yield new AssistantResponse("executed", action, entity,
+                        results != null ? results.toString() : "[]");
+                }
+                case COUNT -> {
+                    List<?> results = listEntity(entity);
+                    long count = results != null ? results.size() : 0;
+                    auditLog.log("executed", action, originalRequest);
+                    yield new AssistantResponse("executed", action, entity,
+                        "Count: " + count);
+                }
+                case CREATE -> {
+                    // CREATE without field values hits Bean Validation (400)
+                    auditLog.log("executed", action, originalRequest);
+                    yield new AssistantResponse("executed", action, entity,
+                        "Create request received for " + entity + ". Use the CRUD API with field values for full creation.");
+                }
+            };
+        } catch (Exception e) {
+            auditLog.log("refused", action, originalRequest);
+            return new AssistantResponse("refused", action, entity,
+                "Could not execute " + action + " on " + entity + ": " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<?> listEntity(String name) {
+        {{#each entities}}
+        if ("{{this}}".equals(name)) return {{camel this}}Service.findAll();
+        {{/each}}
+        return null;
+    }
+
+    /** Request DTO for POST /api/assistant. */
+    public record AssistantRequest(String request) {}
+
+    /** Response DTO for POST /api/assistant. */
+    public record AssistantResponse(String outcome, String action, String entity, String response) {}
+}

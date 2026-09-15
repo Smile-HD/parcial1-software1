@@ -1,0 +1,44 @@
+/// Request payload for POST /api/assistant.
+class AssistantRequest {
+  final String request;
+
+  AssistantRequest(this.request);
+
+  Map<String, dynamic> toJson() => {
+        'request': request,
+      };
+}
+
+/// Response payload returned by POST /api/assistant.
+/// Conforms to design D11 and requirement mobile:R3.
+class AssistantResponse {
+  final String outcome; // executed | canned | unavailable | refused
+  final String? action;  // list | count | create | null
+  final String? entity;  // Customer | null
+  final String response; // Result body or canned capability message
+
+  AssistantResponse({
+    required this.outcome,
+    this.action,
+    this.entity,
+    required this.response,
+  });
+
+  factory AssistantResponse.fromJson(Map<String, dynamic> json) {
+    return AssistantResponse(
+      outcome: json['outcome'] as String? ?? 'canned',
+      action: json['action'] as String?,
+      entity: json['entity'] as String?,
+      response: json['response'] as String? ?? '',
+    );
+  }
+
+  bool get isExecuted => outcome == 'executed';
+  bool get isCanned => outcome == 'canned';
+  bool get isUnavailable => outcome == 'unavailable';
+  bool get isRefused => outcome == 'refused';
+
+  @override
+  String toString() =>
+      'AssistantResponse(outcome: $outcome, action: $action, entity: $entity, response: $response)';
+}
