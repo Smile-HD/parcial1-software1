@@ -16,7 +16,7 @@ set -euo pipefail
 # docker.io = el paquete estable (evita el repo de Docker Inc: menos superficie,
 # más reproducible para una entrega académica).
 apt-get update
-apt-get install -y docker.io docker-compose-v2
+apt-get install -y docker.io docker-compose-v2 git curl
 
 # Habilitar el daemon y arrancarlo ahora (systemd lo relanza en cada boot).
 systemctl enable --now docker

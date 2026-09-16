@@ -4,14 +4,20 @@ Topología: **una sola EC2** corre todo el stack con Docker Compose. El
 frontend, la API, el servidor colaborativo y Postgres viven en esa máquina;
 Route 53 pone el nombre y Caddy pone HTTPS automáticamente.
 
-> **Decisión de arquitectura (sept 2026):** se abandonó DuckDNS. El dominio
-> ahora se registra y resuelve en **AWS Route 53** (requisito "solo AWS").
+> **Decisión de arquitectura (sept 2026, revisada):** se abandonó DuckDNS. El
+> nombre público es el **hostname que AWS le asigna a la propia EC2**
+> (`ec2-<ip-invertida>.<region>.compute.amazonaws.com`), derivado de la
+> Elastic IP y resuelto por la infra de DNS de AWS. **$0 y 100% dentro del
+> Free Tier** — no se compra dominio, no se configura Route 53. (Route 53 +
+> dominio propio queda como OPCIÓN puramente estética; ver "Costo".)
+>
 > Se **mantiene TLS gestionado por Caddy/Let's Encrypt**: no es capricho — el
 > micrófono (`getUserMedia`, ver `apps/web/src/voice/recorder.ts`) está
 > bloqueado por los navegadores fuera de un *secure context* (HTTPS o
-> localhost). Sin HTTPS no hay notas de voz remotas. El ACME HTTP-01 usa el
-> puerto 80, así que Route 53 + 80/443 abiertos = certificado gratis y
-> autorrenovable.
+> localhost). Sin HTTPS no hay notas de voz remotas. Y Let's Encrypt emite un
+> certificado perfectamente válido para el hostname de la EC2 (el ACME
+> HTTP-01 validation usa el puerto 80): hostname que resuelve + 80/443
+> abiertos = certificado gratis, de confianza y autorrenovable.
 
 ## Mapa de archivos (qué hace cada uno)
 
@@ -26,22 +32,34 @@ Route 53 pone el nombre y Caddy pone HTTPS automáticamente.
 
 ## Prerrequisitos
 
-- Cuenta AWS con créditos del plan gratuito vigente ($100–200, vencen a los
-  6 meses de creada la cuenta — **agendar shutdown antes**, ver Cierre).
+- Cuenta AWS con créditos del plan gratuito vigente ($100 iniciales + hasta
+  $100 más explorando; se agotan o la cuenta se cierra sola a los 6 meses —
+  ver "Cierre limpio").
 - EC2 `t4g.small`, Ubuntu 24.04 ARM64, ~20 GB gp3.
 - Security Group: ingreso **22 (SSH), 80 y 443 desde 0.0.0.0/0** nada más.
   Postgres (5432) JAMÁS expuesto: los containers se hablan por la red interna.
-- Elastic IP asignada a la instancia (si la matás, la IP reservada también
-  se cobra: liberarla al apagar).
-- Dominio comprado en **Route 53** con **registro A → Elastic IP** en su
-  hosted zone. Propaga en segundos/minutos (vs los 5 min de DuckDNS).
+- **Elastic IP asignada a la instancia** — obligatoria, no opcional: el
+  hostname público deriva de ella, así que sin EIP no hay nombre estable.
+  Mientras la instancia está corriendo no suma costo (la cuota IPv4 se paga
+  igual haya o no EIP; lo que sí hay que liberar es la EIP al apagar
+  definitivamente).
+- **Nombre público** (una de dos, la primera es gratis y alcanza para todo):
+  1. **El hostname público de la EC2** (default, $0), ej.
+     `ec2-3-88-20-45.us-east-1.compute.amazonaws.com`. Ya resuelve apenas se
+     asocia la Elastic IP — no se compra ni configura nada. Es el que usa
+     este runbook.
+  2. **Opcional, solo estética:** dominio propio registrado en Route 53 con
+     registro A → Elastic IP. Da una URL linda para la entrega; el deploy
+     funciona exactamente igual con la opción 1.
 
 ## Bringing up (orden D9 actualizado)
 
 1. **Gate: DNS antes del primer up** — `nslookup <PUBLIC_DOMAIN>` debe
-   devolver la Elastic IP *antes* de cualquier `docker compose up`; si no,
-   ACME no emite certificado. En Route 53 también verificar en
-   `https://dns.google` (cachés de resolvers ajenos).
+   devolver la IP pública *antes* de cualquier `docker compose up`; si no,
+   ACME no emite certificado. Con el hostname de la EC2 esto es instantáneo
+   (lo publica AWS al asociar la Elastic IP). Si usaste dominio propio en
+   Route 53, verificar también en `https://dns.google` (cachés de resolvers
+   ajenos).
 2. Clonar repo y rama en la instancia:
    ```bash
    git clone -b <branch> <repo-url> && cd <repo>/deploy
@@ -123,11 +141,42 @@ convierte a CRLF, revientan adentro del container / en EC2. Asegurar LF en
 
 ## Costo (para el acta del parcial)
 
-| Ítem | USD/mes aprox. |
-|---|---|
-| EC2 t4g.small 24/7 | ~12.30 |
-| EBS 20 GB gp3 | ~1.60 |
-| IPv4 pública + Elastic IP | ~3.60 |
-| Route 53 hosted zone | ~0.50 |
-| Dominio (prorrateado) | ~1.10 |
-| **Total** | **~19** → >5 meses cubiertos por $100 de créditos |
+Precios verificados en las páginas oficiales (aws.amazon.com/route53/pricing y
+aws.amazon.com/free, sept 2026).
+
+| Ítem | USD/mes aprox. | ¿Lo cubren los créditos? |
+|---|---|---|
+| EC2 t4g.small 24/7 | ~12.30 | Sí (gasto de servicio) |
+| EBS 20 GB gp3 | ~1.60 | Sí |
+| IPv4 pública + Elastic IP | ~3.60 | Sí (se paga igual con o sin EIP) |
+| **Hostname público de la EC2** | **$0** | **Infra de AWS, ya está incluido** |
+| Route 53 hosted zone | ~0.50 | Solo si comprás dominio — opcional |
+| Route 53 queries | ~0.40/millón | Opcional — despreciable |
+| Dominio (solo URL linda) | ~1.10 | **NO** — pago de bolsillo, opcional |
+| **Total ruta 100% free** | **~17.50/mes** | **Todo de créditos → ~5.7 meses con $100** |
+
+> **✅ Conclusión del costo:** con la ruta gratis (hostname de la EC2) el
+> deploy **no te cuesta un peso de tu bolsillo**. $100 te dan ~5.7 meses, y
+> la cuenta se cierra sola a los 6 — sobra margen.
+
+> **⚠️ Si igual querés dominio propio (opcional).** Textual, pricing de Route
+> 53: *"You may not use Promotional Credit for any fees or charges for Route 53
+> domain name registration."* El registro (~$10–12/año según TLD; [tabla por
+> TLD](https://d32ze2gidvkk54.cloudfront.net/Amazon_Route_53_Domain_Registration_Pricing_20140731.pdf))
+> **nunca** se paga con créditos. Por eso no es parte del plan base: es un
+> lujo estético, no un requisito del deploy.
+
+> **Cierre automático (a tu favor).** La cuenta Free se cierra sola a los
+> 6 meses de creada o cuando se agotan los créditos, lo que pase primero. Es un
+> "shutdown plan" forzado: aunque te olvides, no hay factura sorpresa. Igual
+> agendá terminar la EC2 y **liberar la Elastic IP** antes — una EIP sin
+> asociar también se cobra mientras queden créditos.
+
+> **Trucos para no gastar de más.** (1) Los **health checks de hasta 50
+> endpoints AWS son gratis**: agregá uno apuntando a la EC2 y tenés monitoreo
+> de uptime sin costo extra. (2) Si llegado el caso jugás con Route 53, una
+> hosted zone borrada dentro de las **12 horas** de creada no se cobra (solo
+> las queries) — ideal para ensayar el flujo sin tocar el saldo. (3) El Free
+> plan limita a **servicios seleccionados**; si alguno (p. ej. Route 53) no te
+> deja crear el recurso, es que no está habilitado — con la ruta gratis ni lo
+> tocás.
