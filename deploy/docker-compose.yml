@@ -1,0 +1,147 @@
+# docker-compose.yml — Orquesta del stack en UN solo host (EC2).
+# Definición de servicios: qué contenedores corren, en qué orden, con qué variables.
+# Cada servicio declara depends_on + healthcheck, así "levanta" recién cuando
+# su dependencia está REALMENTE viva (no solo "el proceso arrancó").
+#
+# Orden de arranque garantizado por depends_on:
+#   postgres (healthy) → migrate (termina ok) → api + collab-server (healthy) → caddy (80/443)
+#
+# Nota TLS: el certificado lo gestiona Caddy solo (ACME / Let's Encrypt).
+# Para eso PUBLIC_DOMAIN debe ser un dominio real cuyo registro A (Route 53)
+# ya apunte a la Elastic IP ANTES de subir el stack.
+
+# ── Receta de build compartida (heredada también por caddy, con target distinto) ──
+# Una y solo una imagen de app para todo el repo (spec R1/R3): mismo binario,
+# distinto comando. VITE_COLLAB_URL se HORNEA en el build (es código del
+# frontend, no env de runtime): por eso lleva el dominio público absoluto.
+x-app-build: &app-build
+  context: ..                # el contexto es el repo entero (monorepo)
+  dockerfile: deploy/Dockerfile
+  target: app                # stage "app" del Dockerfile (no el de caddy)
+  args:
+    VITE_API_URL: /api                                  # mismo origen → ruta relativa
+    VITE_COLLAB_URL: wss://${PUBLIC_DOMAIN}/collab      # wss (TLS) porque Caddy termina HTTPS
+
+services:
+  # ── Postgres: único estado persistente del sistema (volumen pgdata) ───
+  # No publica puertos hacia afuera: solo lo ven los otros contenedores
+  # por la red interna de compose. El SG de la EC2 jamás debe abrir 5432.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGEME}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_uml}
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # dato sobrevive a down/up y rebuilds
+    healthcheck:
+      # pg_isready = "¿aceitás conexiones?" — recién con healthy arrancan los demás
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_uml}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── migrate: job one-shot, no un servicio permanente ───────────────────
+  # Corre las migraciones de schema contra Postgres y TERMINA (restart: "no").
+  # api y collab-server esperan condition: service_completed_successfully,
+  # o sea: si una migración falla, la app ni arranca (fail-fast, buen lugar).
+  migrate:
+    image: aiuml-app:local
+    build: *app-build            # misma imagen, otro comando
+    restart: "no"
+    command: pnpm --filter @app/api run migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── api: backend HTTP (FastAPI/Node) — recibe /api/* desde Caddy ──────
+  api:
+    image: aiuml-app:local
+    build: *app-build
+    restart: unless-stopped
+    command: pnpm --filter @app/api exec tsx src/index.ts
+    environment:
+      DATABASE_URL: ${DATABASE_URL}      # host "postgres" = nombre del servicio, NO localhost
+      PORT: "3000"
+      # LLM/voz: la key vive SOLO acá (server-side); nunca llega al navegador.
+      # Sin OPENAI_API_KEY la app usa fakes deterministas (modo demo offline).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o}
+      WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}   # transcripción de audio
+      VISION_MODEL: ${VISION_MODEL:-gpt-4o}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Pide /health por la red interna; si la app está arriba pero rota,
+      # esto lo detecta y Caddy no le manda tráfico.
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>{if(!r.ok)throw 1}).catch(()=>{process.exit(1)})\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s          # gracia para el arranque inicial, no cuenta como fallo
+
+  # ── collab-server: servidor Yjs/WebSocket — recibe /collab/* ──────────
+  # Conexiones LARGAS y con estado (docs colaborativos en vivo).
+  # Por eso no puede vivir en serverless/Lambda: necesita proceso permanente.
+  collab-server:
+    image: aiuml-app:local
+    build: *app-build
+    restart: unless-stopped
+    command: pnpm --filter @app/collab-server exec tsx src/index.ts
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      COLLAB_PORT: "1234"
+      COLLAB_HOST: "0.0.0.0"     # escuchar todas las interfaces del container
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:1234/').then(r=>{if(!r.ok)throw 1}).catch(()=>{process.exit(1)})\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── caddy: ÚNICO publicador de puertos al mundo (80 + 443) ────────────
+  # Triple trabajo: (1) reverse proxy por path → api/collab, (2) sirve el
+  # frontend estático desde /srv, (3) TLS: emite y renueva el certificado
+  # ACME automáticamente (necesita 80 y 443 accesibles + DNS resuelto).
+  # No arranca hasta que api y collab estén healthy (ver depends_on abajo).
+  caddy:
+    build:
+      <<: *app-build       # hereda context+dockerfile+args (los VITE_* hornean
+                           # el dist con este dominio → URL ws correcta)
+      target: caddy        # único cambio: stage de destino en el Dockerfile
+    image: aiuml-caddy:local   # tag local; compose build-kea esta imagen
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}   # el Caddyfile lo lee como {$PUBLIC_DOMAIN}
+    ports:
+      - "80:80"      # required for ACME HTTP-01 challenge and redirects
+      - "443:443"    # all real traffic (HTTPS + WSS)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro   # config, read-only
+      - caddy_data:/data     # acá persiste el certificado ACME + la CA local
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      collab-server:
+        condition: service_healthy
+
+# Volúmenes con nombre (managed por Docker): pgdata guarda la base;
+# caddy_data/caddy_config guardan certificados y estado de Caddy.
+# Sobreviven a "docker compose down" — solo "down -v" los destruye.
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

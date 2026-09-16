@@ -1,0 +1,16 @@
+# Normalización de fines de línea: LF para todo el repo.
+# Los .sh de deploy/ se ejecutan dentro de contenedores Linux y en la EC2;
+# si Git los pasa a CRLF (autocrlf=true en Windows), smoke.sh y
+# ec2-user-data.sh revientan. Forzando LF en el blob se rompe esa cadena.
+* text=auto eol=lf
+
+# Binarios: nunca tocarlos (git no debe reescribir bytes).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.svg  binary
+*.zip  binary
+*.jar  binary
+*.pdf  binary

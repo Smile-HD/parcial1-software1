@@ -1,0 +1,35 @@
+# Caddyfile — Reglas de tráfico del único punto de entrada público (Caddy).
+# {$PUBLIC_DOMAIN} es una variable que Caddy lee del environment (compose).
+# Al ser un dominio real, Caddy activa "automatic HTTPS" SOLO: emite y
+# renueva el certificado ACME (Let's Encrypt) y redirige http:// → https://.
+# Por eso el site block se escribe sin esquema: el dominio manda.
+#
+# handle_path: matchea un prefijo de URL y hace reverse_proxy al service
+# interno por la red de compose (nombre de servicio = hostname).
+
+{$PUBLIC_DOMAIN} {
+	# Todo lo que entra por /api/* va al backend (api:3000).
+	# El navegador llama a "/api" (relativo, horneado por Vite) → mismo dominio
+	# → no hay CORS que configurar. Simple y elegante.
+	handle_path /api/* {
+		reverse_proxy api:3000
+	}
+
+	# /collab/* → servidor Yjs/WebSocket (collab-server:1234).
+	# Caddy detecta el handshake "Upgrade: websocket" y mantiene la conexión
+	# bi-direccional abierta — por eso wss:// funciona sin config extra.
+	handle_path /collab/* {
+		reverse_proxy collab-server:1234
+	}
+
+	# Cualquier otro path → frontend estático (SPA React) servido desde /srv.
+	# /srv lo llena la imagen "caddy" del Dockerfile (COPY del dist de Vite).
+	# try_files: si el archivo existe, servilo; si no (ruta interna de React
+	# como /mi-diagrama), devolvé index.html para que el router del SPA
+	# resuelva — sin esto, cada F5 en una ruta daría 404.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

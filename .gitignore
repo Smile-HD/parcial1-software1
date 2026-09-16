@@ -34,6 +34,9 @@ Thumbs.db
 # SDD runtime state (regenerated per change instance; local only)
 .gentle-ai-instance
 
+# Engram memory chunks (local transfer artifact; moved by hand, never committed)
+.engram/
+
 # Private report documentation (user-owned, goes to Word manually)
 docs
     
