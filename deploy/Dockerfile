@@ -65,8 +65,11 @@ RUN pnpm --filter @app/web build
 #                             parcial (y se puede rebuildear la imagen).
 FROM nginx:1.27-alpine AS nginx
 
-# openssl ya viene en la imagen alpine de nginx, no hay que instalarlo.
-RUN mkdir -p /etc/nginx/certs \
+# openssl NO viene en nginx:alpine (la imagen base es muy flaca). Lo
+# instalamos explícitamente para generar el cert autofirmado al build.
+# Es ~1 MB extra, vale la pena frente al dolor de un cert que no se genera.
+RUN apk add --no-cache openssl \
+    && mkdir -p /etc/nginx/certs \
     && openssl req -x509 -nodes -newkey rsa:2048 \
        -keyout /etc/nginx/certs/key.pem \
        -out    /etc/nginx/certs/cert.pem \
