@@ -56,7 +56,7 @@ RUN pnpm --filter @app/web build
 # sin fuente → superficie mínima. El compose construye ESTE target para
 # el servicio caddy (antes usaba la imagen base pelada y /srv no existía:
 # GET / devolvía 404 — bug arreglado en este cambio).
-FROM caddy:2-alpine AS caddy
+FROM caddy:2 AS caddy
 
 # Copia SOLO el resultado del build (dist) del stage "app" → /srv, que es
 # donde el Caddyfile apunta con "root * /srv".
