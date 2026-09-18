@@ -13,6 +13,9 @@ BASE_URL="${1:?Usage: smoke.sh https://tu-dominio.example.com}"
 FAIL=0
 
 # check <etiqueta> <url>: pide la URL y espera un 200 exacto.
+#   -k              → aceptar cert autofirmado (necesario porque nginx usa
+#                      cert auto-firmado: el hostname *.compute.amazonaws.com
+#                      está en la blacklist de Let's Encrypt)
 #   -o /dev/null     → descartar el body (solo nos importa el status)
 #   -w '%{http_code}' → imprimir SOLO el código HTTP
 #   --max-time 10    → cortar si cuelga (un healthcheck colgado también es un fallo)
@@ -20,7 +23,7 @@ FAIL=0
 #                      queremos que siga probando las otras dos rutas
 check() {
   local label="$1" url="$2"
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)
+  code=$(curl -k -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)
   if [ "$code" = "200" ]; then
     echo "OK  $label  ($code)"
   else
