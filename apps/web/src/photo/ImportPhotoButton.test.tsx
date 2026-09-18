@@ -408,6 +408,75 @@ describe('ImportPhotoButton — review modal interaction (photo:R2)', () => {
     expect(projected.classes.map((c) => c.name).sort()).toEqual(['Customer']);
   });
 
+  it('drop a class prunes its members and associations in cascade without error', async () => {
+    const diagramId = uuid();
+    const doc = makeDoc(diagramId);
+    const classA = uuid();
+    const classB = uuid();
+    const batchDelta = batch(diagramId, [
+      classCreate(diagramId, classA, 'Customer', 10),
+      classCreate(diagramId, classB, 'Order', 300),
+      {
+        id: uuid(),
+        diagramId,
+        timestamp: now(),
+        kind: 'member' as const,
+        op: 'addAttribute' as const,
+        classId: classB,
+        memberId: uuid(),
+        name: 'total',
+        type: 'Double',
+      },
+      {
+        id: uuid(),
+        diagramId,
+        timestamp: now(),
+        kind: 'association' as const,
+        op: 'create' as const,
+        associationId: uuid(),
+        sourceClassId: classA,
+        targetClassId: classB,
+        directed: true,
+      },
+    ]);
+    const jobId = uuid();
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ jobId }, 202))
+      .mockResolvedValueOnce(jsonResponse({
+        id: jobId,
+        status: 'succeeded',
+        batch: batchDelta,
+        warnings: [],
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = renderButton(diagramId, doc);
+    await pickFile(container, makeFile('diagram.png', makePngBytes(), 'image/png'));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /photo review/i })).toBeTruthy());
+
+    // Drop classB ("Order")
+    const dropButtons = screen.getAllByRole('button', { name: /drop/i });
+    await act(async () => {
+      fireEvent.click(dropButtons[1]!);
+    });
+
+    // Approve the remaining batch
+    const approveBtn = screen.getByRole('button', { name: /approve/i });
+    await act(async () => {
+      fireEvent.click(approveBtn);
+    });
+
+    // No error alert should be shown
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // Customer is saved, Order is dropped, and no orphan associations exist
+    const projected = projectYDocToDiagram(doc);
+    expect(projected.classes.map((c) => c.name)).toEqual(['Customer']);
+    expect(projected.associations).toHaveLength(0);
+  });
+
   it('cancel → Y.Doc state vector unchanged, no modal', async () => {
     const diagramId = uuid();
     const doc = makeDoc(diagramId);

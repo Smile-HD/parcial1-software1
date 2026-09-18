@@ -110,12 +110,29 @@ export function ImportPhotoButton({
           const classDeltas = processed.batch.deltas.filter(
             (d: Delta) => d.kind === 'class' && d.op === 'create',
           );
-          const classes: ReviewableClass[] = classDeltas.map((d: Delta) => ({
-            classId: (d as { classId: string }).classId,
-            name: (d as { name: string }).name ?? '?',
-            delta: d,
-            dropped: false,
-          }));
+          const classes: ReviewableClass[] = classDeltas.map((d: Delta) => {
+            const classId = (d as { classId: string }).classId;
+            const attrCount = processed.batch.deltas.filter(
+              (sub: Delta) =>
+                sub.kind === 'member' &&
+                sub.op === 'addAttribute' &&
+                (sub as { classId?: string }).classId === classId,
+            ).length;
+            const methodCount = processed.batch.deltas.filter(
+              (sub: Delta) =>
+                sub.kind === 'member' &&
+                sub.op === 'addMethod' &&
+                (sub as { classId?: string }).classId === classId,
+            ).length;
+
+            return {
+              classId,
+              name: (d as { name: string }).name ?? '?',
+              delta: d,
+              dropped: false,
+              details: { attributesCount: attrCount, methodsCount: methodCount },
+            };
+          });
           const allWarnings = [...(result.warnings ?? []), ...processed.warnings];
           if (mountedRef.current) {
             setState({ phase: 'review', classes, warnings: allWarnings, rawBatch: processed.batch });
@@ -243,24 +260,71 @@ export function ImportPhotoButton({
 
     // Construir el lote filtrado: eliminar elementos descartados, aplicar ediciones de nombres.
     const visible = state.classes.filter((c) => !c.dropped);
+    const visibleIds = new Set(visible.map((c) => c.classId));
     const nameMap = new Map(state.classes.map((c) => [c.classId, c.name]));
 
-    const filteredDeltas = state.rawBatch.deltas.map((d) => {
-      if (d.kind === 'class' && d.op === 'create') {
-        const classId = (d as { classId: string }).classId;
-        const editedName = nameMap.get(classId);
-        if (editedName !== undefined && editedName !== (d as { name: string }).name) {
-          return { ...d, name: editedName };
+    const filteredDeltas = state.rawBatch.deltas
+      .map((d) => {
+        if (d.kind === 'class' && d.op === 'create') {
+          const classId = (d as { classId: string }).classId;
+          const editedName = nameMap.get(classId);
+          if (editedName !== undefined && editedName !== (d as { name: string }).name) {
+            return { ...d, name: editedName };
+          }
         }
-      }
-      return d;
-    }).filter((d) => {
-      if (d.kind === 'class' && d.op === 'create') {
-        return visible.some((c) => c.classId === (d as { classId: string }).classId);
-      }
-      // Conservar deltas que no sean de clase (asociaciones, etc.) si ambos extremos sobrevivieron.
-      return true;
-    });
+        return d;
+      })
+      .filter((d) => {
+        if (d.kind === 'class' && d.op === 'create') {
+          return visibleIds.has((d as { classId: string }).classId);
+        }
+        if (d.kind === 'member') {
+          return visibleIds.has((d as { classId: string }).classId);
+        }
+        if (d.kind === 'association') {
+          const assoc = d as { sourceClassId?: string; targetClassId?: string };
+          return Boolean(
+            assoc.sourceClassId &&
+            assoc.targetClassId &&
+            visibleIds.has(assoc.sourceClassId) &&
+            visibleIds.has(assoc.targetClassId),
+          );
+        }
+        if (d.kind === 'generalization') {
+          const gen = d as { subClassId?: string; superClassId?: string };
+          return Boolean(
+            gen.subClassId &&
+            gen.superClassId &&
+            visibleIds.has(gen.subClassId) &&
+            visibleIds.has(gen.superClassId),
+          );
+        }
+        if (d.kind === 'realization') {
+          const real = d as { clientClassId?: string; supplierInterfaceId?: string };
+          return Boolean(
+            real.clientClassId &&
+            real.supplierInterfaceId &&
+            visibleIds.has(real.clientClassId) &&
+            visibleIds.has(real.supplierInterfaceId),
+          );
+        }
+        if (d.kind === 'dependency') {
+          const dep = d as { clientClassId?: string; supplierClassId?: string };
+          return Boolean(
+            dep.clientClassId &&
+            dep.supplierClassId &&
+            visibleIds.has(dep.clientClassId) &&
+            visibleIds.has(dep.supplierClassId),
+          );
+        }
+        if (d.kind === 'naryAssociation') {
+          const nary = d as { memberEnds?: { classId: string }[] };
+          if (!Array.isArray(nary.memberEnds)) return false;
+          const survivingEnds = nary.memberEnds.filter((e) => visibleIds.has(e.classId));
+          return survivingEnds.length >= 3;
+        }
+        return true;
+      });
 
     const filteredBatch: BatchDelta = {
       ...state.rawBatch,

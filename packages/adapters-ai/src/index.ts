@@ -31,6 +31,8 @@ export const PACKAGE_NAME = '@app/adapters-ai' as const;
 export * from './stt.js';
 export * from './retry-repairing-llm.js';
 export * from './vision.js';
+export * from './repair.js';
+import { repairModelIdentifiers } from './repair.js';
 
 // ── helpers compartidos ────────────────────────────────────────────────────
 
@@ -726,43 +728,4 @@ export class OpenAiLlm implements LlmPort {
   }
 }
 
-// ── Reparación de salida del modelo (normalización de particularidades del proveedor) ───
 
-/** Campos UUID que el MODELO tiene permitido inventar; los valores malformados se regeneran. */
-const REPAIRABLE_ID_FIELDS = new Set(['id', 'classId', 'memberId', 'associationId', 'generalizationId', 'realizationId', 'dependencyId', 'naryAssociationId', 'sourceClassId', 'targetClassId', 'subClassId', 'superClassId', 'clientClassId', 'supplierInterfaceId', 'supplierClassId']);
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
-
-/**
- * Recorre en profundidad un delta producido por el modelo y regenera IDs/timestamps malformados.
- * Cada ocurrencia de la MISMA cadena de ID inválida se mapea al MISMO UUID generado
- * (memoizado), de modo que los placeholders del modelo como "NEW_CLASS_1" se mantengan
- * coherentes a lo largo de los elementos de un lote (creación + atributo + asociación referencian
- * la misma clase). `diagramId` NO es reparable deliberadamente — debe coincidir con el
- * IR actual, y una discrepancia es un error real que la compuerta Zod debe capturar.
- */
-export function repairModelIdentifiers(value: unknown, memo: Map<string, string> = new Map()): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => repairModelIdentifiers(item, memo));
-  }
-  if (typeof value !== 'object' || value === null) {
-    return value;
-  }
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof val === 'string' && REPAIRABLE_ID_FIELDS.has(key) && !UUID_RE.test(val)) {
-      const existing = memo.get(val);
-      out[key] = existing ?? crypto.randomUUID();
-      if (existing === undefined) {
-        memo.set(val, out[key] as string);
-      }
-      continue;
-    }
-    if (typeof val === 'string' && key === 'timestamp' && !RFC3339_RE.test(val)) {
-      out[key] = new Date().toISOString();
-      continue;
-    }
-    out[key] = repairModelIdentifiers(val, memo);
-  }
-  return out;
-}

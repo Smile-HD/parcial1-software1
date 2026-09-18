@@ -17,6 +17,11 @@ export interface ReviewableClass {
   delta: Delta;
   /** Indica si esta clase fue descartada por el usuario. */
   dropped: boolean;
+  /** Detalles adicionales detectados (atributos, métodos). */
+  details?: {
+    attributesCount?: number;
+    methodsCount?: number;
+  };
 }
 
 export interface PhotoReviewModalProps {
@@ -56,10 +61,25 @@ export function PhotoReviewModal({
         </div>
       )}
       <ul className="photo-review__list">
-        {classes.map((cls) =>
-          cls.dropped ? null : (
+        {classes.map((cls) => {
+          if (cls.dropped) return null;
+          const attrCount = cls.details?.attributesCount ?? 0;
+          const methodCount = cls.details?.methodsCount ?? 0;
+          const detailsText = [
+            attrCount > 0 ? `${attrCount} attr${attrCount > 1 ? 's' : ''}` : '',
+            methodCount > 0 ? `${methodCount} method${methodCount > 1 ? 's' : ''}` : '',
+          ]
+            .filter(Boolean)
+            .join(', ');
+
+          return (
             <li key={cls.classId} className="photo-review__item">
               <span className="photo-review__class-name">{cls.name}</span>
+              {detailsText && (
+                <span className="photo-review__class-details" style={{ fontSize: '0.85em', opacity: 0.8, marginLeft: '6px' }}>
+                  ({detailsText})
+                </span>
+              )}
               <input
                 type="text"
                 value={cls.name}
@@ -74,8 +94,8 @@ export function PhotoReviewModal({
                 Drop
               </button>
             </li>
-          ),
-        )}
+          );
+        })}
       </ul>
       <div className="photo-review__actions">
         <button
