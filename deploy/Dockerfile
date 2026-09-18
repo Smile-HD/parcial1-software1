@@ -1,6 +1,6 @@
 # Dockerfile — Receta de build del monorepo. Produce DOS imágenes (targets):
 #   app   → node con todo el repo instalado (corren api, collab-server, migrate)
-#   caddy → imagen caddy con el dist del frontend adentro (solo archivos estáticos)
+#   nginx → imagen nginx con cert autofirmado + el dist del frontend adentro
 # Multi-stage: cada FROM ... AS abre una etapa; se puede copiar output de una
 # a otra (--from) sin arrastrar toolchains → menos superficie, menos GB.
 
@@ -50,14 +50,29 @@ ENV VITE_API_URL=$VITE_API_URL VITE_COLLAB_URL=$VITE_COLLAB_URL
 # Solo se construye web: api y collab-server corren con tsx desde el fuente.
 RUN pnpm --filter @app/web build
 
-# ── Target: caddy — imagen final del frontend: Caddy + dist estático ─────
-# Agarra la imagen oficial de Caddy y le copia SOLO el output del build.
-# Resultado: un web server HTTPS con tu SPA adentro, sin Node, sin pnpm,
-# sin fuente → superficie mínima. El compose construye ESTE target para
-# el servicio caddy (antes usaba la imagen base pelada y /srv no existía:
-# GET / devolvía 404 — bug arreglado en este cambio).
-FROM caddy:2 AS caddy
+# ── Target: nginx — imagen final del frontend: nginx + dist estático + cert ─
+# Reemplaza al target `caddy` original: nginx con cert autofirmado es
+# predecible, mientras que Caddy + tls internal + Alpine nos dio un
+# TLS alert internal error sin causa clara en el handshake.
+#
+# El cert autofirmado se genera acá mismo al build (en runtime el container
+# ya arranca con el cert listo, no hay generación lazy ni storage que
+# pueda quedar inconsistente).
+#   -subj "/CN=..."        → nombre del cert (no importa el valor, los
+#                             navegadores solo validan que esté firmado
+#                             por una CA, y el usuario lo acepta igual).
+#   -days 365              → válido por 1 año, alcanza de sobra para el
+#                             parcial (y se puede rebuildear la imagen).
+FROM nginx:1.27-alpine AS nginx
 
-# Copia SOLO el resultado del build (dist) del stage "app" → /srv, que es
-# donde el Caddyfile apunta con "root * /srv".
-COPY --from=app /app/apps/web/dist /srv
+# openssl ya viene en la imagen alpine de nginx, no hay que instalarlo.
+RUN mkdir -p /etc/nginx/certs \
+    && openssl req -x509 -nodes -newkey rsa:2048 \
+       -keyout /etc/nginx/certs/key.pem \
+       -out    /etc/nginx/certs/cert.pem \
+       -days 365 \
+       -subj "/CN=localhost"
+
+# Copia la config de nginx y el dist de Vite (generado en el stage "app").
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=app /app/apps/web/dist /usr/share/nginx/html

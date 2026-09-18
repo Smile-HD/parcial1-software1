@@ -4,23 +4,24 @@
 # su dependencia está REALMENTE viva (no solo "el proceso arrancó").
 #
 # Orden de arranque garantizado por depends_on:
-#   postgres (healthy) → migrate (termina ok) → api + collab-server (healthy) → caddy (80/443)
+#   postgres (healthy) → migrate (termina ok) → api + collab-server (healthy) → nginx (80/443)
 #
-# Nota TLS: el certificado lo gestiona Caddy solo (ACME / Let's Encrypt).
-# Para eso PUBLIC_DOMAIN debe ser un dominio real cuyo registro A (Route 53)
-# ya apunte a la Elastic IP ANTES de subir el stack.
+# Nota TLS: nginx usa cert autofirmado (generado al build, no al runtime).
+# Let's Encrypt veta emitir para *.compute.amazonaws.com por policy global;
+# con cert autofirmado el navegador tira warning la primera vez (se acepta
+# y se entra) pero getUserMedia y wss funcionan porque el contexto es HTTPS.
 
-# ── Receta de build compartida (heredada también por caddy, con target distinto) ──
+# ── Receta de build compartida (heredada también por nginx, con target distinto) ──
 # Una y solo una imagen de app para todo el repo (spec R1/R3): mismo binario,
 # distinto comando. VITE_COLLAB_URL se HORNEA en el build (es código del
 # frontend, no env de runtime): por eso lleva el dominio público absoluto.
 x-app-build: &app-build
   context: ..                # el contexto es el repo entero (monorepo)
   dockerfile: deploy/Dockerfile
-  target: app                # stage "app" del Dockerfile (no el de caddy)
+  target: app                # stage "app" del Dockerfile (no el de nginx)
   args:
     VITE_API_URL: /api                                  # mismo origen → ruta relativa
-    VITE_COLLAB_URL: wss://${PUBLIC_DOMAIN}/collab      # wss (TLS) porque Caddy termina HTTPS
+    VITE_COLLAB_URL: wss://${PUBLIC_DOMAIN}/collab      # wss (TLS) porque nginx termina HTTPS
 
 services:
   # ── Postgres: único estado persistente del sistema (volumen pgdata) ───
@@ -57,7 +58,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # ── api: backend HTTP (FastAPI/Node) — recibe /api/* desde Caddy ──────
+  # ── api: backend HTTP (FastAPI/Node) — recibe /api/* desde nginx ──────
   api:
     image: aiuml-app:local
     build: *app-build
@@ -80,7 +81,7 @@ services:
         condition: service_completed_successfully
     healthcheck:
       # Pide /health por la red interna; si la app está arriba pero rota,
-      # esto lo detecta y Caddy no le manda tráfico.
+      # esto lo detecta y nginx no le manda tráfico.
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>{if(!r.ok)throw 1}).catch(()=>{process.exit(1)})\""]
       interval: 10s
       timeout: 5s
@@ -111,37 +112,34 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── caddy: ÚNICO publicador de puertos al mundo (80 + 443) ────────────
-  # Triple trabajo: (1) reverse proxy por path → api/collab, (2) sirve el
-  # frontend estático desde /srv, (3) TLS: emite y renueva el certificado
-  # ACME automáticamente (necesita 80 y 443 accesibles + DNS resuelto).
+  # ── nginx: ÚNICO publicador de puertos al mundo (80 + 443) ────────────
+  # Reemplaza a caddy. Triple trabajo: (1) reverse proxy por path → api/collab,
+  # (2) sirve el frontend estático desde /usr/share/nginx/html, (3) TLS con
+  # cert autofirmado (generado en el build del Dockerfile, no en runtime).
   # No arranca hasta que api y collab estén healthy (ver depends_on abajo).
-  caddy:
+  nginx:
     build:
       <<: *app-build       # hereda context+dockerfile+args (los VITE_* hornean
                            # el dist con este dominio → URL ws correcta)
-      target: caddy        # único cambio: stage de destino en el Dockerfile
-    image: aiuml-caddy:local   # tag local; compose build-kea esta imagen
+      target: nginx        # stage de nginx del Dockerfile (no el "app")
+    image: aiuml-nginx:local   # tag local; compose buildea esta imagen
     restart: unless-stopped
     environment:
-      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}   # el Caddyfile lo lee como {$PUBLIC_DOMAIN}
+      # nginx no usa PUBLIC_DOMAIN (el cert es autofirmado para localhost);
+      # lo dejamos por consistencia con el compose anterior y para que si
+      # en el futuro se cambia el cert a uno con dominio real, ya esté.
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
     ports:
-      - "80:80"      # required for ACME HTTP-01 challenge and redirects
-      - "443:443"    # all real traffic (HTTPS + WSS)
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro   # config, read-only
-      - caddy_data:/data     # acá persiste el certificado ACME + la CA local
-      - caddy_config:/config
+      - "80:80"      # redirige a HTTPS (regla server { listen 80 } en nginx.conf)
+      - "443:443"    # tráfico real (HTTPS + WSS)
     depends_on:
       api:
         condition: service_healthy
       collab-server:
         condition: service_healthy
 
-# Volúmenes con nombre (managed por Docker): pgdata guarda la base;
-# caddy_data/caddy_config guardan certificados y estado de Caddy.
-# Sobreviven a "docker compose down" — solo "down -v" los destruye.
+# Volúmenes con nombre (managed por Docker): pgdata guarda la base.
+# (Los volúmenes caddy_data/caddy_config ya no existen — el cert de nginx
+# vive DENTRO de la imagen, no en un volumen, así que se regenera al rebuild.)
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
