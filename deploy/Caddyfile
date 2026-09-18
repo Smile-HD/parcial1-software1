@@ -19,7 +19,10 @@
 	auto_https off
 }
 
-http://{$PUBLIC_DOMAIN}, https://{$PUBLIC_DOMAIN} {
+# Listener HTTPS: cert autofirmado para {$PUBLIC_DOMAIN}.
+# Sin esquema al inicio, Caddy asume HTTPS. tls internal genera el cert al
+# primer request (no en el arranque) y lo cachea en /data/caddy.
+{$PUBLIC_DOMAIN} {
 	tls internal
 
 	# Todo lo que entra por /api/* va al backend (api:3000).
@@ -46,4 +49,10 @@ http://{$PUBLIC_DOMAIN}, https://{$PUBLIC_DOMAIN} {
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# Listener HTTP plano: redirige a HTTPS. Necesario para que el puerto 80
+# responda algo útil (sino, "connection refused" en el primer GET sin TLS).
+http://{$PUBLIC_DOMAIN} {
+	redir https://{$PUBLIC_DOMAIN}{uri} permanent
 }
