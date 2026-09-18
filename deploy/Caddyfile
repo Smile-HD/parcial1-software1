@@ -8,10 +8,18 @@
 # el contexto es seguro) pero el navegador tira warning la primera vez —
 # el usuario lo acepta y entra. Producción real: dominio propio en Route 53.
 #
+# auto_https off: sin esto, Caddy intenta redirigir HTTP→HTTPS ANTES de
+# evaluar el site block, y eso rompe el handshake. Con off, manejamos
+# el TLS nosotros mismos desde el primer request.
+#
 # handle_path: matchea un prefijo de URL y hace reverse_proxy al service
 # interno por la red de compose (nombre de servicio = hostname).
 
-{$PUBLIC_DOMAIN} {
+{
+	auto_https off
+}
+
+http://{$PUBLIC_DOMAIN}, https://{$PUBLIC_DOMAIN} {
 	tls internal
 
 	# Todo lo que entra por /api/* va al backend (api:3000).
