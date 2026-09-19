@@ -1,9 +1,14 @@
-# Generated container image (maintainer decision 2026-09-07 — zip extras):
-# runs the packaged Spring Boot jar on a minimal Java 21 runtime.
-# Build the jar first (`./mvnw -DskipTests package`), then `docker build .`.
-# Rendered by templates/spring-backend/dockerfile.hbs — do not edit by hand.
+# Generated container image: multi-stage build for zero-config Docker execution.
+# Stage 1: Build the Spring Boot application using Maven 3.9 + Java 21.
+FROM maven:3.9-eclipse-temurin-21-alpine AS build
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# Stage 2: Minimal runtime image running the packaged Spring Boot jar.
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY target/*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

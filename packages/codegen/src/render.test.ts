@@ -446,7 +446,7 @@ describe('production profile + zip extras (14.6b + maintainer decision D)', () =
   it('Dockerfile runs the boot jar on a 21 JRE alpine image', () => {
     const docker = fileAt('Dockerfile');
     expect(docker).toContain('FROM eclipse-temurin:21-jre-alpine');
-    expect(docker).toContain('COPY target/*.jar');
+    expect(docker).toContain('target/*.jar');
     expect(docker).toContain('ENTRYPOINT');
   });
 
