@@ -904,4 +904,68 @@ describe('xmiToDeltaBatch', () => {
       expect(uniquePositions.size).toBe(positions.length);
     }
   });
+
+  describe('Importación flexible de contenedores XMI 2.1 (soporte para exportaciones de paquetes de EA)', () => {
+    it('soporta <uml:Package> como contenedor raíz bajo <xmi:XMI>', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">',
+        '  <uml:Package xmi:type="uml:Package" xmi:id="EAPK_001" name="ModeloClases">',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="EAID_CLS1" name="Usuario"/>',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="EAID_CLS2" name="Rol"/>',
+        '  </uml:Package>',
+        '</xmi:XMI>',
+      ].join('\n');
+
+      const model = parseXmiDocument(xml);
+      expect(model.classes.map(c => c.name).sort()).toEqual(['Rol', 'Usuario']);
+    });
+
+    it('soporta múltiples contenedores <uml:Package> o <uml:Model> como arreglo', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">',
+        '  <uml:Package xmi:type="uml:Package" xmi:id="EAPK_001" name="ModuloA">',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="EAID_CLS1" name="Servicio"/>',
+        '  </uml:Package>',
+        '  <uml:Package xmi:type="uml:Package" xmi:id="EAPK_002" name="ModuloB">',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="EAID_CLS2" name="Repositorio"/>',
+        '  </uml:Package>',
+        '</xmi:XMI>',
+      ].join('\n');
+
+      const model = parseXmiDocument(xml);
+      expect(model.classes.map(c => c.name).sort()).toEqual(['Repositorio', 'Servicio']);
+    });
+
+    it('soporta xsi:type="uml:Class" y tipos sin prefijo xmi:type="Class"', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+        '  <uml:Model xmi:type="uml:Model" xmi:id="MOD_1" name="Model">',
+        '    <packagedElement xsi:type="uml:Class" xmi:id="C1" name="EntidadA"/>',
+        '    <packagedElement xmi:type="Class" xmi:id="C2" name="EntidadB"/>',
+        '  </uml:Model>',
+        '</xmi:XMI>',
+      ].join('\n');
+
+      const model = parseXmiDocument(xml);
+      expect(model.classes.map(c => c.name).sort()).toEqual(['EntidadA', 'EntidadB']);
+    });
+
+    it('soporta elementos dentro de <ownedMember> y etiquetas directas <uml:Class>', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">',
+        '  <uml:Package xmi:type="uml:Package" xmi:id="PKG_1" name="RootPkg">',
+        '    <ownedMember xmi:type="uml:Class" xmi:id="C1" name="Producto"/>',
+        '    <uml:Class xmi:id="C2" name="Factura"/>',
+        '  </uml:Package>',
+        '</xmi:XMI>',
+      ].join('\n');
+
+      const model = parseXmiDocument(xml);
+      expect(model.classes.map(c => c.name).sort()).toEqual(['Factura', 'Producto']);
+    });
+  });
 });

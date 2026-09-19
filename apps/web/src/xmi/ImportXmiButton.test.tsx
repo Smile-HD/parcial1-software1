@@ -108,11 +108,14 @@ function batch(diagramId: string, deltas: unknown[]) {
 }
 
 function importReply(diagramId: string, deltas: unknown[]) {
+  const classCount = (deltas as { kind?: string; op?: string }[]).filter(
+    (d) => d.kind === 'class' && d.op === 'create',
+  ).length;
   return {
     deltaId: uuid(),
     batch: batch(diagramId, deltas),
     summary: {
-      classes: 0,
+      classes: classCount,
       associations: 0,
       generalizations: 0,
       realizations: 0,
@@ -308,6 +311,39 @@ describe('ImportXmiButton — server rejection', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('XMI import response did not include batch');
     expect(projectYDocToDiagram(doc).classes).toHaveLength(0);
+  });
+
+  it('muestra un error cuando el archivo XMI no contiene clases en lugar de reportar éxito falso', async () => {
+    const diagramId = uuid();
+    const doc = makeDoc(diagramId);
+    const reply = {
+      deltaId: uuid(),
+      batch: {
+        id: uuid(),
+        diagramId,
+        kind: 'batch' as const,
+        deltas: [],
+        timestamp: new Date().toISOString(),
+      },
+      summary: {
+        classes: 0,
+        associations: 0,
+        generalizations: 0,
+        realizations: 0,
+        dependencies: 0,
+        naryAssociations: 0,
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(reply)));
+
+    const { container } = renderButton(diagramId, doc);
+    await pickFile(container, makeFile('empty.xmi', XMI_TEXT));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('No classes found in XMI file');
+    expect(projectYDocToDiagram(doc).classes).toHaveLength(0);
+    const button = importButton();
+    expect(button.textContent).toBe('Import XMI');
   });
 
   it('applies nothing and explains the rejection when the model rejects one delta of the batch', async () => {

@@ -70,6 +70,16 @@ export function ImportXmiButton({ doc, diagramId, disabled = false }: ImportXmiB
         setState({ phase: 'failed', message });
         return;
       }
+      const hasClasses =
+        (result.summary?.classes ?? 0) > 0 ||
+        result.batch.deltas.some((d) => d.kind === 'class' && d.op === 'create');
+      if (!hasClasses && result.batch.deltas.length === 0) {
+        setState({
+          phase: 'failed',
+          message: tr('xmi.noClassesFound'),
+        });
+        return;
+      }
       // Aplicar el delta de lote atómicamente (especificación 15.6: un lote de deltas atómico).
       // La barrera de esquema de core LANZA ante un lote mal formado (ZodError de
       // DeltaSchema.parse) en lugar de retornar un rechazo del motor, por lo que la

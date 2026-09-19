@@ -146,15 +146,15 @@ function parseXmiDocument(xml: string): XmiModel {
     naryAssociations: [],
   };
 
-  // Detección de diseño: XMI 2.1 real envuelve todo en <xmi:XMI> y almacena el contenido
-  // del modelo como <uml:Model>/<packagedElement>; el fixture manual estilo EA
+  // Detección de diseño: XMI 2.1 real envuelve todo en <xmi:XMI> o <XMI> y almacena el contenido
+  // del modelo como <uml:Model>, <uml:Package> o <packagedElement>; el fixture manual estilo EA
   // utiliza <UML:Model> con hijos UML:Class directos. Se soportan AMBOS.
-  const xmiRoot = parsed?.['xmi:XMI'];
+  const xmiRoot = parsed?.['xmi:XMI'] || parsed?.['XMI'];
   const legacyRoot = xmiRoot ? undefined : (parsed?.['UML:Model'] || parsed?.Model || parsed);
   if (!xmiRoot && !legacyRoot) throw new Error('XMI parse error: no UML:Model root');
 
   const versionSource = xmiRoot ?? legacyRoot;
-  const version = versionSource['@_xmi:version'] || versionSource['@_version'] || '';
+  const version = versionSource['@_xmi:version'] || versionSource['@_version'] || '2.1';
   if (!VERSION_PATTERN.test(version)) {
     throw new Error(`Unsupported XMI version: ${version || 'unknown'}; supported: 2.1`);
   }
@@ -307,17 +307,6 @@ function parseXmiDocument(xml: string): XmiModel {
  * - Se ignora la geometría de diagrama de EA: el diseño en cuadrícula determina las posiciones posteriormente.
  */
 function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
-  const umlModel = xmiRoot?.['uml:Model'];
-
-  // ---- Paso 1: descenso recursivo de paquetes. Recolectar nodos crudos de clase/interfaz,
-  // asociación y realización en orden de documento; uml:Package es transparente
-  // (recorrido recursivo), uml:PrimitiveType se omite como elemento.
-  // uml:AssociationClass se importa con un MAPEO DUAL (política de ronda 3, basada en
-  // evidencia): como una CAJA clasificadora (nodo de clase) Y como el conector que
-  // describen sus memberEnds. La ronda 2 descartó la caja, pero el fixture 3 demuestra
-  // que modelos reales hacen referencia al id de AssociationClass como TIPO de extremo
-  // de asociación (la asociación "hola" tipifica Class5), y una caja faltante haría que
-  // esos extremos queden colgando y desaparezcan silenciosamente al emitir deltas.
   const classNodes: any[] = [];
   // Ascendencia de paquetes por nodo de clase (alineada por índice con classNodes), utilizada por
   // la política de desambiguación de colisiones a continuación.
@@ -326,11 +315,34 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   const realizationNodes: any[] = [];
   const dependencyNodes: any[] = [];
 
+  // Función auxiliar para extraer elementos hijos de un contenedor admitiendo packagedElement,
+  // ownedMember o etiquetas directas de clasificadores UML.
+  const getContainerElements = (cont: any): any[] => {
+    if (!cont) return [];
+    const elements: any[] = [];
+    elements.push(...toArray(cont['packagedElement']));
+    elements.push(...toArray(cont['ownedMember']));
+    elements.push(...toArray(cont['uml:Class']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Class' })));
+    elements.push(...toArray(cont['uml:Interface']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Interface' })));
+    elements.push(...toArray(cont['uml:Package']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Package' })));
+    elements.push(...toArray(cont['uml:Association']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Association' })));
+    elements.push(...toArray(cont['uml:Realization']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Realization' })));
+    elements.push(...toArray(cont['uml:Dependency']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Dependency' })));
+    elements.push(...toArray(cont['Class']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Class' })));
+    elements.push(...toArray(cont['Interface']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Interface' })));
+    elements.push(...toArray(cont['Package']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Package' })));
+    elements.push(...toArray(cont['Association']).map((e: any) => ({ ...e, '@_xmi:type': 'uml:Association' })));
+    return elements;
+  };
+
   const walkPackaged = (container: any, chain: string[]) => {
-    for (const el of toArray(container?.['packagedElement'])) {
-      const type = el['@_xmi:type'];
+    for (const el of getContainerElements(container)) {
+      let type = el['@_xmi:type'] || el['@_xsi:type'] || el['@_type'] || '';
+      if (type && !type.includes(':')) {
+        type = `uml:${type}`;
+      }
       if (type === 'uml:Package') {
-        walkPackaged(el, [...chain, el['@_name'] || '']);
+        walkPackaged(el, [...chain, el['@_name'] || el['name'] || '']);
       } else if (type === 'uml:Class' || type === 'uml:Interface') {
         classNodes.push(el);
         classNodeChains.push(chain);
@@ -351,21 +363,45 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       // xmi:Extension es tolerado, nunca importado).
     }
   };
-  walkPackaged(umlModel, []);
+
+  // Recolectar todos los contenedores raíz posibles: <uml:Model>, <uml:Package>, <Model>, <Package>,
+  // o el propio xmiRoot si contiene elementos empaquetados directamente.
+  const rootContainers: any[] = [];
+  const candidateKeys = ['uml:Model', 'uml:Package', 'Model', 'Package', 'packagedElement', 'ownedMember'];
+  for (const key of candidateKeys) {
+    const val = xmiRoot?.[key];
+    if (val !== undefined) {
+      if (key === 'packagedElement' || key === 'ownedMember') {
+        rootContainers.push(xmiRoot);
+      } else {
+        rootContainers.push(...toArray(val));
+      }
+    }
+  }
+  if (rootContainers.length === 0 && xmiRoot) {
+    rootContainers.push(xmiRoot);
+  }
+  for (const container of rootContainers) {
+    walkPackaged(container, []);
+  }
 
   // ---- Índice id→nombre (clases del modelo + primitivas ÚNICAMENTE de
   // xmi:Extension/primitivetypes) utilizado para resolver `<type xmi:idref>`.
   const nameIndex = new Map<string, string>();
   for (const c of classNodes) {
-    if (c['@_xmi:id'] && c['@_name']) nameIndex.set(c['@_xmi:id'], c['@_name']);
+    const cid = c['@_xmi:id'] || c['@_id'];
+    const cname = c['@_name'] || c['name'];
+    if (cid && cname) nameIndex.set(cid, cname);
   }
   const indexPrimitiveTypes = (container: any) => {
-    for (const el of toArray(container?.['packagedElement'])) {
-      if (el['@_xmi:id'] && el['@_name']) nameIndex.set(el['@_xmi:id'], el['@_name']);
+    for (const el of getContainerElements(container)) {
+      const eid = el['@_xmi:id'] || el['@_id'];
+      const ename = el['@_name'] || el['name'];
+      if (eid && ename) nameIndex.set(eid, ename);
       indexPrimitiveTypes(el); // paquetes de tipos primitivos anidados
     }
   };
-  indexPrimitiveTypes(xmiRoot?.['xmi:Extension']?.['primitivetypes']);
+  indexPrimitiveTypes(xmiRoot?.['xmi:Extension']?.['primitivetypes'] ?? xmiRoot?.['Extension']?.['primitivetypes']);
 
   const resolveType = (idref: string | undefined): string | undefined =>
     idref ? (nameIndex.get(idref) ?? idref) : undefined;
@@ -395,12 +431,12 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   }
 
   for (const el of classNodes) {
-    const id = el['@_xmi:id'] || randomUUID();
+    const id = el['@_xmi:id'] || el['@_id'] || randomUUID();
     const classAttrs: XmiModel['classes'][number]['attributes'] = [];
     const classMethods: XmiModel['classes'][number]['methods'] = [];
 
-    for (const attr of toArray(el['ownedAttribute'])) {
-      const attrId = attr['@_xmi:id'];
+    for (const attr of toArray(el['ownedAttribute'] ?? el['UML:Attribute'] ?? el['attribute'])) {
+      const attrId = attr['@_xmi:id'] || attr['@_id'];
       // Registrar CADA propiedad de extremo (extremos de asociación reflejados incluidos) en
       // el índice para que las asociaciones puedan resolverlos posteriormente.
       if (attrId) propertyIndex.set(attrId, readProp(attr));
@@ -413,7 +449,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       if (isRelationEnd) continue;
 
       // XMI 2.1 almacena el tipo de la característica como referencia hija, no como atributo.
-      const typeId = resolveType(attr['type']?.['@_xmi:idref']);
+      const typeId = resolveType(attr['type']?.['@_xmi:idref'] || attr['type']?.['@_idref'] || attr['@_type'] || attr['type']);
       // LiteralIntegers lower/upper → cadena de multiplicidad UML (1/1 → "1").
       const lower = attr['lowerValue']?.['@_value'];
       const upper = attr['upperValue']?.['@_value'];
@@ -425,8 +461,8 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       }
 
       classAttrs.push({
-        name: attr['@_name'] || '',
-        type: typeId || attr['@_type'] || 'String',
+        name: attr['@_name'] || attr['name'] || '',
+        type: typeId || attr['@_type'] || attr['type'] || 'String',
         visibility: attr['@_visibility'] || '+',
         isStatic: attr['@_isStatic'] === 'true',
         isDerived: attr['@_isDerived'] === 'true',
@@ -438,19 +474,13 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     // son hijos `ownedParameter` cuyo tipo es un idref de ATRIBUTO (type="EAJava_int"),
     // y el "parámetro" de retorno (direction="return") es el returnType — nunca debe filtrarse
     // a la lista de parámetros.
-    //
-    // POLÍTICA DE RETORNO MÚLTIPLE (evidencia test4: Orden.test() declara DOS parámetros
-    // direction="return", lo cual UML prohíbe — un error de modelo del usuario que EA persiste
-    // de todos modos): el parámetro LLAMADO "return" prevalece como returnType; si ninguno se
-    // llama "return", prevalece el PRIMER parámetro direction="return"; todo parámetro adicional
-    // de retorno se ignora (nunca se promueve a parámetro de entrada).
-    for (const op of toArray(el['ownedOperation'])) {
+    for (const op of toArray(el['ownedOperation'] ?? el['UML:Operation'] ?? el['operation'])) {
       let namedReturnType: string | undefined;
       let firstReturnType: string | undefined;
       const parameters: Array<{ name: string; type: string }> = [];
-      for (const p of toArray(op['ownedParameter'])) {
+      for (const p of toArray(op['ownedParameter'] ?? op['UML:Parameter'] ?? op['parameter'])) {
         // El idref de tipo se encuentra aquí en el atributo @_type (no es un hijo <type>).
-        const resolved = resolveType(p['@_type']);
+        const resolved = resolveType(p['@_type'] || p['type']);
         if (p['@_direction'] === 'return') {
           if (p['@_name'] === 'return') {
             if (namedReturnType === undefined && resolved) namedReturnType = resolved;
@@ -459,13 +489,13 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
           }
           continue;
         }
-        if (p['@_name'] && resolved) {
-          parameters.push({ name: p['@_name'], type: resolved });
+        if ((p['@_name'] || p['name']) && resolved) {
+          parameters.push({ name: p['@_name'] || p['name'], type: resolved });
         }
       }
       const returnType = namedReturnType ?? firstReturnType ?? 'void';
       classMethods.push({
-        name: op['@_name'] || '',
+        name: op['@_name'] || op['name'] || '',
         returnType,
         visibility: op['@_visibility'] || '+',
         isStatic: op['@_isStatic'] === 'true',
@@ -473,11 +503,12 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       });
     }
 
+    const rawElType = el['@_xmi:type'] || el['@_xsi:type'] || el['@_type'] || '';
+    const isInterface = rawElType === 'uml:Interface' || rawElType === 'Interface';
     model.classes.push({
       id,
-      name: el['@_name'] || 'Unnamed',
-      // El kind del motor se transporta mediante xmi:type, nunca por el nombre de la etiqueta.
-      kind: el['@_xmi:type'] === 'uml:Interface' ? 'interface' : 'class',
+      name: el['@_name'] || el['name'] || 'Unnamed',
+      kind: isInterface ? 'interface' : 'class',
       isAbstract: el['@_isAbstract'] === 'true',
       attributes: classAttrs,
       methods: classMethods,

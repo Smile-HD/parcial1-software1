@@ -213,9 +213,33 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
   lines.push(`  </uml:Model>`);
 
+  // ── Extensión nativa de Enterprise Architect (renderizado directo del diagrama) ──
+  // Permite que EA cree automáticamente el objeto de diagrama Class en el árbol
+  // y posicione todas las clases visualmente en las coordenadas correspondientes.
+  lines.push(`  <xmi:Extension extender="Enterprise Architect" extenderID="6.5">`);
+  lines.push(`    <elements/>`);
+  lines.push(`    <diagrams>`);
+  lines.push(`      <diagram xmi:id="EAID_${diagram.id.replace(/-/g, '_')}">`);
+  lines.push(`        <model package="${diagram.id}" owner="${diagram.id}"/>`);
+  lines.push(`        <properties name="${esc(diagram.name)}" type="Logical"/>`);
+  lines.push(`        <project author="UMLDesignTool" version="1.0" created="${now}" modified="${now}"/>`);
+  lines.push(`        <elements>`);
+  for (let i = 0; i < diagram.classes.length; i++) {
+    const cls = diagram.classes[i];
+    const left = Math.round(cls.position.x);
+    const top = Math.round(cls.position.y);
+    const right = left + 120;
+    const bottom = top + 80;
+    const duid = cls.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
+    lines.push(`          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${cls.id}" seqno="${i + 1}" style="DUID=${duid};"/>`);
+  }
+  lines.push(`        </elements>`);
+  lines.push(`      </diagram>`);
+  lines.push(`    </diagrams>`);
+  lines.push(`  </xmi:Extension>`);
+
   // ── Extensión de diseño (posiciones en el lienzo) ─────────────────────────
-  // Esto NO es UML estándar pero preserva las posiciones de round-trip. El
-  // importador recurre al auto-diseño en cuadrícula cuando este bloque está ausente.
+  // Preserva las posiciones de round-trip para el propio importador de la herramienta.
   lines.push(`  <xmi:Extension extender="UMLDesignTool">`);
   lines.push(`    <layout diagramId="${diagram.id}">`);
   for (const cls of diagram.classes) {

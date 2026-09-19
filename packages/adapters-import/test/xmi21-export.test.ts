@@ -535,4 +535,27 @@ describe('XMI 2.1 Exporter', () => {
       }
     });
   });
+
+  describe('Extensión nativa de Enterprise Architect (15b.7)', () => {
+    it('emite el bloque de extensión de Enterprise Architect con diagramas y geometría de elementos', () => {
+      const diagram = goldenDiagram();
+      const xmi = exportDiagramToXmi(diagram);
+
+      // Verifica que exista la extensión con extender="Enterprise Architect"
+      expect(xmi).toContain('<xmi:Extension extender="Enterprise Architect" extenderID="6.5">');
+      expect(xmi).toContain('<diagrams>');
+      expect(xmi).toContain(`<properties name="${diagram.name}" type="Logical"/>`);
+
+      // Verifica que cada clase tenga su elemento con coordenadas Left, Top, Right, Bottom y subject
+      for (const cls of diagram.classes) {
+        const expectedSubject = `subject="${cls.id}"`;
+        expect(xmi).toContain(expectedSubject);
+        const expectedLeft = `Left=${Math.round(cls.position.x)}`;
+        const expectedTop = `Top=${Math.round(cls.position.y)}`;
+        expect(xmi).toContain(expectedLeft);
+        expect(xmi).toContain(expectedTop);
+      }
+    });
+  });
 });
+
