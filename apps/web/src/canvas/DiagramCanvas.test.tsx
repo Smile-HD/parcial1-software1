@@ -3439,6 +3439,40 @@ describe('transmisión colaborativa de arrastre en tiempo real (60/120 FPS)', ()
     const moved = projectedB.classes.find((c) => c.id === classId);
     expect(moved?.position).toEqual({ x: 320, y: 480 });
   });
+
+  it('emite actualizaciones de arrastre en vuelo con origin local-drag para proteger el render local', () => {
+    const classId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'CollabDiagram',
+      classes: [
+        { id: classId, name: 'LiveClass', position: { x: 50, y: 50 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    });
+
+    const doc = buildYDocFromDiagram(diagram);
+    let capturedOrigin: unknown = undefined;
+    doc.on('update', (_update, origin) => {
+      capturedOrigin = origin;
+    });
+
+    handleNodeDragStop(
+      doc,
+      diagram.id,
+      {
+        id: classId,
+        position: { x: 200, y: 250 },
+      },
+      'local-drag',
+    );
+
+    expect(capturedOrigin).toBe('local-drag');
+  });
 });
 
 

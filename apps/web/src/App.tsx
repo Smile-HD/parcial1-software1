@@ -36,6 +36,7 @@ import { transcribeAudio } from './api/voiceApi';
 import { applyDeltaToYDoc } from './canvas/applyDeltaToYDoc';
 import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
+import { CanvasErrorBoundary } from './canvas/CanvasErrorBoundary';
 import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
 import { PresenceBar } from './canvas/PresenceBar';
 import { LanguageToggle, t, useT } from './i18n';
@@ -477,7 +478,9 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             />
           )}
           <div className="app-canvas">
-            <DiagramCanvas doc={doc} />
+            <CanvasErrorBoundary>
+              <DiagramCanvas doc={doc} />
+            </CanvasErrorBoundary>
           </div>
         </>
       )}

@@ -38,7 +38,7 @@ const Y_META = 'meta';
  * que `applyDelta` — quienes llamen a esta función DEBEN verificar `isApplyError(result)` antes de usar
  * `result.diagram`.
  */
-export function applyDeltaToYDoc(doc: Y.Doc, delta: Delta): ApplyResult<Diagram> {
+export function applyDeltaToYDoc(doc: Y.Doc, delta: Delta, origin: unknown = null): ApplyResult<Diagram> {
   const current = projectYDocToDiagram(doc);
   const result = applyDelta(current, delta);
 
@@ -64,7 +64,7 @@ export function applyDeltaToYDoc(doc: Y.Doc, delta: Delta): ApplyResult<Diagram>
           yClass.set('position', newYPos);
         }
       }
-    });
+    }, origin);
     return result;
   }
 

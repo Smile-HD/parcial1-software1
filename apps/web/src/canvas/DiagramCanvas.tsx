@@ -86,6 +86,7 @@ export function handleNodeDragStop(
   doc: Y.Doc,
   diagramId: string,
   node: { id: string; position: { x: number; y: number } },
+  origin: unknown = null,
 ): void {
   const delta: ClassDelta = {
     kind: 'class',
@@ -96,7 +97,7 @@ export function handleNodeDragStop(
     classId: node.id,
     newPosition: node.position,
   };
-  applyDeltaToYDoc(doc, delta);
+  applyDeltaToYDoc(doc, delta, origin);
 }
 
 /** editor:R4 - enlace entre dos clases existentes; las multiplicidades son editables por extremo. */
@@ -870,7 +871,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [quickLinkMenu, setQuickLinkMenu] = useState<QuickLinkerMenuState | null>(null);
 
   useEffect(() => {
-    const sync = (): void => {
+    const sync = (_update: Uint8Array, origin: unknown): void => {
+      // El usuario local ya arrastra suavemente a 60/120 FPS mediante displayNodes y onNodesChange de React Flow.
+      // Ignorar el evento local para evitar re-renders en bucle, conflicto con gestos y sobrecarga de estado.
+      // Los pares remotos conectados por WebSocket sí procesan la actualización (su origin es el WebsocketProvider).
+      if (origin === 'local-drag') {
+        return;
+      }
       setDiagram(projectYDocToDiagram(doc));
     };
     doc.on('update', sync);
@@ -1412,7 +1419,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           dragRafRef.current = null;
           const current = activeDragNodeRef.current;
           if (current) {
-            handleNodeDragStop(doc, diagram.id, current);
+            handleNodeDragStop(doc, diagram.id, current, 'local-drag');
           }
         });
       }
