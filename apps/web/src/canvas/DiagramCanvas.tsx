@@ -2095,8 +2095,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         snapGrid={[20, 20]}
         fitView
       >
-        {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos detrás de los elementos. */}
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#c9c9c9" />
+        {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos nítidos detrás de los elementos. */}
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="#94a3b8" />
         {/* Límite visual del lienzo: hoja de diagrama con bordes definidos y sombreado exterior */}
         <ViewportPortal>
           <div

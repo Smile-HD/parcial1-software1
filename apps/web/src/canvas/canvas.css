@@ -674,14 +674,14 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --ea-ink: #1a1a2e;
-  --ea-border: #8a8a6a;
-  --ea-rule: #b3b39c;
-  --ea-fill-top: #fffdf4;
-  --ea-fill-bottom: #fff8e1;
-  --ea-select: #1e6fbf;
-  --ea-chrome: #f3f3f1;
-  --ea-chrome-border: #c8c8c4;
+  --ea-ink: #0f172a;
+  --ea-border: #1e293b;
+  --ea-rule: #cbd5e1;
+  --ea-fill-top: #ffffff;
+  --ea-fill-bottom: #f8fafc;
+  --ea-select: #2563eb;
+  --ea-chrome: #f1f5f9;
+  --ea-chrome-border: #cbd5e1;
   --ea-font: 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -689,24 +689,28 @@
 
 .uml-class {
   background: linear-gradient(180deg, var(--ea-fill-top) 0%, var(--ea-fill-bottom) 100%);
-  border: 1px solid var(--ea-border);
-  border-radius: 2px;
+  border: 1.5px solid var(--ea-border);
+  border-radius: 4px;
   font-family: var(--ea-font);
   font-size: 12px;
   color: var(--ea-ink);
   min-width: 170px;
-  box-shadow: 1px 2px 4px rgba(60, 60, 40, 0.18);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.08);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* selected = EA blue 2px border + soft glow (modifier set in ClassNode). */
 .uml-class--selected {
   border: 2px solid var(--ea-select);
-  box-shadow: 0 0 0 1px rgba(30, 111, 191, 0.25), 0 2px 8px rgba(30, 111, 191, 0.3);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25), 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
-/* interface keeps the 12a dashed border, same cream fill. */
+/* interface keeps the 12a dashed border, crisp blue-accented gradient fill. */
 .uml-class--interface {
-  border-style: dashed;
+  border: 1.5px dashed #0284c7;
+  background: linear-gradient(180deg, #ffffff 0%, #f0f9ff 100%);
 }
 
 /* The EA signature folded-corner tab (top-right dog-ear). Decorative. */
@@ -720,10 +724,10 @@
   z-index: 4;
   background: linear-gradient(
     225deg,
-    #f7f7f4 0%,
-    #f7f7f4 50%,
-    #ded6b6 50%,
-    #cfc6a2 100%
+    #ffffff 0%,
+    #ffffff 50%,
+    #cbd5e1 50%,
+    #94a3b8 100%
   );
   border-bottom-left-radius: 3px;
 }
@@ -737,7 +741,8 @@
 .uml-class__compartment--name {
   border-top: none;
   text-align: center;
-  padding: 4px 8px 5px;
+  padding: 5px 8px 6px;
+  background: rgba(241, 245, 249, 0.65);
 }
 
 .uml-class__compartment--attributes,
@@ -756,13 +761,14 @@
 
 .uml-class__name {
   font-weight: 700;
+  color: var(--ea-ink);
 }
 
 .uml-class__stereotype {
-  font-weight: 400;
+  font-weight: 600;
   font-style: italic;
   font-size: 10.5px;
-  color: #55554a;
+  color: #475569;
   line-height: 1.2;
 }
 
@@ -787,35 +793,36 @@
 
 .uml-class__member-text {
   color: var(--ea-ink);
+  font-weight: 500;
 }
 
 /* In-node add rows: quiet editing affordances inside their compartment. */
 .uml-class__add {
   padding: 3px 8px 5px;
   gap: 3px;
-  border-top: 1px dotted #d5d0ba;
+  border-top: 1px dotted #cbd5e1;
 }
 
 .uml-class__add-input {
   font-size: 10.5px;
-  border-color: #c5c5b5;
-  background: #fffef9;
+  border-color: #cbd5e1;
+  background: #ffffff;
 }
 
 .uml-class__add-button {
   border: 1px solid var(--ea-border);
-  background: #f7f4e6;
+  background: #f1f5f9;
   font-size: 11px;
 }
 
 .uml-class__add-button:hover {
-  background: #efe9d2;
+  background: #e2e8f0;
 }
 
 .uml-class__delete,
 .uml-class__edit-button,
 .uml-class__remove {
-  color: #6b6b58;
+  color: #64748b;
 }
 
 .uml-class__delete:hover,
@@ -828,7 +835,7 @@
 .react-flow__handle {
   width: 7px;
   height: 7px;
-  background: #7f7f7f;
+  background: #64748b;
   border: 1px solid #fff;
 }
 
@@ -836,10 +843,19 @@
 
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--ea-select);
+  stroke-width: 2.2px;
 }
 
 .react-flow__edge .react-flow__edge-path {
   stroke-linejoin: round;
+  stroke: #1e293b;
+  stroke-width: 1.8px;
+}
+
+.react-flow__edge text {
+  font-family: var(--ea-font);
+  font-weight: 600;
+  fill: #0f172a;
 }
 
 /* ── docked toolbox (Palette.tsx) ────────────────────────────────────────── */
@@ -1103,9 +1119,9 @@
   min-height: 0;
 }
 
-/* Canvas surface: EA light paper with the dot grid from <Background>. */
+/* Canvas surface: Crisp light paper with sharp dots */
 .react-flow {
-  background: #fafaf6;
+  background: #f8fafc;
   font-family: var(--ea-font);
 }
 
@@ -1340,10 +1356,10 @@ body {
   top: 0;
   left: 0;
   pointer-events: none;
-  border: 2px dashed #94a3b8;
+  border: 2px dashed #64748b;
   border-radius: 4px;
-  background-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 0 10000px rgba(226, 232, 240, 0.65), 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+  background-color: #ffffff;
+  box-shadow: 0 0 0 10000px rgba(226, 232, 240, 0.75), 0 10px 30px -5px rgba(0, 0, 0, 0.12);
   z-index: 0;
   box-sizing: border-box;
 }
@@ -1353,24 +1369,25 @@ body {
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
-  background: rgba(241, 245, 249, 0.9);
-  border-right: 1px dashed #94a3b8;
-  border-bottom: 1px dashed #94a3b8;
+  background: #f1f5f9;
+  border-right: 1.5px dashed #64748b;
+  border-bottom: 1.5px dashed #64748b;
   border-bottom-right-radius: 6px;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--ea-font);
   font-size: 11px;
-  color: #64748b;
+  color: #475569;
   user-select: none;
 }
 
 .diagram-canvas-boundary__title {
-  font-weight: 600;
-  color: #334155;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .diagram-canvas-boundary__dimensions {
   font-size: 10px;
-  color: #94a3b8;
+  color: #64748b;
+  font-weight: 500;
 }
 
 /* ── Modales y Cuadros de Diálogo Superpuestos (Diseño Unificado y Responsivo) ── */
