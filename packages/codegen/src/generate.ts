@@ -541,8 +541,21 @@ function mapFieldsForClass(
   cls: Class,
   warnings: CodegenWarning[],
 ): EntityFieldModel[] {
-  const usedFieldNames = new Set<string>();
-  return cls.attributes.map((a) => mapField(cls, a, warnings, usedFieldNames));
+  const usedFieldNames = new Set<string>(['id']);
+  const fields: EntityFieldModel[] = [];
+  for (const a of cls.attributes) {
+    const candidateName = normalizeJavaIdentifier(a.name, 'camel');
+    if (candidateName === 'id') {
+      warnings.push({
+        code: 'id-attribute-primary-key',
+        message: `Attribute "${a.name}" on ${cls.name} coincides with the synthetic JPA primary key; mapped to @Id Long id`,
+        element: `${cls.name}.${a.name}`,
+      });
+      continue;
+    }
+    fields.push(mapField(cls, a, warnings, usedFieldNames));
+  }
+  return fields;
 }
 
 function mapField(

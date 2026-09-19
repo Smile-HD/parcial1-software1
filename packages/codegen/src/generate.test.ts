@@ -265,6 +265,21 @@ describe('robust identifier normalization during generation', () => {
 
     expect(() => generate(d, { outputRoot: ROOT })).toThrow(NameSanitizerError);
   });
+
+  it('maps explicit id attribute to synthetic JPA primary key without duplicate field', () => {
+    const d = diagram([
+      cls(ID.product, 'Category', [
+        attr(ID.attrName, 'id', 'String'),
+        attr(ID.attrPrice, 'name', 'String'),
+      ]),
+    ]);
+
+    const result = generate(d, { outputRoot: ROOT });
+    const entity = entityOf(result.files, 'Category');
+    expect(entity.fields.find((f) => f.name === 'id')).toBeUndefined();
+    expect(entity.fields.find((f) => f.name === 'name')).toBeDefined();
+    expect(result.warnings.some((w) => w.code === 'id-attribute-primary-key')).toBe(true);
+  });
 });
 
 // ---------- unit 14c: UML 2.5.1 semantic mappings (task 14.5) ----------
