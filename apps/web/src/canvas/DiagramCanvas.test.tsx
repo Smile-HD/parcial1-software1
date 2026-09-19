@@ -3309,3 +3309,59 @@ describe('unit 13d — clicking empty canvas deselects (fix D)', () => {
     expect(screen.queryByTestId('nary-editor')).toBeNull();
   });
 });
+
+describe('límite visible del lienzo (diagram-canvas-boundary)', () => {
+  it('renderiza la hoja delimitadora del lienzo con dimensiones estándar', async () => {
+    const doc = buildYDocFromDiagram(DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'EmptyDiagram',
+      classes: [],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    }));
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const boundary = await waitFor(() => {
+      const el = container.querySelector('[data-testid="diagram-canvas-boundary"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+
+    expect(boundary.classList.contains('diagram-canvas-boundary')).toBe(true);
+    expect(boundary.style.width).toBe('3200px');
+    expect(boundary.style.height).toBe('2200px');
+  });
+
+  it('expande los límites de la hoja cuando hay clases fuera del margen estándar', async () => {
+    const aId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'OuterDiagram',
+      classes: [
+        { id: aId, name: 'FarClass', position: { x: 3500, y: 2500 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    const boundary = await waitFor(() => {
+      const el = container.querySelector('[data-testid="diagram-canvas-boundary"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+
+    // Ancho expandido para incluir la posición 3500 + 360 = 3860
+    expect(parseInt(boundary.style.width, 10)).toBeGreaterThanOrEqual(3860);
+    // Alto expandido para incluir la posición 2500 + 260 = 2760
+    expect(parseInt(boundary.style.height, 10)).toBeGreaterThanOrEqual(2760);
+  });
+});
+

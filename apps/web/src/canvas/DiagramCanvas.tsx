@@ -6,7 +6,7 @@
  * Ninguna mutación evade applyDelta (ver applyDeltaToYDoc).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { ReactFlow, Background, BackgroundVariant, type Connection, type Edge, type ReactFlowInstance, MarkerType } from '@xyflow/react';
+import { ReactFlow, Background, BackgroundVariant, ViewportPortal, type Connection, type Edge, type ReactFlowInstance, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
@@ -877,6 +877,30 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       doc.off('update', sync);
     };
   }, [doc]);
+
+  // Límite visual de página/lienzo estilo Enterprise Architect (área de trabajo delimitada):
+  // Garantiza al menos una hoja estándar (3200 x 2200 px), expandiéndose suavemente si existen
+  // elementos situados más allá de estos márgenes.
+  const canvasBoundary = useMemo(() => {
+    let minX = 0;
+    let minY = 0;
+    let maxX = 3200;
+    let maxY = 2200;
+
+    for (const cls of diagram.classes) {
+      if (cls.position.x - 100 < minX) minX = Math.floor((cls.position.x - 100) / 20) * 20;
+      if (cls.position.y - 100 < minY) minY = Math.floor((cls.position.y - 100) / 20) * 20;
+      if (cls.position.x + 360 > maxX) maxX = Math.ceil((cls.position.x + 360) / 20) * 20;
+      if (cls.position.y + 260 > maxY) maxY = Math.ceil((cls.position.y + 260) / 20) * 20;
+    }
+
+    return {
+      left: minX,
+      top: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }, [diagram.classes]);
 
   /** unidad 13b — permitir soltar elementos de la paleta sobre el lienzo. */
   const onDragOver = useCallback((event: DragEvent): void => {
@@ -2059,6 +2083,27 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       >
         {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos detrás de los elementos. */}
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#c9c9c9" />
+        {/* Límite visual del lienzo: hoja de diagrama con bordes definidos y sombreado exterior */}
+        <ViewportPortal>
+          <div
+            className="diagram-canvas-boundary"
+            data-testid="diagram-canvas-boundary"
+            style={{
+              transform: `translate(${canvasBoundary.left}px, ${canvasBoundary.top}px)`,
+              width: `${canvasBoundary.width}px`,
+              height: `${canvasBoundary.height}px`,
+            }}
+          >
+            <div className="diagram-canvas-boundary__header">
+              <span className="diagram-canvas-boundary__title">
+                {diagram.name || tr('canvas.pageBoundary')}
+              </span>
+              <span className="diagram-canvas-boundary__dimensions">
+                {canvasBoundary.width} × {canvasBoundary.height} px
+              </span>
+            </div>
+          </div>
+        </ViewportPortal>
       </ReactFlow>
       {/* unidad 13d — banda elástica de Quick Linker: una delgada línea discontinua desde la
           flecha de la esquina hasta el cursor en vivo mientras corre el arrastre de enlace rápido. */}

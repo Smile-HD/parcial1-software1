@@ -657,6 +657,16 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
 }
 
 function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
+  // Promover clasificadores destino de una realización a tipo 'interface'
+  // para que el motor aplique la realización sin fallar con RealizationTargetNotInterfaceError.
+  const realizationSuppliers = new Set(model.realizations.map(r => r.supplierId));
+  for (const c of model.classes) {
+    if (realizationSuppliers.has(c.id) && c.kind === 'class') {
+      c.kind = 'interface';
+      c.isAbstract = true;
+    }
+  }
+
   // Construir remapeo de id XMI → UUID para todas las clases
   const classIdMap = new Map<string, string>();
   for (const c of model.classes) {
@@ -707,8 +717,22 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       } as ClassDelta);
     }
 
+    // Invariante de nombres únicos de miembros por clase (el motor core rechaza nombres duplicados
+    // entre atributos y métodos de una misma clase con DuplicateMemberError).
+    const usedMemberNames = new Set<string>();
+
     // Atributos
     for (const attr of c.attributes) {
+      let attrName = attr.name;
+      if (usedMemberNames.has(attrName)) {
+        let counter = 2;
+        while (usedMemberNames.has(`${attrName}_${counter}`)) {
+          counter++;
+        }
+        attrName = `${attrName}_${counter}`;
+      }
+      usedMemberNames.add(attrName);
+
       deltas.push({
         kind: 'member',
         id: randomUUID(),
@@ -717,7 +741,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
         op: 'addAttribute',
         classId: uuid,
         memberId: randomUUID(),
-        name: attr.name,
+        name: attrName,
         type: attr.type,
         visibility: normalizeVisibility(attr.visibility),
         ...(attr.isStatic !== undefined ? { isStatic: attr.isStatic } : {}),
@@ -726,8 +750,18 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       } as MemberDelta);
     }
 
-    // Métodos
+    // Métodos (métodos sobrecargados en XMI se diferencian para cumplir con la invariante de unicidad de core)
     for (const method of c.methods) {
+      let methodName = method.name;
+      if (usedMemberNames.has(methodName)) {
+        let counter = 2;
+        while (usedMemberNames.has(`${methodName}_${counter}`)) {
+          counter++;
+        }
+        methodName = `${methodName}_${counter}`;
+      }
+      usedMemberNames.add(methodName);
+
       deltas.push({
         kind: 'member',
         id: randomUUID(),
@@ -736,7 +770,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
         op: 'addMethod',
         classId: uuid,
         memberId: randomUUID(),
-        name: method.name,
+        name: methodName,
         returnType: method.returnType,
         parameters: method.parameters,
         visibility: normalizeVisibility(method.visibility),
@@ -769,15 +803,21 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       ...(a.targetMultiplicity !== undefined ? { targetMultiplicity: a.targetMultiplicity } : {}),
       aggregation: a.aggregation,
       aggregationEnd: a.aggregationEnd,
-      directed: true,
+      directed: false,
     } as AssociationDelta);
   }
 
   // Generalizaciones
+  const seenGeneralizations = new Set<string>();
   for (const g of model.generalizations) {
     const subUuid = classIdMap.get(g.subClassId);
     const superUuid = classIdMap.get(g.superClassId);
-    if (!subUuid || !superUuid) continue;
+    // Omitir aristas no resolubles, auto-bucles (sub === super) o duplicados exactos
+    if (!subUuid || !superUuid || subUuid === superUuid) continue;
+    const key = `${subUuid}->${superUuid}`;
+    if (seenGeneralizations.has(key)) continue;
+    seenGeneralizations.add(key);
+
     deltas.push({
       kind: 'generalization',
       id: randomUUID(),
@@ -787,14 +827,20 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       generalizationId: randomUUID(),
       subClassId: subUuid,
       superClassId: superUuid,
+      ...(g.name !== undefined ? { name: g.name } : {}),
     } as GeneralizationDelta);
   }
 
   // Realizaciones
+  const seenRealizations = new Set<string>();
   for (const r of model.realizations) {
     const clientUuid = classIdMap.get(r.clientId);
     const supplierUuid = classIdMap.get(r.supplierId);
-    if (!clientUuid || !supplierUuid) continue;
+    if (!clientUuid || !supplierUuid || clientUuid === supplierUuid) continue;
+    const key = `${clientUuid}->${supplierUuid}`;
+    if (seenRealizations.has(key)) continue;
+    seenRealizations.add(key);
+
     deltas.push({
       kind: 'realization',
       id: randomUUID(),
@@ -808,10 +854,15 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
   }
 
   // Dependencias
+  const seenDependencies = new Set<string>();
   for (const d of model.dependencies) {
     const clientUuid = classIdMap.get(d.clientId);
     const supplierUuid = classIdMap.get(d.supplierId);
     if (!clientUuid || !supplierUuid) continue;
+    const key = `${clientUuid}->${supplierUuid}`;
+    if (seenDependencies.has(key)) continue;
+    seenDependencies.add(key);
+
     deltas.push({
       kind: 'dependency',
       id: randomUUID(),

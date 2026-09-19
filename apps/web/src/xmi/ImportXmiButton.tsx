@@ -16,6 +16,8 @@
  */
 import { useCallback, useRef, useState } from 'react';
 
+import { projectYDocToDiagram } from '@app/core';
+
 import { DiagramApiError } from '../api/diagramApi';
 import { importXmi, type XmiImportSummary } from '../api/xmiApi';
 import { applyDeltaToYDoc } from '../canvas/applyDeltaToYDoc';
@@ -80,6 +82,24 @@ export function ImportXmiButton({ doc, diagramId, disabled = false }: ImportXmiB
         });
         return;
       }
+      // Desambiguar nombres de clases con las que ya existan en el diagrama del lienzo para evitar DuplicateClassError
+      const currentDiagram = projectYDocToDiagram(doc);
+      const existingNames = new Set(currentDiagram.classes.map((c) => c.name));
+      if (existingNames.size > 0) {
+        for (const delta of result.batch.deltas) {
+          if (delta.kind === 'class' && delta.op === 'create' && existingNames.has(delta.name)) {
+            let counter = 2;
+            let candidate = `${delta.name} (${counter})`;
+            while (existingNames.has(candidate)) {
+              counter++;
+              candidate = `${delta.name} (${counter})`;
+            }
+            existingNames.add(candidate);
+            delta.name = candidate;
+          }
+        }
+      }
+
       // Aplicar el delta de lote atómicamente (especificación 15.6: un lote de deltas atómico).
       // La barrera de esquema de core LANZA ante un lote mal formado (ZodError de
       // DeltaSchema.parse) en lugar de retornar un rechazo del motor, por lo que la

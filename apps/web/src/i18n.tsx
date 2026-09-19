@@ -147,6 +147,7 @@ const EN = {
   'canvas.directed': 'Directed',
   'canvas.selectTarget': 'Select target class',
   'canvas.edgeToolHint': '{tool} tool armed — drag from a source node to a target node. Press Esc to cancel.',
+  'canvas.pageBoundary': 'Diagram Page',
 
   // Panel de selección N-aria.
   'nary.panelTitle': 'N-ary association — {n} of 3+ classes selected',
@@ -379,6 +380,7 @@ const ES: Record<TKey, string> = {
   'canvas.directed': 'Dirigida',
   'canvas.selectTarget': 'Seleccione la clase de destino',
   'canvas.edgeToolHint': 'Herramienta {tool} activa — arrastre desde un nodo de origen hasta un nodo de destino. Pulse Esc para cancelar.',
+  'canvas.pageBoundary': 'Hoja del Diagrama',
 
   'nary.panelTitle': 'Asociación n-aria — {n} de 3 o más clases seleccionadas',
   'nary.multiplicityFor': 'Multiplicidad de {name}',

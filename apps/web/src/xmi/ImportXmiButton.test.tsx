@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildYDocFromDiagram, projectYDocToDiagram } from '@app/core';
 
+import { applyDeltaToYDoc } from '../canvas/applyDeltaToYDoc';
 import { ImportXmiButton } from './ImportXmiButton';
 
 /**
@@ -392,6 +393,27 @@ describe('ImportXmiButton — server rejection', () => {
     expect(projectYDocToDiagram(doc).classes).toHaveLength(0);
     const button = importButton();
     expect(button.disabled).toBe(false);
+  });
+
+  it('desambigua nombres de clases que ya existen en el lienzo para prevenir DuplicateClassError', async () => {
+    const diagramId = uuid();
+    const doc = makeDoc(diagramId);
+    // El lienzo ya posee una clase llamada "Customer"
+    applyDeltaToYDoc(doc, classCreate(diagramId, uuid(), 'Customer', 0));
+    expect(projectYDocToDiagram(doc).classes).toHaveLength(1);
+
+    // El archivo XMI entrante contiene también una clase llamada "Customer"
+    const reply = importReply(diagramId, [classCreate(diagramId, uuid(), 'Customer', 100)]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(reply)));
+
+    const { container } = renderButton(diagramId, doc);
+    await pickFile(container, makeFile('model.xmi', XMI_TEXT));
+
+    expect(await screen.findByText('Imported')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    const classNames = projectYDocToDiagram(doc).classes.map((c) => c.name);
+    expect(classNames).toEqual(expect.arrayContaining(['Customer', 'Customer (2)']));
   });
 });
 

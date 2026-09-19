@@ -967,5 +967,78 @@ describe('xmiToDeltaBatch', () => {
       const model = parseXmiDocument(xml);
       expect(model.classes.map(c => c.name).sort()).toEqual(['Factura', 'Producto']);
     });
+
+    it('promueve el destino de una realización a interfaz para evitar RealizationTargetNotInterfaceError en el lote', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">',
+        '  <uml:Package xmi:type="uml:Package" xmi:id="PKG_1" name="RootPkg">',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="C1" name="ServicioImp"/>',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="C2" name="ServicioInterface"/>',
+        '    <packagedElement xmi:type="uml:Realization" xmi:id="R1" client="C1" supplier="C2"/>',
+        '  </uml:Package>',
+        '</xmi:XMI>',
+      ].join('\n');
+
+      const model = parseXmiDocument(xml);
+      const batch = xmiToDeltaBatch(model, TEST_DIAGRAM_ID);
+      const emptyDiagram = DiagramSchema.parse({
+        id: TEST_DIAGRAM_ID,
+        name: 'Target',
+        classes: [],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      });
+      const result = applyDelta(emptyDiagram, batch);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const iface = result.value.classes.find(c => c.name === 'ServicioInterface')!;
+        expect(iface.kind).toBe('interface');
+        expect(result.value.realizations).toHaveLength(1);
+      }
+    });
+
+    it('diferencia asociaciones múltiples sin nombre entre el mismo par para evitar DuplicateAssociationError', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">',
+        '  <uml:Package xmi:type="uml:Package" xmi:id="PKG_1" name="RootPkg">',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="C1" name="Cliente"/>',
+        '    <packagedElement xmi:type="uml:Class" xmi:id="C2" name="Pedido"/>',
+        '    <packagedElement xmi:type="uml:Association" xmi:id="A1">',
+        '      <memberEnd xmi:idref="E1"/><memberEnd xmi:idref="E2"/>',
+        '      <ownedEnd xmi:id="E1"><type xmi:idref="C1"/></ownedEnd>',
+        '      <ownedEnd xmi:id="E2"><type xmi:idref="C2"/></ownedEnd>',
+        '    </packagedElement>',
+        '    <packagedElement xmi:type="uml:Association" xmi:id="A2">',
+        '      <memberEnd xmi:idref="E3"/><memberEnd xmi:idref="E4"/>',
+        '      <ownedEnd xmi:id="E3"><type xmi:idref="C1"/></ownedEnd>',
+        '      <ownedEnd xmi:id="E4"><type xmi:idref="C2"/></ownedEnd>',
+        '    </packagedElement>',
+        '  </uml:Package>',
+        '</xmi:XMI>',
+      ].join('\n');
+
+      const model = parseXmiDocument(xml);
+      const batch = xmiToDeltaBatch(model, TEST_DIAGRAM_ID);
+      const emptyDiagram = DiagramSchema.parse({
+        id: TEST_DIAGRAM_ID,
+        name: 'Target',
+        classes: [],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      });
+      const result = applyDelta(emptyDiagram, batch);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.associations).toHaveLength(2);
+      }
+    });
   });
 });
