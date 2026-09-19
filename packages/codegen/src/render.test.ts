@@ -467,3 +467,50 @@ describe('production profile + zip extras (14.6b + maintainer decision D)', () =
     expect(readme).toContain('RDS');
   });
 });
+
+describe('rendering entities with normalized informal names', () => {
+  it('renders valid Java code for classes and fields with spaces, accents and leading digits', () => {
+    const customDiagram = DiagramSchema.parse({
+      id: '99999999-9999-4999-8999-999999999999',
+      name: 'Informal Diagram',
+      classes: [
+        {
+          id: '88888888-8888-4888-8888-888888888888',
+          name: 'Customer Order',
+          kind: 'class',
+          isAbstract: false,
+          position: { x: 0, y: 0 },
+          attributes: [
+            { id: '11111111-1111-4111-8111-111111111111', name: 'Phone number', type: 'String', visibility: '+', isStatic: false, isDerived: false },
+            { id: '22222222-2222-4222-8222-222222222222', name: 'dirección de envío', type: 'String', visibility: '+', isStatic: false, isDerived: false },
+            { id: '33333333-3333-4333-8333-333333333333', name: '123code', type: 'Integer', visibility: '+', isStatic: false, isDerived: false },
+          ],
+          methods: [],
+        },
+      ],
+      associations: [],
+    });
+
+    const files = generate(customDiagram, { outputRoot: ROOT, render }).files;
+    const entityFile = files.find((f) => f.path === `src/main/java/${PKG_PATH}/CustomerOrder.java`);
+    expect(entityFile).toBeDefined();
+    expect(entityFile?.content).toContain('public class CustomerOrder');
+    expect(entityFile?.content).toContain('private String phoneNumber;');
+    expect(entityFile?.content).toContain('public String getPhoneNumber()');
+    expect(entityFile?.content).toContain('public void setPhoneNumber(String phoneNumber)');
+    expect(entityFile?.content).toContain('private String direccionDeEnvio;');
+    expect(entityFile?.content).toContain('private Integer _123code;');
+
+    const repoFile = files.find((f) => f.path === `src/main/java/${PKG_PATH}/repository/CustomerOrderRepository.java`);
+    expect(repoFile).toBeDefined();
+    expect(repoFile?.content).toContain('public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, Long>');
+
+    const serviceFile = files.find((f) => f.path === `src/main/java/${PKG_PATH}/service/CustomerOrderService.java`);
+    expect(serviceFile).toBeDefined();
+    expect(serviceFile?.content).toContain('public class CustomerOrderService');
+
+    const controllerFile = files.find((f) => f.path === `src/main/java/${PKG_PATH}/web/CustomerOrderController.java`);
+    expect(controllerFile).toBeDefined();
+    expect(controllerFile?.content).toContain('public class CustomerOrderController');
+  });
+});

@@ -221,6 +221,7 @@ Adds Unit 16b (diagram image export, PNG/JPEG, spec `diagram-image-export`); pai
 - [x] 14.2 Create `packages/codegen/src/generate.ts` — IR→file map, type + multiplicity→JPA mapping tables, warning collector (document both tables).
 - [x] 14.3 Test: unmapped attribute type ⇒ warning + String fallback (codegen:R2); missing-endpoint association skipped with warning, generation completes (codegen:R3).
 - [x] 14.4 Test: 3-class diagram output contains ONLY backend sources/resources/build file — zero frontend dirs (codegen:R1). Verified 2026-09-07 on `feature/ai-uml-design-tool-pr14`: codegen 18/18, full monorepo suite 593/593 green with Postgres up.
+- [x] 14.9 Normalizador robusto de identificadores Java en codegen (`normalizeJavaIdentifier`): sanitiza nombres informales de clases (`PascalCase`), atributos, parámetros y métodos (`camelCase`) admitiendo espacios (ej. `"Phone number"` ➔ `phoneNumber`), símbolos no alfanuméricos, acentos/diacríticos mediante descomposición Unicode NFD (`"dirección"` ➔ `direccion`, `"año"` ➔ `ano`), dígitos iniciales con prefijo `_` (`"123code"` ➔ `_123code`), y escape de palabras reservadas de Java (`"class"` ➔ `_class`). Desambiguación automática de colisiones con sufijo numérico (`phoneNumber2`) y emisión de advertencias informativas (`normalized-identifier`, `duplicate-identifier-disambiguated`), manteniendo estricta la protección contra navegación de rutas (`../../pom.xml`). 83/83 pruebas pasando en `@app/codegen`.
 
 ### Unit 14b: Spring templates + golden build (PR 14b — split 2026-09-07)
 

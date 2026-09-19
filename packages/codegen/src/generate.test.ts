@@ -203,6 +203,70 @@ describe('name sanitizer wired into generation (codegen threat row 1)', () => {
   });
 });
 
+describe('robust identifier normalization during generation', () => {
+  it('normalizes informal class and attribute names (e.g. spaces, Phone number)', () => {
+    const d = diagram([
+      cls(ID.product, 'Customer Order', [
+        attr(ID.attrName, 'Phone number', 'String'),
+        attr(ID.attrPrice, 'total amount', 'Double'),
+      ]),
+    ]);
+
+    const result = generate(d, { outputRoot: ROOT });
+    const entity = entityOf(result.files, 'CustomerOrder');
+    expect(entity).toBeDefined();
+    expect(entity.className).toBe('CustomerOrder');
+    expect(entity.fields.find((f) => f.name === 'phoneNumber')).toBeDefined();
+    expect(entity.fields.find((f) => f.name === 'totalAmount')).toBeDefined();
+
+    const normalizerWarnings = result.warnings.filter((w) => w.code === 'normalized-identifier');
+    expect(normalizerWarnings.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('normalizes accents, leading digits and reserved words on attributes', () => {
+    const d = diagram([
+      cls(ID.product, 'Información', [
+        attr(ID.attrName, 'año de inicio', 'Integer'),
+        attr(ID.attrPrice, '123code', 'String'),
+        attr('44444444-4444-4444-8444-444444444445', 'class', 'String'),
+      ]),
+    ]);
+
+    const result = generate(d, { outputRoot: ROOT });
+    const entity = entityOf(result.files, 'Informacion');
+    expect(entity).toBeDefined();
+    expect(entity.className).toBe('Informacion');
+    expect(entity.fields.find((f) => f.name === 'anoDeInicio')).toBeDefined();
+    expect(entity.fields.find((f) => f.name === '_123code')).toBeDefined();
+    expect(entity.fields.find((f) => f.name === '_class')).toBeDefined();
+  });
+
+  it('disambiguates duplicate field names resulting from normalization', () => {
+    const d = diagram([
+      cls(ID.product, 'Contact', [
+        attr(ID.attrName, 'Phone number', 'String'),
+        attr(ID.attrPrice, 'phone_number', 'String'),
+      ]),
+    ]);
+
+    const result = generate(d, { outputRoot: ROOT });
+    const entity = entityOf(result.files, 'Contact');
+    expect(entity.fields.some((f) => f.name === 'phoneNumber')).toBe(true);
+    expect(entity.fields.some((f) => f.name === 'phoneNumber2')).toBe(true);
+    expect(result.warnings.some((w) => w.code === 'duplicate-identifier-disambiguated')).toBe(true);
+  });
+
+  it('still rejects path traversal attempts in attributes', () => {
+    const d = diagram([
+      cls(ID.product, 'ValidClass', [
+        attr(ID.attrName, '../../secret.txt', 'String'),
+      ]),
+    ]);
+
+    expect(() => generate(d, { outputRoot: ROOT })).toThrow(NameSanitizerError);
+  });
+});
+
 // ---------- unit 14c: UML 2.5.1 semantic mappings (task 14.5) ----------
 
 const ID2 = {

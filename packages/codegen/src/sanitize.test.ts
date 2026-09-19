@@ -6,6 +6,7 @@ import {
   NameSanitizerError,
   assertInsideOutputRoot,
   isReservedJavaName,
+  normalizeJavaIdentifier,
   sanitizeJavaName,
 } from './sanitize.js';
 
@@ -59,5 +60,56 @@ describe('assertInsideOutputRoot (codegen threat row 1)', () => {
   it('accepts a backend source path inside the output root', () => {
     const abs = assertInsideOutputRoot(root, 'src/main/java/Product.java');
     expect(abs).toBe(resolve(root, 'src/main/java/Product.java'));
+  });
+});
+
+describe('normalizeJavaIdentifier', () => {
+  it('converts informal spaced names to camelCase and PascalCase', () => {
+    expect(normalizeJavaIdentifier('Phone number', 'camel')).toBe('phoneNumber');
+    expect(normalizeJavaIdentifier('Phone number', 'pascal')).toBe('PhoneNumber');
+    expect(normalizeJavaIdentifier('customer   order   item', 'camel')).toBe('customerOrderItem');
+  });
+
+  it('normalizes accents and diacritics', () => {
+    expect(normalizeJavaIdentifier('dirección', 'camel')).toBe('direccion');
+    expect(normalizeJavaIdentifier('año de nacimiento', 'camel')).toBe('anoDeNacimiento');
+    expect(normalizeJavaIdentifier('canción', 'pascal')).toBe('Cancion');
+  });
+
+  it('normalizes hyphens, underscores and symbols', () => {
+    expect(normalizeJavaIdentifier('first-name', 'camel')).toBe('firstName');
+    expect(normalizeJavaIdentifier('last_name', 'camel')).toBe('lastName');
+    expect(normalizeJavaIdentifier('total price ($USD)', 'camel')).toBe('totalPriceUsd');
+  });
+
+  it('handles leading digits safely with an underscore prefix', () => {
+    expect(normalizeJavaIdentifier('123code', 'camel')).toBe('_123code');
+    expect(normalizeJavaIdentifier('9lives', 'pascal')).toBe('_9lives');
+  });
+
+  it('escapes Java reserved words with an underscore prefix in camelCase', () => {
+    expect(normalizeJavaIdentifier('class', 'camel')).toBe('_class');
+    expect(normalizeJavaIdentifier('package', 'camel')).toBe('_package');
+    expect(normalizeJavaIdentifier('default', 'camel')).toBe('_default');
+    expect(normalizeJavaIdentifier('int', 'camel')).toBe('_int');
+  });
+
+  it('preserves valid identifiers without altering casing unnecessarily', () => {
+    expect(normalizeJavaIdentifier('Product', 'pascal')).toBe('Product');
+    expect(normalizeJavaIdentifier('orderId', 'camel')).toBe('orderId');
+  });
+
+  it('rejects path-traversal sequences', () => {
+    expect(() => normalizeJavaIdentifier('../../pom.xml', 'pascal')).toThrow(NameSanitizerError);
+    expect(() => normalizeJavaIdentifier('../x', 'camel')).toThrow(NameSanitizerError);
+    expect(() => normalizeJavaIdentifier('/etc/passwd', 'pascal')).toThrow(NameSanitizerError);
+    expect(() => normalizeJavaIdentifier('path\\file', 'camel')).toThrow(NameSanitizerError);
+  });
+
+  it('rejects empty or whitespace/symbol-only strings', () => {
+    expect(() => normalizeJavaIdentifier('', 'camel')).toThrow(NameSanitizerError);
+    expect(() => normalizeJavaIdentifier('   ', 'pascal')).toThrow(NameSanitizerError);
+    expect(() => normalizeJavaIdentifier('---', 'camel')).toThrow(NameSanitizerError);
+    expect(() => normalizeJavaIdentifier('$$$', 'pascal')).toThrow(NameSanitizerError);
   });
 });

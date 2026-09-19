@@ -1,6 +1,12 @@
 import type { Association, Attribute, Class, Diagram, NaryAssociation } from '@app/core';
 
-import { assertInsideOutputRoot, sanitizeJavaName } from './sanitize.js';
+import {
+  NameSanitizerError,
+  assertInsideOutputRoot,
+  isReservedJavaName,
+  normalizeJavaIdentifier,
+  sanitizeJavaName,
+} from './sanitize.js';
 
 /**
  * Generador del mapa de archivos IR → Spring (unidad 14a).
@@ -338,11 +344,38 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   }
   const packagePath = packageSegments.join('/');
 
-  // Resuelve cada clase a un nombre Java sanitizado (rechaza traversal/reservadas).
+  // Resuelve cada clase a un nombre Java sanitizado y normalizado (rechaza traversal/reservadas).
   const classInfo = new Map<string, ClassInfo>();
+  const usedClassNames = new Set<string>();
   for (const cls of diagram.classes) {
+    if (isReservedJavaName(cls.name.trim().toLowerCase())) {
+      throw new NameSanitizerError(`Invalid Java name ${JSON.stringify(cls.name)}: reserved word`);
+    }
+    let javaName = normalizeJavaIdentifier(cls.name, 'pascal');
+    if (javaName !== cls.name) {
+      warnings.push({
+        code: 'normalized-identifier',
+        message: `Class name "${cls.name}" was normalized to "${javaName}"`,
+        element: cls.name,
+      });
+    }
+    if (usedClassNames.has(javaName)) {
+      let suffix = 2;
+      while (usedClassNames.has(`${javaName}${suffix}`)) {
+        suffix++;
+      }
+      const originalJavaName = javaName;
+      javaName = `${javaName}${suffix}`;
+      warnings.push({
+        code: 'duplicate-identifier-disambiguated',
+        message: `Class name "${cls.name}" normalized to existing Java name "${originalJavaName}", disambiguated to "${javaName}"`,
+        element: cls.name,
+      });
+    }
+    usedClassNames.add(javaName);
+
     classInfo.set(cls.id, {
-      javaName: sanitizeJavaName(cls.name),
+      javaName,
       isEntity: cls.kind === 'class',
       isInterface: cls.kind === 'interface',
       isAbstract: cls.isAbstract,
@@ -375,7 +408,7 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
     entities.set(info.javaName, {
       className: info.javaName,
       packageName: basePackage,
-      fields: cls.attributes.map((a) => mapField(cls, a, warnings)),
+      fields: mapFieldsForClass(cls, warnings),
       relationships: [],
       isAbstract: cls.isAbstract,
       extendsClass: null,
@@ -503,12 +536,45 @@ function fieldModifierFor(visibility: '+' | '-' | '#' | '~'): 'private' | 'prote
   return 'private'; // '+' mantiene campos privados + accesores públicos (convención JPA)
 }
 
+/** Mapea los atributos de una clase a campos de entidad Java, resolviendo nombres duplicados y normalizando. */
+function mapFieldsForClass(
+  cls: Class,
+  warnings: CodegenWarning[],
+): EntityFieldModel[] {
+  const usedFieldNames = new Set<string>();
+  return cls.attributes.map((a) => mapField(cls, a, warnings, usedFieldNames));
+}
+
 function mapField(
   cls: Class,
   attribute: Attribute,
   warnings: CodegenWarning[],
+  usedFieldNames?: Set<string>,
 ): EntityFieldModel {
-  const name = sanitizeJavaName(attribute.name);
+  let name = normalizeJavaIdentifier(attribute.name, 'camel');
+  if (name !== attribute.name) {
+    warnings.push({
+      code: 'normalized-identifier',
+      message: `Attribute name "${attribute.name}" on ${cls.name} was normalized to "${name}"`,
+      element: `${cls.name}.${attribute.name}`,
+    });
+  }
+  if (usedFieldNames) {
+    if (usedFieldNames.has(name)) {
+      let suffix = 2;
+      while (usedFieldNames.has(`${name}${suffix}`)) {
+        suffix++;
+      }
+      const originalName = name;
+      name = `${name}${suffix}`;
+      warnings.push({
+        code: 'duplicate-identifier-disambiguated',
+        message: `Attribute name "${attribute.name}" on ${cls.name} disambiguated to "${name}"`,
+        element: `${cls.name}.${attribute.name}`,
+      });
+    }
+    usedFieldNames.add(name);
+  }
   const { javaType, mapped } = mapAttributeType(attribute.type);
   if (!mapped) {
     warnings.push({
@@ -545,6 +611,14 @@ function mapInterfaceMethod(
       element: `${cls.name}.${method.name}()`,
     });
   }
+  const methodName = normalizeJavaIdentifier(method.name, 'camel');
+  if (methodName !== method.name) {
+    warnings.push({
+      code: 'normalized-identifier',
+      message: `Method name "${method.name}" on ${cls.name} was normalized to "${methodName}"`,
+      element: `${cls.name}.${method.name}()`,
+    });
+  }
   const parameters = method.parameters.map((p) => {
     const mapped = mapAttributeType(p.type);
     if (!mapped.mapped) {
@@ -554,10 +628,18 @@ function mapInterfaceMethod(
         element: `${cls.name}.${method.name}(${p.name})`,
       });
     }
-    return { name: sanitizeJavaName(p.name), type: mapped.javaType };
+    const paramName = normalizeJavaIdentifier(p.name, 'camel');
+    if (paramName !== p.name) {
+      warnings.push({
+        code: 'normalized-identifier',
+        message: `Parameter name "${p.name}" on ${cls.name}.${method.name} was normalized to "${paramName}"`,
+        element: `${cls.name}.${method.name}(${p.name})`,
+      });
+    }
+    return { name: paramName, type: mapped.javaType };
   });
   return {
-    name: sanitizeJavaName(method.name),
+    name: methodName,
     returnType: ret.javaType,
     parameters,
   };

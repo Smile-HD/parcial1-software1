@@ -66,6 +66,80 @@ export function sanitizeJavaName(raw: string): string {
 }
 
 /**
+ * Normaliza cualquier cadena informal (ej. nombres con espacios, acentos, guiones o
+ * palabras reservadas de Java) en un identificador Java válido y canónico.
+ *
+ * Reglas de normalización:
+ * 1. Rechaza intentos de navegación por rutas ('..', '/', '\') o entradas vacías lanzando {@link NameSanitizerError}.
+ * 2. Descompone y elimina acentos y diacríticos mediante Unicode NFD (ej. 'dirección' -> 'direccion', 'año' -> 'ano').
+ * 3. Divide por caracteres no alfanuméricos y construye camelCase o PascalCase según `targetCase`.
+ * 4. Si el resultado comienza con un dígito numérico (ej. '123code'), le antepone un guión bajo `_123code`.
+ * 5. Si el resultado coincide con una palabra reservada de Java (ej. 'class' en camelCase), le antepone un guión bajo `_class`.
+ * 6. Garantiza conformidad final con {@link sanitizeJavaName}.
+ *
+ * @param raw Nombre crudo proveniente del diagrama UML.
+ * @param targetCase Formato deseado: 'camel' (atributos, métodos, parámetros) o 'pascal' (clases, interfaces).
+ * @returns Identificador Java válido y sanitizado.
+ */
+export function normalizeJavaIdentifier(
+  raw: string,
+  targetCase: 'camel' | 'pascal' = 'camel',
+): string {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw new NameSanitizerError('Identifier cannot be empty');
+  }
+
+  // Prevenir inyección de rutas (path traversal)
+  if (raw.includes('..') || raw.includes('/') || raw.includes('\\')) {
+    throw new NameSanitizerError(
+      `Path traversal sequence detected in identifier: ${JSON.stringify(raw)}`,
+    );
+  }
+
+  // 1. Quitar acentos y diacríticos (ej. "dirección" -> "direccion", "año" -> "ano")
+  const decomposed = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // 2. Extraer tokens alfanuméricos
+  const tokens = decomposed
+    .split(/[^A-Za-z0-9]+/)
+    .filter((tok) => tok.length > 0);
+
+  if (tokens.length === 0) {
+    throw new NameSanitizerError(
+      `Cannot derive a valid Java identifier from: ${JSON.stringify(raw)}`,
+    );
+  }
+
+  // 3. Aplicar casing (camelCase o PascalCase)
+  let result = '';
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    // Si el token es todo mayúsculas y tiene longitud > 1 (ej. "USD", "ID"), se normaliza a minúsculas antes de capitalizar
+    const isAllUpper = token.length > 1 && token === token.toUpperCase();
+    const cleanToken = isAllUpper ? token.toLowerCase() : token;
+
+    if (i === 0 && targetCase === 'camel') {
+      result += cleanToken.charAt(0).toLowerCase() + cleanToken.slice(1);
+    } else {
+      result += cleanToken.charAt(0).toUpperCase() + cleanToken.slice(1);
+    }
+  }
+
+  // 4. Si comienza con un dígito numérico, anteponer '_'
+  if (/^[0-9]/.test(result)) {
+    result = `_${result}`;
+  }
+
+  // 5. Si coincide con una palabra reservada de Java, anteponer '_'
+  if (isReservedJavaName(result)) {
+    result = `_${result}`;
+  }
+
+  // 6. Verificación final de contención/identificador
+  return sanitizeJavaName(result);
+}
+
+/**
  * Resuelve `relPath` contra `outputRoot` y asegura que el resultado permanezca dentro de ella.
  *
  * Defensa en profundidad detrás de {@link sanitizeJavaName}: incluso si una ruta se construye

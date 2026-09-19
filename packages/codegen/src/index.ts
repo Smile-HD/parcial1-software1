@@ -11,6 +11,7 @@ export {
   NameSanitizerError,
   assertInsideOutputRoot,
   isReservedJavaName,
+  normalizeJavaIdentifier,
   sanitizeJavaName,
 } from './sanitize.js';
 
