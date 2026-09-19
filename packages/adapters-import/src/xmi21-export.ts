@@ -85,10 +85,15 @@ function aggregationAttr(a: Association): string {
 export function exportDiagramToXmi(diagram: Diagram): string {
   const now = new Date().toISOString();
   const lines: string[] = [];
+  const cleanId = diagram.id.replace(/-/g, '_');
+  const packageId = `EAPK_${cleanId}`;
+  const diagramId = `EAID_${cleanId}`;
 
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(`<xmi:XMI xmi:version="2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`);
-  lines.push(`  <uml:Model xmi:type="uml:Model" xmi:id="${diagram.id}" name="${esc(diagram.name)}">`);
+  lines.push(`  <xmi:Documentation exporter="Enterprise Architect" exporterVersion="6.5"/>`);
+  lines.push(`  <uml:Model xmi:type="uml:Model" xmi:id="${diagram.id}" name="EA_Model" visibility="public">`);
+  lines.push(`    <packagedElement xmi:type="uml:Package" xmi:id="${packageId}" name="${esc(diagram.name)}" visibility="public">`);
 
   // ── Construir mapas de id para referencias cruzadas ─────────────────────────
   const classIdSet = new Set(diagram.classes.map(c => c.id));
@@ -97,7 +102,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   // ── Clases e Interfaces ──────────────────────────────────────────────────
   for (const cls of diagram.classes) {
     const xmiType = cls.kind === 'interface' ? 'uml:Interface' : 'uml:Class';
-    lines.push(`    <packagedElement xmi:type="${xmiType}" xmi:id="${cls.id}" name="${esc(cls.name)}"${boolAttr('isAbstract', cls.isAbstract)}>`);
+    lines.push(`      <packagedElement xmi:type="${xmiType}" xmi:id="${cls.id}" name="${esc(cls.name)}"${boolAttr('isAbstract', cls.isAbstract)}>`);
 
     // ownedAttribute (características de la clase — NO extremos de asociación)
     for (const attr of cls.attributes) {
@@ -211,16 +216,33 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`    </packagedElement>`);
   }
 
+  lines.push(`    </packagedElement>`);
   lines.push(`  </uml:Model>`);
 
   // ── Extensión nativa de Enterprise Architect (renderizado directo del diagrama) ──
   // Permite que EA cree automáticamente el objeto de diagrama Class en el árbol
   // y posicione todas las clases visualmente en las coordenadas correspondientes.
   lines.push(`  <xmi:Extension extender="Enterprise Architect" extenderID="6.5">`);
-  lines.push(`    <elements/>`);
+  lines.push(`    <elements>`);
+  lines.push(`      <element xmi:idref="${packageId}" xmi:type="uml:Package" name="${esc(diagram.name)}" scope="public">`);
+  lines.push(`        <model package2="${diagramId}" tpos="0" ea_localid="1" ea_eleType="package"/>`);
+  lines.push(`        <properties isSpecification="false" sType="Package" nType="0" scope="public"/>`);
+  lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
+  lines.push(`      </element>`);
+  for (let i = 0; i < diagram.classes.length; i++) {
+    const cls = diagram.classes[i];
+    const sType = cls.kind === 'interface' ? 'Interface' : 'Class';
+    const xmiType = cls.kind === 'interface' ? 'uml:Interface' : 'uml:Class';
+    lines.push(`      <element xmi:idref="${cls.id}" xmi:type="${xmiType}" name="${esc(cls.name)}" scope="public">`);
+    lines.push(`        <model package="${packageId}" tpos="0" ea_localid="${i + 2}" ea_eleType="element"/>`);
+    lines.push(`        <properties isSpecification="false" sType="${sType}" nType="0" scope="public"/>`);
+    lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
+    lines.push(`      </element>`);
+  }
+  lines.push(`    </elements>`);
   lines.push(`    <diagrams>`);
-  lines.push(`      <diagram xmi:id="EAID_${diagram.id.replace(/-/g, '_')}">`);
-  lines.push(`        <model package="${diagram.id}" owner="${diagram.id}"/>`);
+  lines.push(`      <diagram xmi:id="${diagramId}">`);
+  lines.push(`        <model package="${packageId}" localID="1" owner="${packageId}"/>`);
   lines.push(`        <properties name="${esc(diagram.name)}" type="Logical"/>`);
   lines.push(`        <project author="UMLDesignTool" version="1.0" created="${now}" modified="${now}"/>`);
   lines.push(`        <elements>`);
@@ -228,8 +250,8 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     const cls = diagram.classes[i];
     const left = Math.round(cls.position.x);
     const top = Math.round(cls.position.y);
-    const right = left + 120;
-    const bottom = top + 80;
+    const right = left + 140;
+    const bottom = top + 90;
     const duid = cls.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
     lines.push(`          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${cls.id}" seqno="${i + 1}" style="DUID=${duid};"/>`);
   }
