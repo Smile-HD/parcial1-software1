@@ -677,8 +677,8 @@
   --ea-ink: #0f172a;
   --ea-border: #1e293b;
   --ea-rule: #cbd5e1;
-  --ea-fill-top: #ffffff;
-  --ea-fill-bottom: #f8fafc;
+  --ea-fill-top: #ffffea;
+  --ea-fill-bottom: #fff9e6;
   --ea-select: #2563eb;
   --ea-chrome: #f1f5f9;
   --ea-chrome-border: #cbd5e1;
@@ -726,8 +726,8 @@
     225deg,
     #ffffff 0%,
     #ffffff 50%,
-    #cbd5e1 50%,
-    #94a3b8 100%
+    #e2e8f0 50%,
+    #cbd5e1 100%
   );
   border-bottom-left-radius: 3px;
 }
@@ -742,7 +742,7 @@
   border-top: none;
   text-align: center;
   padding: 5px 8px 6px;
-  background: rgba(241, 245, 249, 0.65);
+  background: rgba(254, 249, 195, 0.45);
 }
 
 .uml-class__compartment--attributes,
@@ -1119,9 +1119,9 @@
   min-height: 0;
 }
 
-/* Canvas surface: Crisp light paper with sharp dots */
+/* Canvas surface: soft blueprint paper with sharp dots */
 .react-flow {
-  background: #f8fafc;
+  background: #f1f5f9;
   font-family: var(--ea-font);
 }
 
@@ -1356,10 +1356,10 @@ body {
   top: 0;
   left: 0;
   pointer-events: none;
-  border: 2px dashed #64748b;
+  border: 2px dashed #94a3b8;
   border-radius: 4px;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 10000px rgba(226, 232, 240, 0.75), 0 10px 30px -5px rgba(0, 0, 0, 0.12);
+  background-color: transparent;
+  box-shadow: none;
   z-index: 0;
   box-sizing: border-box;
 }
@@ -1369,14 +1369,15 @@ body {
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
-  background: #f1f5f9;
-  border-right: 1.5px dashed #64748b;
-  border-bottom: 1.5px dashed #64748b;
+  background: #ffffff;
+  border-right: 1.5px dashed #94a3b8;
+  border-bottom: 1.5px dashed #94a3b8;
   border-bottom-right-radius: 6px;
   font-family: var(--ea-font);
   font-size: 11px;
   color: #475569;
   user-select: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .diagram-canvas-boundary__title {
