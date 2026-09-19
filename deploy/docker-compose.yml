@@ -71,6 +71,8 @@ services:
       # Sin OPENAI_API_KEY la app usa fakes deterministas (modo demo offline).
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      VISION_API_KEY: ${VISION_API_KEY:-}
+      VISION_BASE_URL: ${VISION_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o}
       WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}   # transcripción de audio
       VISION_MODEL: ${VISION_MODEL:-gpt-4o}

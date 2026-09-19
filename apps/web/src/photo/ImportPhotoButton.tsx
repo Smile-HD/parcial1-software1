@@ -15,7 +15,7 @@
  * protegida de ImportXmiButton (lección del error de bloqueo en PR15).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BatchDeltaSchema, type BatchDelta, type Delta } from '@app/core';
+import { BatchDeltaSchema, projectYDocToDiagram, type BatchDelta, type Delta } from '@app/core';
 
 import { DiagramApiError } from '../api/diagramApi';
 import { applyDeltaToYDoc } from '../canvas/applyDeltaToYDoc';
@@ -263,14 +263,21 @@ export function ImportPhotoButton({
     const visibleIds = new Set(visible.map((c) => c.classId));
     const nameMap = new Map(state.classes.map((c) => [c.classId, c.name]));
 
+    const currentDiagram = projectYDocToDiagram(doc);
+    const existingClassNames = new Set(currentDiagram.classes.map((c) => c.name.toLowerCase()));
+
     const filteredDeltas = state.rawBatch.deltas
       .map((d) => {
         if (d.kind === 'class' && d.op === 'create') {
           const classId = (d as { classId: string }).classId;
-          const editedName = nameMap.get(classId);
-          if (editedName !== undefined && editedName !== (d as { name: string }).name) {
-            return { ...d, name: editedName };
+          const editedName = nameMap.get(classId) ?? (d as { name: string }).name;
+          let uniqueName = editedName;
+          let counter = 2;
+          while (existingClassNames.has(uniqueName.toLowerCase())) {
+            uniqueName = `${editedName}_${counter}`;
+            counter++;
           }
+          return { ...d, name: uniqueName };
         }
         return d;
       })
@@ -351,9 +358,25 @@ export function ImportPhotoButton({
       return;
     }
     if (!applied.ok) {
+      const err = applied.error;
+      let detailedMessage = tr('photo.applyFailed', { kind: err.kind });
+      if (err.kind === 'BatchError') {
+        const inner = err.error;
+        if (inner.kind === 'DuplicateClassError') {
+          detailedMessage = `Duplicate class name: "${inner.className}"`;
+        } else if (inner.kind === 'ClassNotFoundError') {
+          detailedMessage = `Class not found (delta #${err.failedDeltaIndex + 1})`;
+        } else if (inner.kind === 'DuplicateMemberError') {
+          detailedMessage = `Duplicate member: "${inner.memberName}"`;
+        } else if (inner.kind === 'InvalidOperationError') {
+          detailedMessage = inner.reason;
+        } else {
+          detailedMessage = `${tr('photo.applyFailed', { kind: inner.kind })} (#${err.failedDeltaIndex + 1})`;
+        }
+      }
       setState({
         phase: 'failed',
-        message: tr('photo.applyFailed', { kind: applied.error.kind }),
+        message: detailedMessage,
       });
       return;
     }

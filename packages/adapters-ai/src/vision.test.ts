@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi, afterEach } from 'vitest';
 
-import { FakeVision, VisionExtractionError, OpenAiVision } from './vision.js';
+import { FakeVision, VisionExtractionError, OpenAiVision, normalizeBatchPayload } from './vision.js';
 import { BatchDeltaSchema, type BatchDelta } from '@app/core';
 
 // No static fixture — FakeVision generates valid UUIDs at construction time.
@@ -16,6 +16,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_BASE_URL;
+  delete process.env.VISION_API_KEY;
+  delete process.env.VISION_BASE_URL;
   delete process.env.VISION_MODEL;
 });
 
@@ -372,5 +374,80 @@ describe('OpenAiVision', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
     const vision = OpenAiVision.fromEnv()!;
     await expect(vision.extract(new Uint8Array([0x89]), 'image/png')).rejects.toThrow(VisionExtractionError);
+  });
+
+  it('fromEnv prioritizes VISION_API_KEY and VISION_BASE_URL over OPENAI_*', async () => {
+    process.env.OPENAI_API_KEY = 'openai-key';
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1';
+    process.env.VISION_API_KEY = 'gemini-key';
+    process.env.VISION_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: '{"kind":"batch","id":"b1","diagramId":"d1","timestamp":"2026-01-01T00:00:00Z","deltas":[]}' } }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const vision = OpenAiVision.fromEnv()!;
+    await vision.extract(new Uint8Array([0x89]), 'image/png');
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer gemini-key');
+  });
+
+  it('normalizeBatchPayload sorts classes before members and relationships', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'association', op: 'create', sourceClassId: 'B', targetClassId: 'A' },
+        { kind: 'member', op: 'addAttribute', classId: 'A', name: 'id', type: 'string' },
+        { kind: 'class', op: 'create', classId: 'A', name: 'A' },
+        { kind: 'class', op: 'create', classId: 'B', name: 'B' },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as { deltas: { kind: string }[] };
+    expect(normalized.deltas[0]?.kind).toBe('class');
+    expect(normalized.deltas[1]?.kind).toBe('class');
+    expect(normalized.deltas[2]?.kind).toBe('member');
+    expect(normalized.deltas[3]?.kind).toBe('association');
+  });
+
+  it('normalizeBatchPayload deduplicates duplicate class names and unifies references', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'id-1', name: 'Customer' },
+        { kind: 'class', op: 'create', classId: 'id-2', name: 'Customer' },
+        { kind: 'member', op: 'addAttribute', classId: 'id-2', name: 'email', type: 'string' },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as { deltas: { kind: string; classId?: string }[] };
+    const classes = normalized.deltas.filter((d) => d.kind === 'class');
+    expect(classes).toHaveLength(1);
+
+    const member = normalized.deltas.find((d) => d.kind === 'member');
+    expect(member?.classId).toBeDefined();
+    // Class and member must share the exact same repaired UUID
+    expect(classes[0]?.classId).toBe(member?.classId);
+  });
+
+  it('normalizeBatchPayload removes orphaned members and associations', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'ExistingClass' },
+        { kind: 'member', op: 'addAttribute', classId: 'c1', name: 'validAttr' },
+        { kind: 'member', op: 'addAttribute', classId: 'orphanClass', name: 'lostAttr' },
+        { kind: 'association', op: 'create', sourceClassId: 'c1', targetClassId: 'orphanClass' },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as { deltas: { kind: string; name?: string }[] };
+    expect(normalized.deltas).toHaveLength(2);
+    expect(normalized.deltas[0]?.kind).toBe('class');
+    expect(normalized.deltas[1]?.kind).toBe('member');
+    expect(normalized.deltas[1]?.name).toBe('validAttr');
   });
 });

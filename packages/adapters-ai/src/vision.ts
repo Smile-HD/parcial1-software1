@@ -132,87 +132,180 @@ export function normalizeBatchPayload(raw: unknown): unknown {
 
   const rawDeltas = Array.isArray(obj.deltas) ? obj.deltas : [];
 
-  // 1. Identifica todas las clases para crear un mapa de nombres a IDs
+  // 1. Identifica y de-duplica clases para crear un mapa de nombres a IDs
   const nameToId = new Map<string, string>();
+  const seenClassNames = new Map<string, string>(); // lowercase name -> classId
+  const validClassIds = new Set<string>();
+  const deduplicatedClassDeltas: Record<string, unknown>[] = [];
+
   let classIndex = 0;
   for (const item of rawDeltas) {
     if (typeof item === 'object' && item !== null) {
-      const d = item as Record<string, unknown>;
+      const d = { ...(item as Record<string, unknown>) };
       if (d.kind === 'class' && d.op === 'create') {
+        const rawName = typeof d.name === 'string' ? d.name.trim() : '';
+        const normName = rawName.toLowerCase();
+
+        // Si ya vimos una clase con este mismo nombre en el lote, unificamos al primer classId
+        if (normName && seenClassNames.has(normName)) {
+          const existingId = seenClassNames.get(normName)!;
+          if (typeof d.classId === 'string') {
+            nameToId.set(d.classId.toLowerCase().trim(), existingId);
+            nameToId.set(d.classId.trim(), existingId);
+          }
+          continue; // descartar la clase duplicada en el lote
+        }
+
         const classId =
           typeof d.classId === 'string' && d.classId.trim().length > 0
             ? d.classId
-            : typeof d.name === 'string' && d.name.trim().length > 0
-            ? d.name
+            : rawName.length > 0
+            ? rawName
             : `class_${classIndex + 1}`;
         d.classId = classId;
-        if (typeof d.name === 'string') {
-          nameToId.set(d.name.toLowerCase().trim(), classId);
-          nameToId.set(d.name.trim(), classId);
+
+        if (rawName) {
+          seenClassNames.set(normName, classId);
+          nameToId.set(normName, classId);
+          nameToId.set(rawName, classId);
         }
         nameToId.set(classId.toLowerCase().trim(), classId);
         nameToId.set(classId.trim(), classId);
+        validClassIds.add(classId);
+        deduplicatedClassDeltas.push(d);
         classIndex++;
       }
     }
   }
 
-  // 2. Resuelve referencias y asegura posiciones para cada delta
+  // 2. Resuelve referencias a IDs conocidos
+  const resolveId = (idCandidate: unknown): string | undefined => {
+    if (typeof idCandidate !== 'string') return undefined;
+    const key = idCandidate.trim();
+    const resolved = nameToId.get(key.toLowerCase()) ?? nameToId.get(key) ?? key;
+    // Si no hay clases en el lote, permitimos el ID tal cual (modo fixture/pruebas sintéticas)
+    if (validClassIds.size === 0) return resolved;
+    return validClassIds.has(resolved) ? resolved : undefined;
+  };
+
   let placedCount = 0;
-  const normalizedDeltas = rawDeltas.map((item) => {
-    if (typeof item !== 'object' || item === null) return item;
+  const normalizedClassDeltas = deduplicatedClassDeltas.map((d) => {
+    d.id = typeof d.id === 'string' && UUID_RE.test(d.id) ? d.id : crypto.randomUUID();
+    d.diagramId = diagramId;
+    d.timestamp =
+      typeof d.timestamp === 'string' && RFC3339_RE.test(d.timestamp) ? d.timestamp : timestamp;
+
+    const pos = d.position as Record<string, unknown> | undefined;
+    if (
+      !pos ||
+      typeof pos !== 'object' ||
+      typeof pos.x !== 'number' ||
+      !Number.isFinite(pos.x) ||
+      typeof pos.y !== 'number' ||
+      !Number.isFinite(pos.y)
+    ) {
+      d.position = {
+        x: 100 + (placedCount % 3) * 280,
+        y: 100 + Math.floor(placedCount / 3) * 220,
+      };
+    }
+    placedCount++;
+    return d;
+  });
+
+  const memberDeltas: Record<string, unknown>[] = [];
+  const generalizationDeltas: Record<string, unknown>[] = [];
+  const realizationDeltas: Record<string, unknown>[] = [];
+  const associationDeltas: Record<string, unknown>[] = [];
+  const dependencyDeltas: Record<string, unknown>[] = [];
+  const naryAssociationDeltas: Record<string, unknown>[] = [];
+  const otherDeltas: Record<string, unknown>[] = [];
+
+  for (const item of rawDeltas) {
+    if (typeof item !== 'object' || item === null) continue;
     const d = { ...(item as Record<string, unknown>) };
+    if (d.kind === 'class' && d.op === 'create') {
+      continue; // ya procesadas y ordenadas arriba
+    }
 
     d.id = typeof d.id === 'string' && UUID_RE.test(d.id) ? d.id : crypto.randomUUID();
     d.diagramId = diagramId;
     d.timestamp =
       typeof d.timestamp === 'string' && RFC3339_RE.test(d.timestamp) ? d.timestamp : timestamp;
 
-    const resolveId = (idCandidate: unknown): unknown => {
-      if (typeof idCandidate !== 'string') return idCandidate;
-      const key = idCandidate.trim();
-      return nameToId.get(key.toLowerCase()) ?? nameToId.get(key) ?? idCandidate;
-    };
-
-    if (d.kind === 'class' && d.op === 'create') {
-      const pos = d.position as Record<string, unknown> | undefined;
-      if (
-        !pos ||
-        typeof pos !== 'object' ||
-        typeof pos.x !== 'number' ||
-        !Number.isFinite(pos.x) ||
-        typeof pos.y !== 'number' ||
-        !Number.isFinite(pos.y)
-      ) {
-        d.position = {
-          x: 100 + (placedCount % 3) * 280,
-          y: 100 + Math.floor(placedCount / 3) * 220,
-        };
+    if (d.kind === 'member') {
+      const resolvedClassId = resolveId(d.classId);
+      if (resolvedClassId) {
+        d.classId = resolvedClassId;
+        memberDeltas.push(d);
       }
-      placedCount++;
-    } else if (d.kind === 'member') {
-      if (d.classId) d.classId = resolveId(d.classId);
-    } else if (d.kind === 'association') {
-      if (d.sourceClassId) d.sourceClassId = resolveId(d.sourceClassId);
-      if (d.targetClassId) d.targetClassId = resolveId(d.targetClassId);
     } else if (d.kind === 'generalization') {
-      if (d.subClassId) d.subClassId = resolveId(d.subClassId);
-      if (d.superClassId) d.superClassId = resolveId(d.superClassId);
+      const sub = resolveId(d.subClassId);
+      const sup = resolveId(d.superClassId);
+      if (sub && sup && sub !== sup) {
+        d.subClassId = sub;
+        d.superClassId = sup;
+        generalizationDeltas.push(d);
+      }
     } else if (d.kind === 'realization') {
-      if (d.clientClassId) d.clientClassId = resolveId(d.clientClassId);
-      if (d.supplierInterfaceId) d.supplierInterfaceId = resolveId(d.supplierInterfaceId);
+      const client = resolveId(d.clientClassId);
+      const supplier = resolveId(d.supplierInterfaceId);
+      if (client && supplier) {
+        d.clientClassId = client;
+        d.supplierInterfaceId = supplier;
+        realizationDeltas.push(d);
+      }
+    } else if (d.kind === 'association') {
+      const src = resolveId(d.sourceClassId);
+      const tgt = resolveId(d.targetClassId);
+      if (src && tgt) {
+        d.sourceClassId = src;
+        d.targetClassId = tgt;
+        associationDeltas.push(d);
+      }
     } else if (d.kind === 'dependency') {
-      if (d.clientClassId) d.clientClassId = resolveId(d.clientClassId);
-      if (d.supplierClassId) d.supplierClassId = resolveId(d.supplierClassId);
+      const client = resolveId(d.clientClassId);
+      const supplier = resolveId(d.supplierClassId);
+      if (client && supplier) {
+        d.clientClassId = client;
+        d.supplierClassId = supplier;
+        dependencyDeltas.push(d);
+      }
     } else if (d.kind === 'naryAssociation' && Array.isArray(d.memberEnds)) {
-      d.memberEnds = (d.memberEnds as Record<string, unknown>[]).map((end) => ({
-        ...end,
-        classId: resolveId(end.classId),
-      }));
+      const survivingEnds = (d.memberEnds as Record<string, unknown>[])
+        .map((end) => ({
+          ...end,
+          classId: resolveId(end.classId),
+        }))
+        .filter((end): end is Record<string, unknown> & { classId: string } => typeof end.classId === 'string');
+      if (survivingEnds.length >= 3) {
+        d.memberEnds = survivingEnds;
+        naryAssociationDeltas.push(d);
+      }
+    } else {
+      otherDeltas.push(d);
     }
+  }
 
-    return d;
-  });
+  // Orden topológico estricto para applyBatchDelta:
+  // 1. Clases (para que existan en workingDiagram)
+  // 2. Miembros (atributos y métodos que pertenecen a las clases)
+  // 3. Generalizaciones
+  // 4. Realizaciones
+  // 5. Asociaciones
+  // 6. Dependencias
+  // 7. Asociaciones N-arias
+  // 8. Otros deltas
+  const normalizedDeltas = [
+    ...normalizedClassDeltas,
+    ...memberDeltas,
+    ...generalizationDeltas,
+    ...realizationDeltas,
+    ...associationDeltas,
+    ...dependencyDeltas,
+    ...naryAssociationDeltas,
+    ...otherDeltas,
+  ];
 
   const normalizedBatch = {
     kind: 'batch',
@@ -295,17 +388,17 @@ export class OpenAiVision implements VisionPort {
 
   constructor(config: OpenAiVisionConfig) {
     this.apiKey = config.apiKey;
-    this.baseUrl = config.baseUrl ?? 'https://api.openai.com/v1';
+    this.baseUrl = (config.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
     this.model = config.model ?? 'gpt-4o-mini';
     this.maxAttempts = config.maxAttempts ?? 2;
   }
 
   static fromEnv(): OpenAiVision | null {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.VISION_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
     return new OpenAiVision({
       apiKey,
-      baseUrl: process.env.OPENAI_BASE_URL,
+      baseUrl: process.env.VISION_BASE_URL || process.env.OPENAI_BASE_URL,
       model: process.env.VISION_MODEL,
     });
   }
@@ -354,7 +447,10 @@ export class OpenAiVision implements VisionPort {
       }
 
       if (!response.ok) {
-        throw new VisionExtractionError(`Vision request failed with status ${response.status}`);
+        const errorText = await response.text().catch(() => '');
+        throw new VisionExtractionError(
+          `Vision request failed with status ${response.status}${errorText ? `: ${errorText.slice(0, 300)}` : ''}`,
+        );
       }
 
       const payload = (await response.json().catch(() => null)) as {
