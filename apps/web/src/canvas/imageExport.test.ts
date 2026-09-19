@@ -2,7 +2,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { buildYDocFromDiagram, projectYDocToDiagram, type Diagram } from '@app/core';
 import * as Y from 'yjs';
 
-import { buildExportFilename, computeExportBounds, exportDiagramImage, sanitizeFilenameSegment } from './imageExport';
+import {
+  buildExportFilename,
+  computeDynamicDiagramBounds,
+  computeExportBounds,
+  exportDiagramImage,
+  sanitizeFilenameSegment,
+} from './imageExport';
 
 // Mock html-to-image — jsdom does not implement getComputedStyle which
 // html-to-image needs. The mock returns a known data URL so we can verify
@@ -110,6 +116,40 @@ describe('computeExportBounds', () => {
   });
 });
 
+describe('computeDynamicDiagramBounds', () => {
+  it('returns null for empty classes array', () => {
+    expect(computeDynamicDiagramBounds([])).toBeNull();
+  });
+
+  it('calculates bounding box with padding and default node size', () => {
+    const classes = [
+      { id: 'c1', position: { x: 100, y: 100 } },
+      { id: 'c2', position: { x: 400, y: 300 } },
+    ];
+    // Default node size is 220x140, padding is 40
+    // minX = 100, minY = 100
+    // maxX = 400 + 220 = 620, maxY = 300 + 140 = 440
+    // left = 100 - 40 = 60
+    // top = 100 - 40 = 60
+    // width = 620 - 100 + 80 = 600
+    // height = 440 - 100 + 80 = 420
+    const bounds = computeDynamicDiagramBounds(classes, null, 40);
+    expect(bounds).toEqual({
+      x: 60,
+      y: 60,
+      width: 600,
+      height: 420,
+    });
+  });
+
+  it('enforces minimum width and height for small or single elements', () => {
+    const classes = [{ id: 'c1', position: { x: 0, y: 0 } }];
+    const bounds = computeDynamicDiagramBounds(classes, null, 10);
+    expect(bounds?.width).toBeGreaterThanOrEqual(200);
+    expect(bounds?.height).toBeGreaterThanOrEqual(150);
+  });
+});
+
 describe('exportDiagramImage', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -174,7 +214,10 @@ describe('exportDiagramImage', () => {
 
     await exportDiagramImage(doc, viewport, 'png');
 
-    expect(toPng).toHaveBeenCalledWith(viewport, { backgroundColor: undefined, pixelRatio: 2 });
+    expect(toPng).toHaveBeenCalledWith(
+      viewport,
+      expect.objectContaining({ backgroundColor: undefined, pixelRatio: 2 }),
+    );
   });
 
   it('calls toJpeg with white background and pixelRatio 2 (image-export:R2)', async () => {
@@ -184,7 +227,10 @@ describe('exportDiagramImage', () => {
 
     await exportDiagramImage(doc, viewport, 'jpeg');
 
-    expect(toJpeg).toHaveBeenCalledWith(viewport, { backgroundColor: '#ffffff', pixelRatio: 2 });
+    expect(toJpeg).toHaveBeenCalledWith(
+      viewport,
+      expect.objectContaining({ backgroundColor: '#ffffff', pixelRatio: 2 }),
+    );
   });
 
   it('returns dataUrl from toPng on success', async () => {

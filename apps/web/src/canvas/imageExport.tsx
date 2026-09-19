@@ -8,7 +8,7 @@
  * image-export:R5 — protección contra lienzo vacío: advertencia explícita, ningún archivo producido.
  */
 import * as Y from 'yjs';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toPng, toJpeg } from 'html-to-image';
 
 import { projectYDocToDiagram } from '@app/core';
@@ -67,8 +67,70 @@ export function computeExportBounds(positions: Array<{ x: number; y: number }>):
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+export interface DynamicExportBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
- * Exporta el lienzo del diagrama como una imagen PNG o JPEG.
+ * image-export:R2 — Calcula límites dinámicos ajustados al contenido del diagrama.
+ * Encuadra todas las clases con sus dimensiones estimadas o leídas del DOM
+ * más un margen de resguardo (padding = 40px) para evitar exportar lienzos vacíos.
+ */
+export function computeDynamicDiagramBounds(
+  classes: Array<{ id: string; position: { x: number; y: number } }>,
+  viewport?: HTMLElement | null,
+  padding = 40,
+): DynamicExportBounds | null {
+  if (classes.length === 0) {
+    return null;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const cls of classes) {
+    let nodeWidth = 220;
+    let nodeHeight = 140;
+
+    if (viewport) {
+      const nodeEl = viewport.querySelector<HTMLElement>(`.react-flow__node[data-id="${cls.id}"]`);
+      if (nodeEl && nodeEl.offsetWidth > 0 && nodeEl.offsetHeight > 0) {
+        nodeWidth = nodeEl.offsetWidth;
+        nodeHeight = nodeEl.offsetHeight;
+      }
+    }
+
+    const x1 = cls.position.x;
+    const y1 = cls.position.y;
+    const x2 = cls.position.x + nodeWidth;
+    const y2 = cls.position.y + nodeHeight;
+
+    if (x1 < minX) minX = x1;
+    if (y1 < minY) minY = y1;
+    if (x2 > maxX) maxX = x2;
+    if (y2 > maxY) maxY = y2;
+  }
+
+  const left = Math.round(minX - padding);
+  const top = Math.round(minY - padding);
+  const width = Math.round(maxX - minX + padding * 2);
+  const height = Math.round(maxY - minY + padding * 2);
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(width, 200),
+    height: Math.max(height, 150),
+  };
+}
+
+/**
+ * Exporta el lienzo del diagrama como una imagen PNG o JPEG con encuadre dinámico.
  *
  * - image-export:R3/R4: NO llama a fetch, NO incrementa la versión de Y.Doc,
  *   NO emite ningún delta. La exportación es puramente una captura del DOM.
@@ -87,21 +149,154 @@ export async function exportDiagramImage(
     return { dataUrl: null, filename, warning: 'No diagram content to export' };
   }
 
-  // image-export:R2 — JPEG usa fondo blanco; ambos formatos renderizan a 2x.
-  // (Construido condicionalmente para satisfacer exactOptionalPropertyTypes.)
-  const options = format === 'jpeg' ? { backgroundColor: '#ffffff', pixelRatio: 2 } : { pixelRatio: 2 };
+  const bounds = computeDynamicDiagramBounds(diagram.classes, viewport, 40);
+
+  // image-export:R2 — JPEG usa fondo blanco; ambos formatos renderizan a 2x y encuadran el contenido dinámicamente.
+  const options: Record<string, unknown> = {
+    pixelRatio: 2,
+    ...(format === 'jpeg' ? { backgroundColor: '#ffffff' } : { backgroundColor: undefined }),
+  };
+
+  if (bounds) {
+    options.width = bounds.width;
+    options.height = bounds.height;
+    options.style = {
+      transform: `translate(${-bounds.x}px, ${-bounds.y}px) scale(1)`,
+      width: `${bounds.width}px`,
+      height: `${bounds.height}px`,
+    };
+    options.filter = (node: HTMLElement) => {
+      // Excluir elementos decorativos de fondo o guías de página de la exportación
+      if (node.classList?.contains('diagram-canvas-boundary')) return false;
+      return true;
+    };
+  }
 
   try {
     let dataUrl: string;
     if (format === 'jpeg') {
-      dataUrl = await toJpeg(viewport, options);
+      dataUrl = await toJpeg(viewport, options as any);
     } else {
-      dataUrl = await toPng(viewport, options);
+      dataUrl = await toPng(viewport, options as any);
     }
-    return { dataUrl, filename, warning: null };
+    return {
+      dataUrl,
+      filename,
+      warning: null,
+      width: bounds ? bounds.width * 2 : undefined,
+      height: bounds ? bounds.height * 2 : undefined,
+    };
   } catch {
     return { dataUrl: null, filename, warning: 'Export failed' };
   }
+}
+
+export interface ExportPreviewState {
+  dataUrl: string;
+  filename: string;
+  format: ExportFormat;
+  width?: number;
+  height?: number;
+}
+
+interface ExportPreviewModalProps {
+  preview: ExportPreviewState;
+  onDownload: () => void;
+  onClose: () => void;
+}
+
+/**
+ * Modal de vista previa para la imagen exportada antes de descargarla.
+ */
+export function ExportPreviewModal({ preview, onDownload, onClose }: ExportPreviewModalProps) {
+  const { t } = useT();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" data-testid="export-preview-modal" onClick={onClose}>
+      <div
+        className="modal-dialog export-preview-dialog"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-preview-title"
+      >
+        <div className="modal-dialog__header">
+          <h2 id="export-preview-title" className="modal-dialog__title">
+            {t('export.previewTitle')}
+          </h2>
+          <button
+            type="button"
+            className="modal-dialog__close"
+            onClick={onClose}
+            aria-label={t('export.closeAria')}
+            data-testid="export-preview-close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="modal-dialog__body">
+          <p className="export-preview__subtitle">{t('export.previewSubtitle')}</p>
+
+          <div className="export-preview__viewport">
+            <img
+              src={preview.dataUrl}
+              alt={preview.filename}
+              className="export-preview__img"
+              data-testid="export-preview-image"
+            />
+          </div>
+
+          <div className="export-preview__meta">
+            <div className="export-preview__meta-item">
+              <span className="export-preview__meta-label">{t('export.format')}:</span>
+              <span className="export-preview__badge">{preview.format.toUpperCase()}</span>
+            </div>
+            {preview.width && preview.height && (
+              <div className="export-preview__meta-item">
+                <span className="export-preview__meta-label">{t('export.dimensions')}:</span>
+                <span className="export-preview__badge">
+                  {preview.width} × {preview.height} px
+                </span>
+              </div>
+            )}
+            <div className="export-preview__meta-item">
+              <span className="export-preview__meta-filename">{preview.filename}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-dialog__footer">
+          <button
+            type="button"
+            className="modal-button modal-button--secondary"
+            onClick={onClose}
+            data-testid="export-preview-cancel"
+          >
+            {t('export.cancel')}
+          </button>
+          <button
+            type="button"
+            className="modal-button modal-button--primary"
+            onClick={onDownload}
+            data-testid="export-preview-download"
+          >
+            {t('export.download')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export interface ExportToolbarButtonsProps {
@@ -114,14 +309,14 @@ export interface ExportToolbarButtonsProps {
 /**
  * Botones de la barra de herramientas para Export PNG / Export JPEG (unidad 16b).
  *
- * Cada botón llama a `exportDiagramImage` en el viewport activo de React Flow
- * (ubicado mediante `.react-flow__viewport`), descarga la URL de datos resultante
- * directamente a través de un hipervínculo (sin fetch, sin object URL — image-export:R4),
- * y muestra cualquier advertencia de lienzo vacío (image-export:R5).
+ * Abre un cuadro de diálogo con la vista previa del contenido renderizado y encuadrado
+ * de forma dinámica según la posición de los elementos, permitiendo confirmar la descarga.
  */
 export function ExportToolbarButtons({ doc }: ExportToolbarButtonsProps) {
   const { t } = useT();
   const [warning, setWarning] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ExportPreviewState | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async (format: ExportFormat) => {
     setWarning(null);
@@ -129,16 +324,32 @@ export function ExportToolbarButtons({ doc }: ExportToolbarButtonsProps) {
     if (!viewport) {
       return;
     }
-    const result = await exportDiagramImage(doc, viewport, format);
-    if (result.warning || !result.dataUrl) {
-      setWarning(result.warning ?? 'Export failed');
-      return;
+    setIsExporting(true);
+    try {
+      const result = await exportDiagramImage(doc, viewport, format);
+      if (result.warning || !result.dataUrl) {
+        setWarning(result.warning ?? 'Export failed');
+        return;
+      }
+      setPreview({
+        dataUrl: result.dataUrl,
+        filename: result.filename,
+        format,
+        width: result.width,
+        height: result.height,
+      });
+    } finally {
+      setIsExporting(false);
     }
-    // Descargar directo de la URL de datos — cero llamadas de red.
+  };
+
+  const handleDownload = () => {
+    if (!preview) return;
     const a = document.createElement('a');
-    a.href = result.dataUrl;
-    a.download = result.filename;
+    a.href = preview.dataUrl;
+    a.download = preview.filename;
     a.click();
+    setPreview(null);
   };
 
   return (
@@ -148,12 +359,30 @@ export function ExportToolbarButtons({ doc }: ExportToolbarButtonsProps) {
           {warning}
         </span>
       )}
-      <button type="button" data-testid="export-png" onClick={() => handleExport('png')}>
+      <button
+        type="button"
+        data-testid="export-png"
+        disabled={isExporting}
+        onClick={() => handleExport('png')}
+      >
         {t('export.png')}
       </button>
-      <button type="button" data-testid="export-jpeg" onClick={() => handleExport('jpeg')}>
+      <button
+        type="button"
+        data-testid="export-jpeg"
+        disabled={isExporting}
+        onClick={() => handleExport('jpeg')}
+      >
         {t('export.jpeg')}
       </button>
+
+      {preview && (
+        <ExportPreviewModal
+          preview={preview}
+          onDownload={handleDownload}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </>
   );
 }
