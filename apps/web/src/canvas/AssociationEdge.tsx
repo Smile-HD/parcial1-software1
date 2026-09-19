@@ -12,11 +12,12 @@
  *    leídas del almacén de React Flow (EdgeProps de v12 no las incluye), con un valor
  *    por defecto antes de la medición.
  */
-import { type EdgeProps, getSmoothStepPath, useStore, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, useStore, BaseEdge } from '@xyflow/react';
 
 import type { Association } from '@app/core';
 
 import { getSelfLoopGeometry } from './selfLoop';
+import { useOrthogonalPathWithJumps } from './EdgeCrossingContext';
 
 interface AssociationEdgeData {
   association: Association;
@@ -32,10 +33,12 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
 
   const association = data?.association;
 
+  // Ruta ortogonal con saltos de puente en cruces (estilo Enterprise Architect)
+  const [smoothPath] = useOrthogonalPathWithJumps(id, props);
+
   // Fallback para aristas sin datos de asociación (compatibilidad hacia atrás)
   if (!association) {
-    const [fallbackPath] = getSmoothStepPath(props);
-    return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
+    return <path d={smoothPath} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
   }
 
   const isSelf = source === target;
@@ -89,7 +92,7 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
   const loop = isSelf
     ? getSelfLoopGeometry({ sourceX, sourceY, targetX, targetY, width: sourceWidth, height: sourceHeight })
     : null;
-  const [path] = loop ? [loop.path] : getSmoothStepPath(props);
+  const [path] = loop ? [loop.path] : [smoothPath];
 
   // Anclajes de etiquetas: en el arco para autoaristas (13e.7: tramo de salida a la izquierda del
   // centro superior, tramo de retorno a la derecha — para que la etiqueta origen quede a la

@@ -3363,5 +3363,44 @@ describe('límite visible del lienzo (diagram-canvas-boundary)', () => {
     // Alto expandido para incluir la posición 2500 + 260 = 2760
     expect(parseInt(boundary.style.height, 10)).toBeGreaterThanOrEqual(2760);
   });
+
+  it('renderiza aristas dentro del contexto EdgeCrossingProvider sin errores', async () => {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const cId = crypto.randomUUID();
+    const dId = crypto.randomUUID();
+    const horizAssocId = crypto.randomUUID();
+    const vertAssocId = crypto.randomUUID();
+
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'CrossingDiagram',
+      classes: [
+        { id: aId, name: 'ClassA', position: { x: 0, y: 100 }, attributes: [], methods: [] },
+        { id: bId, name: 'ClassB', position: { x: 400, y: 100 }, attributes: [], methods: [] },
+        { id: cId, name: 'ClassC', position: { x: 200, y: 0 }, attributes: [], methods: [] },
+        { id: dId, name: 'ClassD', position: { x: 200, y: 400 }, attributes: [], methods: [] },
+      ],
+      associations: [
+        { id: horizAssocId, sourceClassId: aId, targetClassId: bId, directed: false },
+        { id: vertAssocId, sourceClassId: cId, targetClassId: dId, directed: false },
+      ],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    });
+    const doc = buildYDocFromDiagram(diagram);
+    const { container } = render(<DiagramCanvas doc={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('ClassA')).toBeTruthy();
+      expect(screen.getByText('ClassC')).toBeTruthy();
+    });
+
+    // En jsdom, React Flow renderiza las aristas en el contenedor
+    expect(container.querySelector('.react-flow')).not.toBeNull();
+  });
 });
+
 

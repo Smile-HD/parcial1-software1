@@ -9,9 +9,11 @@
  * GeneralizationEdge del PR 11: React Flow serializa objetos de marcador en
  * atributos que el navegador no puede resolver para definiciones SVG personalizadas).
  */
-import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, BaseEdge } from '@xyflow/react';
 
 import type { Realization } from '@app/core';
+
+import { useOrthogonalPathWithJumps } from './EdgeCrossingContext';
 
 interface RealizationEdgeData {
   realization: Realization;
@@ -23,17 +25,16 @@ const REALIZATION_DASH = '6 4';
 export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
   const { id, data } = props;
 
+  // unidad 13e — enrutamiento ortogonal estilo EA con saltos de puente en intersecciones;
+  // las coordenadas de etiqueta de la tupla centran el nombre editable de la arista (unidad 13c) sobre el conector.
+  const [path, labelX, labelY] = useOrthogonalPathWithJumps(id, props);
+
   // Respaldo para aristas sin datos de realización (defensivo).
   if (!data?.realization) {
-    const [fallbackPath] = getSmoothStepPath(props);
-    return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={REALIZATION_DASH} fill="none" />;
+    return <path d={path} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={REALIZATION_DASH} fill="none" />;
   }
 
   const triangleId = `uml-${id}-realization-triangle`;
-
-  // unidad 13e — enrutamiento ortogonal estilo EA; las coordenadas de etiqueta de la tupla
-  // centran el nombre editable de la arista (unidad 13c) sobre el conector.
-  const [path, labelX, labelY] = getSmoothStepPath(props);
   const label = data.realization.name;
 
   return (

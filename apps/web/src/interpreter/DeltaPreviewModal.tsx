@@ -67,16 +67,18 @@ export interface DeltaPreviewModalProps {
  */
 export function DeltaPreviewModal({ delta, onConfirm, onReject }: DeltaPreviewModalProps) {
   return (
-    <div className="delta-preview" role="dialog" aria-label="AI change preview">
-      <h2>AI proposes this change</h2>
-      <p className="delta-preview__summary">{describeDelta(delta)}</p>
-      <div className="delta-preview__actions">
-        <button type="button" onClick={onConfirm}>
-          Confirm
-        </button>
-        <button type="button" onClick={onReject}>
-          Reject
-        </button>
+    <div className="modal-backdrop">
+      <div className="delta-preview" role="dialog" aria-label="AI change preview">
+        <h2>AI proposes this change</h2>
+        <p className="delta-preview__summary">{describeDelta(delta)}</p>
+        <div className="delta-preview__actions">
+          <button type="button" onClick={onReject}>
+            Reject
+          </button>
+          <button type="button" onClick={onConfirm}>
+            Confirm
+          </button>
+        </div>
       </div>
     </div>
   );

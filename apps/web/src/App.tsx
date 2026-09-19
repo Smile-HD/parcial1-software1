@@ -44,6 +44,7 @@ import { ExportToolbarButtons } from './canvas/imageExport';
 import { ImportXmiButton } from './xmi/ImportXmiButton';
 import { ExportXmiButton } from './xmi/ExportXmiButton';
 import { ImportPhotoButton } from './photo/ImportPhotoButton';
+import './canvas/canvas.css';
 
 const DIAGRAM_NAME = 'Untitled';
 const COLLAB_URL: string = import.meta.env.VITE_COLLAB_URL ?? 'ws://localhost:1234';

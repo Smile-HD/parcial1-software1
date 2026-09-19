@@ -17,11 +17,12 @@
  * de las medidas del nodo leídas del almacén de React Flow — para que la punta de flecha
  * abierta retorne al nodo en lugar de ocultarse tras él.
  */
-import { type EdgeProps, getSmoothStepPath, useStore, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, useStore, BaseEdge } from '@xyflow/react';
 
 import type { Dependency } from '@app/core';
 
 import { getSelfLoopGeometry } from './selfLoop';
+import { useOrthogonalPathWithJumps } from './EdgeCrossingContext';
 
 interface DependencyEdgeData {
   dependency: Dependency;
@@ -37,21 +38,23 @@ export function DependencyEdge(props: EdgeProps<DependencyEdgeData>) {
   const sourceWidth = useStore((s) => s.nodeLookup.get(source)?.measured?.width ?? 0);
   const sourceHeight = useStore((s) => s.nodeLookup.get(source)?.measured?.height ?? 0);
 
+  // Ruta ortogonal con saltos de puente en cruces (estilo Enterprise Architect)
+  const [smoothPath, smoothLabelX, smoothLabelY] = useOrthogonalPathWithJumps(id, props);
+
   // Fallback para aristas sin datos de dependencia (defensivo).
   if (!data?.dependency) {
-    const [fallbackPath] = getSmoothStepPath(props);
-    return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={DEPENDENCY_DASH} fill="none" />;
+    return <path d={smoothPath} strokeWidth={1.5} stroke="#1a1a2e" strokeDasharray={DEPENDENCY_DASH} fill="none" />;
   }
 
   const arrowId = `uml-${id}-dependency-arrow`;
   const label = data.dependency.name;
 
-  // unidad 13e — autodependencia: bucle visible; de lo contrario enrutamiento ortogonal.
+  // unidad 13e — autodependencia: bucle visible; de lo contrario enrutamiento ortogonal con saltos.
   const isSelf = source === target;
   const loop = isSelf
     ? getSelfLoopGeometry({ sourceX, sourceY, targetX, targetY, width: sourceWidth, height: sourceHeight })
     : null;
-  const [path, labelX, labelY] = loop ? [loop.path, loop.labelX, loop.labelY] : getSmoothStepPath(props);
+  const [path, labelX, labelY] = loop ? [loop.path, loop.labelX, loop.labelY] : [smoothPath, smoothLabelX, smoothLabelY];
 
   return (
     <>

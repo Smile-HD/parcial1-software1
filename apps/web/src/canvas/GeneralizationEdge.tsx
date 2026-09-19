@@ -9,9 +9,11 @@
  * serializa los objetos de marcador en atributos que el navegador no puede resolver
  * para defs SVG personalizados).
  */
-import { type EdgeProps, getSmoothStepPath, BaseEdge } from '@xyflow/react';
+import { type EdgeProps, BaseEdge } from '@xyflow/react';
 
 import type { Generalization } from '@app/core';
+
+import { useOrthogonalPathWithJumps } from './EdgeCrossingContext';
 
 interface GeneralizationEdgeData {
   generalization: Generalization;
@@ -20,17 +22,16 @@ interface GeneralizationEdgeData {
 export function GeneralizationEdge(props: EdgeProps<GeneralizationEdgeData>) {
   const { id, data } = props;
 
+  // unidad 13e — enrutamiento ortogonal estilo EA con saltos de puente en intersecciones;
+  // las coordenadas de etiqueta de la tupla centran el nombre editable de la arista en el conector.
+  const [path, labelX, labelY] = useOrthogonalPathWithJumps(id, props);
+
   // Fallback para aristas sin datos de generalización (defensivo).
   if (!data?.generalization) {
-    const [fallbackPath] = getSmoothStepPath(props);
-    return <path d={fallbackPath} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
+    return <path d={path} strokeWidth={1.5} stroke="#1a1a2e" fill="none" />;
   }
 
   const triangleId = `uml-${id}-generalization-triangle`;
-
-  // unidad 13e — enrutamiento ortogonal estilo EA; las coordenadas de etiqueta de la tupla
-  // centran el nombre editable de la arista (unidad 13c) en el conector.
-  const [path, labelX, labelY] = getSmoothStepPath(props);
   const label = data.generalization.name;
 
   return (

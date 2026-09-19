@@ -6,7 +6,7 @@
  * Ninguna mutación evade applyDelta (ver applyDeltaToYDoc).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { ReactFlow, Background, BackgroundVariant, ViewportPortal, type Connection, type Edge, type ReactFlowInstance, MarkerType } from '@xyflow/react';
+import { ReactFlow, Background, BackgroundVariant, ViewportPortal, applyNodeChanges, type Connection, type Edge, type NodeChange, type ReactFlowInstance, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
@@ -23,6 +23,7 @@ import { DependencyEdge } from './DependencyEdge';
 import { NaryEndEdge } from './NaryEndEdge';
 import { Palette, PALETTE_DND_MIME, type PaletteEdgeTool, type PaletteNodeKind } from './Palette';
 import { QuickLinkerMenu } from './QuickLinkerMenu';
+import { EdgeCrossingProvider } from './EdgeCrossingContext';
 import {
   elementMenuOptions,
   quickLinkerTarget,
@@ -1385,6 +1386,18 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram, edgeTool, selectedClassId],
   );
 
+  // Estado local sincronizado para arrastre suave y reactivo en tiempo real (60/120 FPS).
+  // La posición canónica proviene del Y.Doc, pero durante el arrastre onNodesChange actualiza
+  // de inmediato la posición del nodo en pantalla para que acompañe al cursor sin saltos.
+  const [displayNodes, setDisplayNodes] = useState(nodes);
+  useEffect(() => {
+    setDisplayNodes(nodes);
+  }, [nodes]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setDisplayNodes((nds) => applyNodeChanges(changes, nds) as typeof nds);
+  }, []);
+
   const edges = useMemo<Edge[]>(
     () => [
       ...diagram.associations.map((assoc) => ({
@@ -2034,27 +2047,28 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           ))}
         </div>
       )}
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        // unidad 13b — las conexiones solo se pueden iniciar mientras una herramienta de
-        // arista esté armada; el modo suelto permite iniciar el arrastre desde cualquier conector (el delta
-        // se enfoca en la dirección del nodo, no en la identidad del conector).
-        nodesConnectable={edgeTool !== null}
-        connectionMode="loose"
-        // unidad 13c — radio de ajuste indulgente alrededor de los conectores; combinado con las
-        // superposiciones de conexión en todo el nodo permite arrastrar para conectar desde el cuerpo.
-        connectionRadius={40}
-        onConnect={onConnect}
-        onEdgesChange={() => {}}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onInit={(instance) => {
-          rfRef.current = instance;
-        }}
-        onNodesChange={() => {}}
+      <EdgeCrossingProvider>
+        <ReactFlow
+          nodes={displayNodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          // unidad 13b — las conexiones solo se pueden iniciar mientras una herramienta de
+          // arista esté armada; el modo suelto permite iniciar el arrastre desde cualquier conector (el delta
+          // se enfoca en la dirección del nodo, no en la identidad del conector).
+          nodesConnectable={edgeTool !== null}
+          connectionMode="loose"
+          // unidad 13c — radio de ajuste indulgente alrededor de los conectores; combinado con las
+          // superposiciones de conexión en todo el nodo permite arrastrar para conectar desde el cuerpo.
+          connectionRadius={40}
+          onConnect={onConnect}
+          onEdgesChange={() => {}}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          onInit={(instance) => {
+            rfRef.current = instance;
+          }}
+          onNodesChange={onNodesChange}
         onNodeClick={(_event, node) => handleNodeClick(node)}
         // unidad 13c — hacer clic en cualquier tipo de arista de editor abre el editor
         // ÚNICO unificado; las aristas de miembros n-arios conservan su propio flujo de diamante.
@@ -2105,6 +2119,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           </div>
         </ViewportPortal>
       </ReactFlow>
+      </EdgeCrossingProvider>
       {/* unidad 13d — banda elástica de Quick Linker: una delgada línea discontinua desde la
           flecha de la esquina hasta el cursor en vivo mientras corre el arrastre de enlace rápido. */}
       {quickLinkDrag !== null && (

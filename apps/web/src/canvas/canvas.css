@@ -1373,3 +1373,245 @@ body {
   color: #94a3b8;
 }
 
+/* ── Modales y Cuadros de Diálogo Superpuestos (Diseño Unificado y Responsivo) ── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  animation: modalFadeIn 0.15s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-dialog,
+.delta-preview,
+.photo-review {
+  background: #ffffff;
+  color: #1e293b;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  font-family: var(--ea-font, 'Segoe UI', system-ui, sans-serif);
+  animation: modalZoomIn 0.15s ease-out;
+}
+
+@keyframes modalZoomIn {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Encabezados de modal */
+.modal-dialog h2,
+.delta-preview h2,
+.photo-review h2 {
+  margin: 0;
+  padding: 16px 20px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+/* Cuerpo de modal */
+.modal-dialog__body,
+.delta-preview__summary {
+  padding: 18px 20px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #334155;
+  background: #ffffff;
+}
+
+/* Advertencias en modal de foto */
+.photo-review__warnings {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.photo-review__warnings p {
+  margin: 2px 0;
+}
+
+/* Lista de elementos del modal de foto */
+.photo-review__list {
+  list-style: none;
+  margin: 0;
+  padding: 12px 20px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.photo-review__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.photo-review__item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.photo-review__class-name {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 13px;
+  min-width: 80px;
+}
+
+.photo-review__item input {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.photo-review__item input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.photo-review__item button {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #ffffff;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.photo-review__item button:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+/* Pie de modal y botones de acción unificados */
+.modal-dialog__footer,
+.delta-preview__actions,
+.photo-review__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.delta-preview__actions button,
+.photo-review__actions button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* Botón secundario (Cancel, Reject) */
+.delta-preview__actions button:first-child,
+.photo-review__actions button:first-child {
+  background: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.delta-preview__actions button:first-child:hover,
+.photo-review__actions button:first-child:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #94a3b8;
+}
+
+/* Botón primario (Confirm, Approve) */
+.delta-preview__actions button:last-child,
+.photo-review__actions button:last-child {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #1d4ed8;
+}
+
+.delta-preview__actions button:last-child:hover:not(:disabled),
+.photo-review__actions button:last-child:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.delta-preview__actions button:last-child:disabled,
+.photo-review__actions button:last-child:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Botones de toolbar unificados */
+.app-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-toolbar button {
+  transition: all 0.15s ease;
+  border-radius: 4px;
+}
+
+.app-toolbar button:active {
+  transform: translateY(1px);
+}
+
+
