@@ -514,9 +514,18 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   const assistantEntities = [...entities.entries()]
     .filter(([_, e]) => !e.isAbstract)
     .map(([name]) => name);
+  // D11v2: esquemas de campos por entidad para que las plantillas puedan generar
+  // applyFields() por entidad y el prompt de Ollama incluya la estructura de campos.
+  const entitySchemas = [...entities.entries()]
+    .filter(([_, e]) => !e.isAbstract)
+    .map(([name, e]) => ({
+      name,
+      fields: e.fields.map((f) => ({ name: f.name, javaType: f.javaType })),
+    }));
   const assistantModel = {
     packageName: basePackage,
     entities: assistantEntities,
+    entitySchemas,
     assistantModel: 'qwen2.5:1.5b',
     assistantOllamaUrl: 'http://127.0.0.1:11434',
   };
@@ -524,6 +533,7 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   push(`src/main/java/${packagePath}/assistant/IntentMatcher.java`, 'source', 'intent-matcher', assistantModel);
   push(`src/main/java/${packagePath}/assistant/OllamaEngine.java`, 'source', 'ollama-engine', assistantModel);
   push(`src/main/java/${packagePath}/assistant/AuditLog.java`, 'source', 'audit-log', assistantModel);
+  push(`src/main/java/${packagePath}/assistant/OllamaProvisioner.java`, 'source', 'ollama-provisioner', assistantModel);
   push(`src/main/java/${packagePath}/web/AssistantController.java`, 'source', 'assistant-controller', assistantModel);
 
   return { files, warnings };

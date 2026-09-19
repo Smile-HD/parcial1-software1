@@ -170,4 +170,22 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
 
 {{/if}}
 {{/each}}
+{{#if fields.length}}
+    /**
+     * Apply field values from a string map (D11v2 — assistant CREATE/UPDATE).
+     * Generated type-safe setter dispatch with string-to-type conversion.
+     */
+    public static void applyFields({{className}} entity, java.util.Map<String, String> fields) {
+        for (var entry : fields.entrySet()) {
+            switch (entry.getKey()) {
+{{#each fields}}
+{{#unless isCollection}}
+                case "{{name}}" -> entity.set{{cap name}}({{#if (eq javaType "String")}}entry.getValue(){{else if (eq javaType "Integer")}}Integer.parseInt(entry.getValue()){{else if (eq javaType "Long")}}Long.parseLong(entry.getValue()){{else if (eq javaType "Double")}}Double.parseDouble(entry.getValue()){{else if (eq javaType "Float")}}Float.parseFloat(entry.getValue()){{else if (eq javaType "Boolean")}}Boolean.parseBoolean(entry.getValue()){{else if (eq javaType "BigDecimal")}}new java.math.BigDecimal(entry.getValue()){{else if (eq javaType "Character")}}entry.getValue().charAt(0){{else if (eq javaType "LocalDate")}}java.time.LocalDate.parse(entry.getValue()){{else if (eq javaType "LocalDateTime")}}java.time.LocalDateTime.parse(entry.getValue()){{else if (eq javaType "LocalTime")}}java.time.LocalTime.parse(entry.getValue()){{else}}entry.getValue(){{/if}});
+{{/unless}}
+{{/each}}
+                default -> { /* unknown field — silently ignored */ }
+            }
+        }
+    }
+{{/if}}
 }

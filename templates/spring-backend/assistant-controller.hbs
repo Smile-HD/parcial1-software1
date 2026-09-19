@@ -3,12 +3,15 @@ package {{packageName}}.web;
 import {{packageName}}.assistant.AssistantEngine;
 import {{packageName}}.assistant.IntentMatcher;
 import {{packageName}}.assistant.OllamaEngine;
+import {{packageName}}.assistant.OllamaProvisioner;
 import {{packageName}}.assistant.AuditLog;
 import {{packageName}}.assistant.AssistantEngine.Intent;
 {{#each entities}}
+import {{../packageName}}.{{this}};
 import {{../packageName}}.service.{{this}}Service;
 {{/each}}
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,12 +19,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Generated REST endpoint for the offline assistant (design D11).
+ * Generated REST endpoint for the offline assistant (design D11v2).
  * POST /api/assistant accepts a free-text request and returns a structured
  * response with outcome: executed | canned | unavailable | refused.
  *
- * Flow: intent matcher (bilingual) → execute via *Service → Ollama fallback
- * → whitelist re-validate → canned/unavailable fallback.
+ * D11v2 flow: Ollama (primary) → IntentMatcher (fallback when Ollama is down).
  * Every action is audited (assistant:R4).
  * Rendered by templates/spring-backend/assistant-controller.hbs — do not edit by hand.
  */
@@ -35,25 +37,38 @@ public class AssistantController {
         {{#each entities}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}
     );
 
+    /**
+     * Entity field schemas for Ollama prompt context (D11v2).
+     * Lets the model know which fields each entity has so it can extract
+     * field names and values from natural language.
+     */
+    private static final String ENTITY_SCHEMA_DESCRIPTION =
+{{#each entitySchemas}}
+        "Entity {{name}}: fields={{#each fields}}{{name}}({{javaType}}){{#unless @last}}, {{/unless}}{{/each}}"{{#unless @last}} + "\n" +{{/unless}}{{#if @last}};{{/if}}
+{{/each}}
+
     private static final String CAPABILITY_MESSAGE =
-        "I can help you with: list records (e.g. 'list customers'), "
-        + "count records (e.g. 'how many products'), "
-        + "or create a record (e.g. 'create order').";
+        "I can help you with: list records, count records, "
+        + "create a record, delete a record by id, "
+        + "or update a record by id. Try: 'list products' or 'delete product 3'.";
 
     private final IntentMatcher matcher;
     private final OllamaEngine ollama;
+    private final OllamaProvisioner provisioner;
     private final AuditLog auditLog;
     {{#each entities}}
     private final {{this}}Service {{camel this}}Service;
     {{/each}}
 
     public AssistantController(
+            OllamaProvisioner provisioner,
             @Value("${assistant.ollama.url:http://127.0.0.1:11434}") String ollamaUrl,
             @Value("${assistant.model:qwen2.5:1.5b}") String model,
             {{#each entities}}{{this}}Service {{camel this}}Service{{#unless @last}}, {{/unless}}{{/each}}
     ) {
+        this.provisioner = provisioner;
         this.matcher = new IntentMatcher(KNOWN_ENTITIES);
-        this.ollama = new OllamaEngine(ollamaUrl, model, KNOWN_ENTITIES);
+        this.ollama = new OllamaEngine(ollamaUrl, model, KNOWN_ENTITIES, ENTITY_SCHEMA_DESCRIPTION);
         this.auditLog = new AuditLog();
         {{#each entities}}
         this.{{camel this}}Service = {{camel this}}Service;
@@ -67,36 +82,53 @@ public class AssistantController {
             return new AssistantResponse("canned", null, null, CAPABILITY_MESSAGE);
         }
 
-        // 1. Try deterministic matcher (primary path, design D11)
+        // D11v2: Ollama is the PRIMARY path — try it first if available
+        if (provisioner.isModelReady()) {
+            try {
+                Intent ollamaIntent = ollama.classify(text).orElse(null);
+                if (ollamaIntent != null && ollamaIntent.isMatched()) {
+                    // Server-side whitelist re-validate (assistant:R2)
+                    if (!KNOWN_ENTITIES.contains(ollamaIntent.entityName())) {
+                        auditLog.log("refused", "classify", text);
+                        return new AssistantResponse("refused", null, null, CAPABILITY_MESSAGE);
+                    }
+                    return executeIntent(ollamaIntent, text);
+                }
+            } catch (Exception e) {
+                log.warning("Ollama engine error: " + e.getMessage());
+                // Fall through to IntentMatcher
+            }
+        }
+
+        // D11v2: IntentMatcher is the FALLBACK — deterministic, no network
         Intent matched = matcher.classify(text);
         if (matched.isMatched()) {
+            // DELETE/UPDATE without id from matcher is still usable for LIST/COUNT
+            if ((matched.action() == Intent.Action.UPDATE || matched.action() == Intent.Action.CREATE)
+                    && matched.fields() == null && !provisioner.isModelReady()) {
+                auditLog.log("unavailable", matched.action().name().toLowerCase(), text);
+                return new AssistantResponse("unavailable", matched.action().name().toLowerCase(),
+                    matched.entityName(),
+                    "This action requires the AI assistant (Ollama). Please install and start Ollama.");
+            }
             return executeIntent(matched, text);
         }
 
-        // 2. Matcher miss → Ollama fallback
-        try {
-            Intent ollamaIntent = ollama.classify(text).orElse(null);
-            if (ollamaIntent != null && ollamaIntent.isMatched()) {
-                // Server-side whitelist re-validate (assistant:R2)
-                if (!KNOWN_ENTITIES.contains(ollamaIntent.entityName())) {
-                    auditLog.log("refused", "classify", text);
-                    return new AssistantResponse("refused", null, null, CAPABILITY_MESSAGE);
-                }
-                return executeIntent(ollamaIntent, text);
-            }
-        } catch (Exception e) {
-            log.warning("Ollama engine error: " + e.getMessage());
-            auditLog.log("unavailable", "classify", text);
-            return new AssistantResponse("unavailable", null, null,
-                "The AI assistant is currently unavailable. CRUD operations work normally.");
-        }
-
-        // 3. Nothing matched → canned response
+        // Nothing matched
         auditLog.log("canned", "classify", text);
         return new AssistantResponse("canned", null, null, CAPABILITY_MESSAGE);
     }
 
-    @SuppressWarnings("unchecked")
+    /** GET /api/assistant/status — reports Ollama and model readiness to the client. */
+    @GetMapping("/status")
+    public StatusResponse status() {
+        return new StatusResponse(
+            provisioner.isOllamaAvailable(),
+            provisioner.getModel(),
+            provisioner.isModelReady()
+        );
+    }
+
     private AssistantResponse executeIntent(Intent intent, String originalRequest) {
         String action = intent.action().name().toLowerCase();
         String entity = intent.entityName();
@@ -116,11 +148,43 @@ public class AssistantController {
                     yield new AssistantResponse("executed", action, entity,
                         "Count: " + count);
                 }
-                case CREATE -> {
-                    // CREATE without field values hits Bean Validation (400)
+                case DELETE -> {
+                    if (intent.id() == null) {
+                        auditLog.log("refused", action, originalRequest);
+                        yield new AssistantResponse("refused", action, entity,
+                            "Please specify which " + entity + " to delete (e.g. 'delete " + entity + " 3').");
+                    }
+                    deleteEntity(entity, intent.id());
                     auditLog.log("executed", action, originalRequest);
                     yield new AssistantResponse("executed", action, entity,
-                        "Create request received for " + entity + ". Use the CRUD API with field values for full creation.");
+                        entity + " " + intent.id() + " deleted successfully.");
+                }
+                case UPDATE -> {
+                    if (intent.id() == null) {
+                        auditLog.log("refused", action, originalRequest);
+                        yield new AssistantResponse("refused", action, entity,
+                            "Please specify which " + entity + " to update (e.g. 'update " + entity + " 3 name Laptop').");
+                    }
+                    if (intent.fields() == null || intent.fields().isEmpty()) {
+                        auditLog.log("refused", action, originalRequest);
+                        yield new AssistantResponse("refused", action, entity,
+                            "Please specify which fields to update.");
+                    }
+                    Object updated = updateEntity(entity, intent.id(), intent.fields());
+                    auditLog.log("executed", action, originalRequest);
+                    yield new AssistantResponse("executed", action, entity,
+                        entity + " " + intent.id() + " updated: " + updated.toString());
+                }
+                case CREATE -> {
+                    if (intent.fields() == null || intent.fields().isEmpty()) {
+                        auditLog.log("refused", action, originalRequest);
+                        yield new AssistantResponse("refused", action, entity,
+                            "Please specify the fields for the new " + entity + ".");
+                    }
+                    Object created = createEntity(entity, intent.fields());
+                    auditLog.log("executed", action, originalRequest);
+                    yield new AssistantResponse("executed", action, entity,
+                        entity + " created: " + created.toString());
                 }
             };
         } catch (Exception e) {
@@ -130,7 +194,6 @@ public class AssistantController {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private List<?> listEntity(String name) {
         {{#each entities}}
         if ("{{this}}".equals(name)) return {{camel this}}Service.findAll();
@@ -138,9 +201,41 @@ public class AssistantController {
         return null;
     }
 
+    private void deleteEntity(String name, Long id) {
+        {{#each entities}}
+        if ("{{this}}".equals(name)) { {{camel this}}Service.deleteById(id); return; }
+        {{/each}}
+        throw new IllegalArgumentException("Unknown entity: " + name);
+    }
+
+    private Object updateEntity(String name, Long id, Map<String, String> fields) {
+        {{#each entities}}
+        if ("{{this}}".equals(name)) {
+            {{this}} entity = {{camel this}}Service.findById(id);
+            {{this}}.applyFields(entity, fields);
+            return {{camel this}}Service.save(entity);
+        }
+        {{/each}}
+        throw new IllegalArgumentException("Unknown entity: " + name);
+    }
+
+    private Object createEntity(String name, Map<String, String> fields) {
+        {{#each entities}}
+        if ("{{this}}".equals(name)) {
+            {{this}} entity = new {{this}}();
+            {{this}}.applyFields(entity, fields);
+            return {{camel this}}Service.save(entity);
+        }
+        {{/each}}
+        throw new IllegalArgumentException("Unknown entity: " + name);
+    }
+
     /** Request DTO for POST /api/assistant. */
     public record AssistantRequest(String request) {}
 
     /** Response DTO for POST /api/assistant. */
     public record AssistantResponse(String outcome, String action, String entity, String response) {}
+
+    /** Status DTO for GET /api/assistant/status. */
+    public record StatusResponse(boolean ollama, String model, boolean ready) {}
 }

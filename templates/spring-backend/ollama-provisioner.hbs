@@ -1,0 +1,133 @@
+package {{packageName}}.assistant;
+
+import jakarta.annotation.PostConstruct;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.logging.Logger;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+/**
+ * Auto-provisioner for Ollama (design D11v2).
+ * On startup: health-check Ollama, verify model presence, auto-pull if missing.
+ * Exposes readiness state consumed by AssistantController /api/assistant/status.
+ * Rendered by templates/spring-backend/ollama-provisioner.hbs — do not edit by hand.
+ */
+@Component
+public class OllamaProvisioner {
+
+    private static final Logger log = Logger.getLogger(OllamaProvisioner.class.getName());
+    private static final Duration TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration PULL_TIMEOUT = Duration.ofMinutes(30);
+
+    @Value("${assistant.ollama.url:http://127.0.0.1:11434}")
+    private String ollamaUrl;
+
+    @Value("${assistant.model:qwen2.5:1.5b}")
+    private String model;
+
+    @Value("${assistant.auto-pull:true}")
+    private boolean autoPull;
+
+    private volatile boolean ollamaAvailable = false;
+    private volatile boolean modelReady = false;
+
+    public boolean isOllamaAvailable() { return ollamaAvailable; }
+    public boolean isModelReady() { return modelReady; }
+    public String getModel() { return model; }
+
+    @PostConstruct
+    public void provision() {
+        Thread.ofVirtual().name("ollama-provisioner").start(() -> {
+            try {
+                // 1. Health check
+                if (!checkHealth()) {
+                    log.warning("Ollama is not reachable at " + ollamaUrl
+                        + " — assistant will use IntentMatcher fallback only. "
+                        + "Install Ollama: curl -fsSL https://ollama.com/install.sh | sh");
+                    return;
+                }
+                ollamaAvailable = true;
+                log.info("Ollama is reachable at " + ollamaUrl);
+
+                // 2. Check if model exists
+                if (checkModel()) {
+                    modelReady = true;
+                    log.info("Model " + model + " is available");
+                    return;
+                }
+
+                // 3. Auto-pull if enabled
+                if (!autoPull) {
+                    log.warning("Model " + model + " not found and auto-pull is disabled. "
+                        + "Run: ollama pull " + model);
+                    return;
+                }
+
+                log.info("Model " + model + " not found — pulling (this may take a few minutes)...");
+                if (pullModel()) {
+                    modelReady = true;
+                    log.info("Model " + model + " pulled successfully");
+                } else {
+                    log.warning("Failed to pull model " + model);
+                }
+            } catch (Exception e) {
+                log.warning("Ollama provisioner error: " + e.getMessage());
+            }
+        });
+    }
+
+    private boolean checkHealth() {
+        try {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(ollamaUrl + "/"))
+                .timeout(TIMEOUT)
+                .GET()
+                .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean checkModel() {
+        try {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(ollamaUrl + "/api/tags"))
+                .timeout(TIMEOUT)
+                .GET()
+                .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) return false;
+            // Simple check: the model name appears in the tags response
+            return response.body().contains("\"" + model + "\"")
+                || response.body().contains("\"name\":\"" + model + "\"");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean pullModel() {
+        try {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(PULL_TIMEOUT).build();
+            String json = "{\"name\":\"" + model + "\",\"stream\":false}";
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(ollamaUrl + "/api/pull"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .timeout(PULL_TIMEOUT)
+                .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            log.warning("Model pull failed: " + e.getMessage());
+            return false;
+        }
+    }
+}

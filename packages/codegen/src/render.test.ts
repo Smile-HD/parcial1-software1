@@ -56,6 +56,11 @@ describe('entity template', () => {
     // Accessors exist for the generated fields.
     expect(java).toContain('public String getName()');
     expect(java).toContain('public void setName(String name)');
+
+    // D11v2: applyFields static method for assistant CREATE/UPDATE
+    expect(java).toContain('public static void applyFields(Customer entity, java.util.Map<String, String> fields)');
+    expect(java).toContain('case "name" -> entity.setName(entry.getValue());');
+    expect(java).toContain('case "active" -> entity.setActive(Boolean.parseBoolean(entry.getValue()));');
   });
 
   it('renders the owning ManyToOne on Order and imports java.time/java.math types', () => {
@@ -220,13 +225,15 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/IntentMatcher.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/OllamaEngine.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/AuditLog.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/OllamaProvisioner.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/web/AssistantController.java`);
     // 8 entities × 4 files + 1 interface + Application + pom + 2 properties
     // + 3 wrapper assets + Dockerfile + compose + README = 43.
     // 43 → 40: 17 amendment (2026-09-13) removes the CRUD trio for abstract Payment.
     // 40 → 45: 18 adds 5 assistant files (AssistantEngine, IntentMatcher,
     // OllamaEngine, AuditLog, AssistantController).
-    expect(paths).toHaveLength(45);
+    // 45 → 46: D11v2 adds OllamaProvisioner.
+    expect(paths).toHaveLength(46);
   });
 
   it('every generated file has non-stub content from a real template', () => {
@@ -362,22 +369,29 @@ describe('assistant templates (18.1)', () => {
     expect(java).toContain('LIST');
     expect(java).toContain('COUNT');
     expect(java).toContain('CREATE');
+    expect(java).toContain('DELETE');
+    expect(java).toContain('UPDATE');
+    expect(java).toContain('Long id');
+    expect(java).toContain('Map<String, String> fields');
   });
 
-  it('IntentMatcher.java has bilingual action keywords and entity matching', () => {
+  it('IntentMatcher.java has bilingual action keywords and entity matching (D11v2)', () => {
     const java = fileAt(`src/main/java/${PKG_PATH}/assistant/IntentMatcher.java`);
     expect(java).toContain('public class IntentMatcher');
-    // English keywords
+    // English keywords (LIST, COUNT, CREATE + D11v2: DELETE, UPDATE)
     expect(java).toContain('"list"');
     expect(java).toContain('"count"');
     expect(java).toContain('"create"');
-    // Spanish keywords (Unicode-escaped in the Java source)
+    expect(java).toContain('"delete"');
+    expect(java).toContain('"update"');
+    // Spanish keywords
     expect(java).toContain('"lista"');
-    expect(java).toContain('"cu\\u00e1ntos"');
     expect(java).toContain('"crea"');
-    // Spanish entity synonyms
-    expect(java).toContain('"clientes"');
-    expect(java).toContain('"Customer"');
+    expect(java).toContain('"elimina"');
+    expect(java).toContain('"modifica"');
+    // D11v2: hardcoded SPANISH_ENTITIES removed — dynamic matching via knownEntities
+    // ID extraction via regex
+    expect(java).toContain('ID_PATTERN');
   });
 
   it('OllamaEngine.java uses noProxy and has loopback guard', () => {
@@ -398,14 +412,31 @@ describe('assistant templates (18.1)', () => {
     expect(java).toContain('Instant.now()');
   });
 
+  it('OllamaProvisioner.java auto-provisions Ollama and checks model readiness (D11v2)', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/OllamaProvisioner.java`);
+    expect(java).toContain('public class OllamaProvisioner');
+    expect(java).toContain('@PostConstruct');
+    expect(java).toContain('isOllamaAvailable()');
+    expect(java).toContain('isModelReady()');
+    expect(java).toContain('checkHealth()');
+    expect(java).toContain('checkModel()');
+    expect(java).toContain('pullModel()');
+  });
+
   it('AssistantController.java dispatches to entity services and audits', () => {
     const java = fileAt(`src/main/java/${PKG_PATH}/web/AssistantController.java`);
     expect(java).toContain('@RestController');
     expect(java).toContain('@RequestMapping("/api/assistant")');
     expect(java).toContain('@PostMapping');
+    expect(java).toContain('@GetMapping("/status")');
+    expect(java).toContain('public StatusResponse status()');
     expect(java).toContain('AssistantRequest');
     expect(java).toContain('AssistantResponse');
     expect(java).toContain('CAPABILITY_MESSAGE');
+    expect(java).toContain('applyFields');
+    expect(java).toContain('deleteEntity');
+    expect(java).toContain('updateEntity');
+    expect(java).toContain('createEntity');
     // Imports every concrete entity service
     expect(java).toContain('CustomerService');
     expect(java).toContain('OrderService');
@@ -422,6 +453,7 @@ describe('application-properties includes assistant config (18.1)', () => {
     const props = fileAt('src/main/resources/application.properties');
     expect(props).toContain('assistant.model=qwen2.5:1.5b');
     expect(props).toContain('assistant.ollama.url=http://127.0.0.1:11434');
+    expect(props).toContain('assistant.auto-pull=true');
   });
 });
 
@@ -457,6 +489,11 @@ describe('production profile + zip extras (14.6b + maintainer decision D)', () =
     expect(compose).toContain('jdbc:postgresql://db:5432/');
     expect(compose).toContain('image: postgres:16-alpine');
     expect(compose).toContain('volumes:');
+    // D11v2: Ollama service and auto-pull init container
+    expect(compose).toContain('image: ollama/ollama:latest');
+    expect(compose).toContain('ollama-init:');
+    expect(compose).toContain('ollama pull qwen2.5:1.5b');
+    expect(compose).toContain('ollama_data:');
   });
 
   it('README documents local run, prod run and the AWS deploy path', () => {

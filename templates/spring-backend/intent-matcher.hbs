@@ -3,10 +3,13 @@ package {{packageName}}.assistant;
 import java.text.Normalizer;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Deterministic bilingual keyword matcher for the offline assistant (design D11).
- * Primary path: if this matcher hits, Ollama is never consulted.
+ * Deterministic bilingual keyword matcher — FALLBACK for when Ollama is unavailable
+ * (design D11v2). Covers LIST, COUNT, DELETE (with ID regex). UPDATE/CREATE with
+ * field extraction require Ollama and return UNMATCHED here.
  * Returns UNMATCHED (not a guess) when confidence is insufficient (assistant:R3).
  * Rendered by templates/spring-backend/intent-matcher.hbs — do not edit by hand.
  */
@@ -22,41 +25,38 @@ public class IntentMatcher {
         Map.entry("create", AssistantEngine.Intent.Action.CREATE),
         Map.entry("add", AssistantEngine.Intent.Action.CREATE),
         Map.entry("new", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("delete", AssistantEngine.Intent.Action.DELETE),
+        Map.entry("remove", AssistantEngine.Intent.Action.DELETE),
+        Map.entry("update", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("modify", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("change", AssistantEngine.Intent.Action.UPDATE),
         // Spanish
         Map.entry("lista", AssistantEngine.Intent.Action.LIST),
         Map.entry("la lista", AssistantEngine.Intent.Action.LIST),
         Map.entry("dame", AssistantEngine.Intent.Action.LIST),
         Map.entry("mu\u00e9strame", AssistantEngine.Intent.Action.LIST),
         Map.entry("mostrar", AssistantEngine.Intent.Action.LIST),
+        Map.entry("mostra", AssistantEngine.Intent.Action.LIST),
         Map.entry("cu\u00e1ntos", AssistantEngine.Intent.Action.COUNT),
         Map.entry("cuantos", AssistantEngine.Intent.Action.COUNT),
         Map.entry("crea", AssistantEngine.Intent.Action.CREATE),
         Map.entry("nuevo", AssistantEngine.Intent.Action.CREATE),
         Map.entry("nueva", AssistantEngine.Intent.Action.CREATE),
-        Map.entry("agregar", AssistantEngine.Intent.Action.CREATE)
+        Map.entry("agregar", AssistantEngine.Intent.Action.CREATE),
+        Map.entry("elimina", AssistantEngine.Intent.Action.DELETE),
+        Map.entry("eliminar", AssistantEngine.Intent.Action.DELETE),
+        Map.entry("borra", AssistantEngine.Intent.Action.DELETE),
+        Map.entry("borrar", AssistantEngine.Intent.Action.DELETE),
+        Map.entry("modifica", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("modificar", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("cambia", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("cambiar", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("actualiza", AssistantEngine.Intent.Action.UPDATE),
+        Map.entry("actualizar", AssistantEngine.Intent.Action.UPDATE)
     );
 
-    private static final Map<String, String> SPANISH_ENTITIES = Map.ofEntries(
-        Map.entry("clientes", "Customer"),
-        Map.entry("cliente", "Customer"),
-        Map.entry("ordenes", "Order"),
-        Map.entry("orden", "Order"),
-        Map.entry("pedidos", "Order"),
-        Map.entry("pedido", "Order"),
-        Map.entry("productos", "Product"),
-        Map.entry("producto", "Product"),
-        Map.entry("direcciones", "ShippingAddress"),
-        Map.entry("direcci\u00f3n", "ShippingAddress"),
-        Map.entry("direccion", "ShippingAddress"),
-        Map.entry("l\u00edneas", "OrderLine"),
-        Map.entry("lineas", "OrderLine"),
-        Map.entry("l\u00ednea", "OrderLine"),
-        Map.entry("linea", "OrderLine"),
-        Map.entry("art\u00edculos", "Item"),
-        Map.entry("articulos", "Item"),
-        Map.entry("art\u00edculo", "Item"),
-        Map.entry("articulo", "Item")
-    );
+    /** Regex to extract the first integer in the text (used as entity ID). */
+    private static final Pattern ID_PATTERN = Pattern.compile("\\b(\\d+)\\b");
 
     private final Set<String> knownEntities;
 
@@ -79,11 +79,23 @@ public class IntentMatcher {
         }
         if (action == null) return AssistantEngine.Intent.UNMATCHED;
 
-        // 2. Find entity
+        // 2. Find entity (dynamic matching against knownEntities)
         String entityName = findEntity(lower);
         if (entityName == null) return AssistantEngine.Intent.UNMATCHED;
 
-        return new AssistantEngine.Intent(action, entityName);
+        // 3. Extract ID for DELETE/UPDATE
+        Long id = null;
+        if (action == AssistantEngine.Intent.Action.DELETE
+                || action == AssistantEngine.Intent.Action.UPDATE) {
+            Matcher m = ID_PATTERN.matcher(freeText);
+            if (m.find()) {
+                id = Long.parseLong(m.group(1));
+            }
+        }
+
+        // D11v2: field extraction for UPDATE/CREATE is too complex for regex;
+        // those fall through to Ollama. IntentMatcher returns what it can.
+        return new AssistantEngine.Intent(action, entityName, id, null);
     }
 
     private String findEntity(String text) {
@@ -97,10 +109,23 @@ public class IntentMatcher {
                 return entity;
             }
         }
-        // Spanish synonym match
-        for (var entry : SPANISH_ENTITIES.entrySet()) {
-            if (text.contains(entry.getKey()) && knownEntities.contains(entry.getValue())) {
-                return entry.getValue();
+        // D11v2: naive normalization for Spanish entity names in the diagram.
+        // Strip common suffixes (-s, -es) and compare case-insensitively.
+        // E.g. "vehiculos" → "vehiculo" ≈ "Vehiculo" (a known entity).
+        for (String entity : knownEntities) {
+            String lowerEntity = entity.toLowerCase();
+            // Try matching stripped suffixes from the text tokens
+            for (String token : text.split("\\s+")) {
+                String stripped = token;
+                if (stripped.endsWith("es") && stripped.length() > 3) {
+                    stripped = stripped.substring(0, stripped.length() - 2);
+                } else if (stripped.endsWith("s") && stripped.length() > 2) {
+                    stripped = stripped.substring(0, stripped.length() - 1);
+                }
+                if (stripped.equalsIgnoreCase(lowerEntity)
+                        || token.equalsIgnoreCase(lowerEntity)) {
+                    return entity;
+                }
             }
         }
         return null;

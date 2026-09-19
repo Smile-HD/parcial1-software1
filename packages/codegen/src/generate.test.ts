@@ -636,3 +636,36 @@ describe('zip extras + production profile in the file map (14.6b + maintainer de
     expect(() => generate(d, { outputRoot: ROOT })).toThrow(NameSanitizerError);
   });
 });
+
+describe('assistant emission (design D11 / D11v2)', () => {
+  it('emits 6 assistant files including OllamaProvisioner and schemas', () => {
+    const d = v2Diagram({
+      classes: [
+        v2Cls(ID2.product, 'Product', {
+          attributes: [v2Attr('name', 'String')],
+        }),
+      ],
+    });
+    const files = generate(d, { outputRoot: ROOT }).files;
+    const pkgPath = PKG.replace(/\./g, '/');
+
+    const provisioner = files.find((f) => f.path === `src/main/java/${pkgPath}/assistant/OllamaProvisioner.java`);
+    expect(provisioner).toBeDefined();
+    expect(provisioner?.template).toBe('ollama-provisioner');
+
+    const assistantController = files.find((f) => f.path === `src/main/java/${pkgPath}/web/AssistantController.java`);
+    expect(assistantController).toBeDefined();
+    const model = assistantController?.model as {
+      entities: string[];
+      entitySchemas: Array<{ name: string; fields: Array<{ name: string; javaType: string }> }>;
+    };
+    expect(model.entities).toContain('Product');
+    expect(model.entitySchemas).toEqual([
+      {
+        name: 'Product',
+        fields: [{ name: 'name', javaType: 'String' }],
+      },
+    ]);
+  });
+});
+
