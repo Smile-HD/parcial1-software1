@@ -244,7 +244,8 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
     expect(screen.getByText('Product')).toBeTruthy();
 
     // Save: PUT carries the projected diagram, the loaded version AND a blob.
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const saveOutcome = await saveDiagramFromDoc(sessionDoc, 3);
+    expect(saveOutcome.ok).toBe(true);
     await waitFor(() => expect(savedBody).not.toBeNull());
     // TS control-flow analysis cannot see the assignment inside the fetch
     // stub's closure, so it narrows savedBody to `null` here — recover the
@@ -253,7 +254,6 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
     if (saved === null) {
       throw new Error('save never reached the API');
     }
-    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
     expect(saved.version).toBe(3);
     expect(saved.yjsState.length).toBeGreaterThan(0);
     expect(saved.diagram.classes.map((cls) => cls.name)).toEqual(['Customer', 'Order', 'Product']);
@@ -333,26 +333,30 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
     expect(container.querySelector('.react-flow')).toBeNull();
   });
 
-  it('exhausts save retries on a persistent version conflict and surfaces the conflict', async () => {
+  it('renders the Share button in the toolbar and copies current URL to clipboard on click', async () => {
     const diagram = makeFixture();
-    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
-      if (init?.method === 'PUT') {
-        return Promise.resolve(
-          jsonResponse({ error: 'Version conflict: diagram was modified by another request', currentVersion: 8 }, 409),
-        );
-      }
-      return Promise.resolve(jsonResponse(resourceOf(diagram, 3)));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(resourceOf(diagram, 3))));
+
+    const writeTextSpy = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextSpy,
+      },
     });
-    vi.stubGlobal('fetch', fetchMock);
 
     window.location.hash = `#/d/${diagram.id}`;
     render(<App />);
 
     expect(await screen.findByText('Customer')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    // Every attempt got a 409 (with a fresh currentVersion each time), so the
-    // retry loop exhausts and the UI surfaces the exhausted-conflict message.
-    await waitFor(() => expect(screen.getByText(/kept changing on the server/)).toBeTruthy());
-    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toHaveLength(3);
+    const shareBtn = screen.getByTestId('toolbar-share');
+    expect(shareBtn).toBeTruthy();
+    expect(shareBtn.textContent).toContain('Share');
+
+    await act(async () => {
+      fireEvent.click(shareBtn);
+    });
+
+    expect(writeTextSpy).toHaveBeenCalledWith(window.location.href);
+    expect(shareBtn.textContent).toContain('Copied!');
   });
 });

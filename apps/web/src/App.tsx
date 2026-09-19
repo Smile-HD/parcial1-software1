@@ -262,6 +262,44 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     };
   }, [status, roomId, doc, resolvedCollabUrl]);
 
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleShareUrl = async (): Promise<void> => {
+    const url = window.location.href;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = url;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopied(false);
+      }, 2500);
+    } catch {
+      // Ignorar fallo de portapapeles
+    }
+  };
+
   const handleSave = (): void => {
     if (version === null || status !== 'ready') {
       return;
@@ -417,12 +455,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       {status === 'ready' && (
         <>
           <div className="app-toolbar">
-            <button type="button" onClick={handleSave}>
-              {tr('toolbar.save')}
+            <button
+              type="button"
+              onClick={handleShareUrl}
+              data-testid="toolbar-share"
+              className={copied ? 'toolbar-btn--copied' : ''}
+              title={tr('toolbar.shareTitle')}
+              aria-label={tr('toolbar.shareTitle')}
+            >
+              {copied ? `✓ ${tr('toolbar.copied')}` : tr('toolbar.share')}
             </button>
-            <span aria-live="polite">
-              {saveStatus === 'saving' ? tr('toolbar.saving') : saveStatus === 'saved' ? tr('toolbar.saved') : saveMessage ?? ''}
-            </span>
             {/* PR 14a/14d: iniciar la generación de código Spring Boot mediante la API de trabajos. */}
             <GenerateSpringButton diagramId={roomId} disabled={status !== 'ready'} />
             {/* PR 15: importar un archivo XMI 2.1 de Enterprise Architect. */}

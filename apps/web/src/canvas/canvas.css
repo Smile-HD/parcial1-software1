@@ -1070,6 +1070,13 @@
   background: #eef0f4;
 }
 
+.app-toolbar button.toolbar-btn--copied {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #065f46;
+  font-weight: 600;
+}
+
 .interpreter-bar {
   flex: none;
   display: flex;
