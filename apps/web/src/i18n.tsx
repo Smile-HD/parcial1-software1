@@ -54,6 +54,12 @@ const EN = {
   'xmi.readFailed': 'Failed to read the XMI file',
   'xmi.requestFailed': 'Failed to reach the import service',
   'xmi.applyFailed': 'Imported {applied} elements before a delta was rejected ({kind})',
+  'xmi.exportButton': 'Export XMI',
+  'xmi.exportAriaLabel': 'Export diagram as an Enterprise Architect XMI 2.1 file',
+  'xmi.exporting': 'Exporting…',
+  'xmi.exportSucceeded': 'Exported',
+  'xmi.exportFailed': 'Failed to export XMI file',
+
 
   // Importación de fotos (PR 16, tarea 16.3-WEB).
   'photo.button': 'Import Photo',
@@ -284,6 +290,12 @@ const ES: Record<TKey, string> = {
   'xmi.readFailed': 'No se pudo leer el archivo XMI',
   'xmi.requestFailed': 'No se pudo contactar al servicio de importación',
   'xmi.applyFailed': 'Se importaron {applied} elementos antes de rechazar un delta ({kind})',
+  'xmi.exportButton': 'Exportar XMI',
+  'xmi.exportAriaLabel': 'Exportar diagrama como archivo XMI 2.1 de Enterprise Architect',
+  'xmi.exporting': 'Exportando…',
+  'xmi.exportSucceeded': 'Exportado',
+  'xmi.exportFailed': 'No se pudo exportar el archivo XMI',
+
 
   // Importación de fotos (PR 16, tarea 16.3-WEB).
   'photo.button': 'Importar Foto',

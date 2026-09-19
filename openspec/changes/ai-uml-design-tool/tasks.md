@@ -253,6 +253,8 @@ PR 14c additions (maintainer decision 2026-09-07): beyond 14.5/14.6b this slice 
 - [x] 15b.2 Create `packages/adapters-import/src/xmi21-export.ts` — IR → standard UML 2.x XMI 2.1 document that EA can import (visibility prefixes `+|-|#|~`, derived /, static, multiplicity ranges, aggregation kinds on memberEnd, generalization/realization/dependency elements, n-ary membership); no EA-proprietary extensions required for round-trip.
 - [x] 15b.3 Export preserves layout: canvas positions serialized in an XMI layout extension; importer falls back to grid auto-layout when absent.
 - [x] 15b.4 `GET /diagrams/:id/export/xmi` streams the `.xmi` file as attachment; export is strictly read-only — idempotent, no mutation, no confirm gate.
+- [x] 15b.6 Create `ExportXmiButton` in web toolbar with `triggerBrowserDownload`, accessible aria labels, bilingual i18n (EN/ES), and in-flight state guard.
+- [x] 15b.6a `ExportXmiButton` jsdom tests: rendering, disabled states, in-flight guard, successful download, and error alert surface.
 - [x] 15b.5 Verify: golden diagram exercising the full supported subset round-trips (export → import → identical model) and works offline with zero network calls.
 - [x] 16.1 [P] RED: PDF renamed `.png` and oversized image rejected locally with ZERO API calls (photo:R4, threat row 3).
 - [x] 16.2 Create `VisionPort` + multimodal adapter + fake; extraction JSON schema validated; prose response rejected (photo:R1).

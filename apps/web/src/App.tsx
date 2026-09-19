@@ -42,6 +42,7 @@ import { LanguageToggle, t, useT } from './i18n';
 import { GenerateSpringButton } from './codegen/GenerateSpringButton';
 import { ExportToolbarButtons } from './canvas/imageExport';
 import { ImportXmiButton } from './xmi/ImportXmiButton';
+import { ExportXmiButton } from './xmi/ExportXmiButton';
 import { ImportPhotoButton } from './photo/ImportPhotoButton';
 
 const DIAGRAM_NAME = 'Untitled';
@@ -424,6 +425,8 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             <GenerateSpringButton diagramId={roomId} disabled={status !== 'ready'} />
             {/* PR 15: importar un archivo XMI 2.1 de Enterprise Architect. */}
             <ImportXmiButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
+            {/* PR 15b: exportar el diagrama como archivo XMI 2.1. */}
+            <ExportXmiButton diagramId={roomId} disabled={status !== 'ready'} doc={doc} />
             {/* unidad 16b: exportación PNG/JPEG del lado del cliente — solo lectura, cero llamadas a la API. */}
             <ExportToolbarButtons doc={doc} />
             {/* PR 16c: importación de foto a UML. */}
