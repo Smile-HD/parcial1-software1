@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 
 import { buildYDocFromDiagram, DiagramSchema, projectYDocToDiagram, type Diagram, type Delta } from '@app/core';
 
@@ -3400,6 +3400,44 @@ describe('límite visible del lienzo (diagram-canvas-boundary)', () => {
 
     // En jsdom, React Flow renderiza las aristas en el contenedor
     expect(container.querySelector('.react-flow')).not.toBeNull();
+  });
+});
+
+describe('transmisión colaborativa de arrastre en tiempo real (60/120 FPS)', () => {
+  it('propaga el reposicionamiento atómico en vivo a pares conectados de Yjs sin recrear la estructura', () => {
+    const classId = crypto.randomUUID();
+    const diagram = DiagramSchema.parse({
+      id: crypto.randomUUID(),
+      name: 'CollabDiagram',
+      classes: [
+        { id: classId, name: 'LiveClass', position: { x: 50, y: 50 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    });
+
+    const docA = buildYDocFromDiagram(diagram);
+    const docB = new Y.Doc();
+
+    // Sincronización bidireccional simulada de WebSocket
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    docA.on('update', (update) => {
+      Y.applyUpdate(docB, update);
+    });
+
+    // Simular un evento de arrastre en vuelo (in-flight live drag) en docA
+    handleNodeDragStop(docA, diagram.id, {
+      id: classId,
+      position: { x: 320, y: 480 },
+    });
+
+    // docB debe reflejar de inmediato la nueva posición sin perder la clase
+    const projectedB = projectYDocToDiagram(docB);
+    const moved = projectedB.classes.find((c) => c.id === classId);
+    expect(moved?.position).toEqual({ x: 320, y: 480 });
   });
 });
 

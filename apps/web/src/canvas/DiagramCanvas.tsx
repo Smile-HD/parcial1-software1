@@ -1386,12 +1386,68 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [diagram, edgeTool, selectedClassId],
   );
 
+  // unidad 13e.19 — transmisión colaborativa en vivo de arrastre (60/120 FPS).
+  // Sincroniza las coordenadas en tiempo real al Y.Doc mediante requestAnimationFrame
+  // para que los demás usuarios conectados al WebSocket vean el desplazamiento en vivo.
+  const dragRafRef = useRef<number | null>(null);
+  const activeDragNodeRef = useRef<{ id: string; position: { x: number; y: number } } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
+    };
+  }, []);
+
+  const onNodeDrag = useCallback(
+    (_event: React.MouseEvent | React.TouchEvent, node: Node) => {
+      activeDragNodeRef.current = {
+        id: node.id,
+        position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+      };
+
+      if (dragRafRef.current === null) {
+        dragRafRef.current = requestAnimationFrame(() => {
+          dragRafRef.current = null;
+          const current = activeDragNodeRef.current;
+          if (current) {
+            handleNodeDragStop(doc, diagram.id, current);
+          }
+        });
+      }
+    },
+    [doc, diagram.id],
+  );
+
+  const onNodeDragStop = useCallback(
+    (_event: React.MouseEvent | React.TouchEvent, node: Node) => {
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
+      activeDragNodeRef.current = null;
+      handleNodeDragStop(doc, diagram.id, node);
+    },
+    [doc, diagram.id],
+  );
+
   // Estado local sincronizado para arrastre suave y reactivo en tiempo real (60/120 FPS).
   // La posición canónica proviene del Y.Doc, pero durante el arrastre onNodesChange actualiza
   // de inmediato la posición del nodo en pantalla para que acompañe al cursor sin saltos.
   const [displayNodes, setDisplayNodes] = useState(nodes);
   useEffect(() => {
-    setDisplayNodes(nodes);
+    setDisplayNodes((prev) => {
+      const draggingId = activeDragNodeRef.current?.id;
+      if (!draggingId) return nodes;
+      return nodes.map((n) => {
+        if (n.id === draggingId) {
+          const localMatch = prev.find((p) => p.id === draggingId);
+          return localMatch ? { ...n, position: localMatch.position } : n;
+        }
+        return n;
+      });
+    });
   }, [nodes]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -2090,7 +2146,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           setEdgeTool(null);
           setEdgeMessage(null);
         }}
-        onNodeDragStop={(_event, node) => handleNodeDragStop(doc, diagram.id, node)}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         snapToGrid={true}
         snapGrid={[20, 20]}
         fitView

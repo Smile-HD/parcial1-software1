@@ -46,6 +46,28 @@ export function applyDeltaToYDoc(doc: Y.Doc, delta: Delta): ApplyResult<Diagram>
     return result;
   }
 
+  // Optimización de alta frecuencia: reposicionamiento in situ para streaming en vivo a 60/120 FPS
+  // Muta atómicamente el mapa de posición de la clase sin recrear todo el documento Yjs.
+  if (delta.kind === 'class' && delta.op === 'reposition') {
+    doc.transact(() => {
+      const yClasses = doc.getMap(Y_CLASSES);
+      const yClass = yClasses.get(delta.classId);
+      if (yClass instanceof Y.Map) {
+        const yPos = yClass.get('position');
+        if (yPos instanceof Y.Map) {
+          yPos.set('x', delta.newPosition.x);
+          yPos.set('y', delta.newPosition.y);
+        } else {
+          const newYPos = new Y.Map<number>();
+          newYPos.set('x', delta.newPosition.x);
+          newYPos.set('y', delta.newPosition.y);
+          yClass.set('position', newYPos);
+        }
+      }
+    });
+    return result;
+  }
+
   writeDiagramToDoc(doc, result.value);
   return result;
 }
