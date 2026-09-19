@@ -387,8 +387,8 @@ export class OpenAiVision implements VisionPort {
   private readonly maxAttempts: number;
 
   constructor(config: OpenAiVisionConfig) {
-    this.apiKey = config.apiKey;
-    this.baseUrl = (config.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+    this.apiKey = config.apiKey.trim();
+    this.baseUrl = (config.baseUrl ?? 'https://api.openai.com/v1').trim().replace(/[,/]+$/, '');
     this.model = config.model ?? 'gpt-4o-mini';
     this.maxAttempts = config.maxAttempts ?? 2;
   }
@@ -424,11 +424,12 @@ export class OpenAiVision implements VisionPort {
     ];
 
     let lastError: Error | null = null;
+    const targetUrl = `${this.baseUrl}/chat/completions`;
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       let response: Response;
       try {
-        response = await fetch(`${this.baseUrl}/chat/completions`, {
+        response = await fetch(targetUrl, {
           method: 'POST',
           headers: {
             authorization: `Bearer ${this.apiKey}`,
@@ -442,14 +443,14 @@ export class OpenAiVision implements VisionPort {
         });
       } catch (error) {
         throw new VisionExtractionError(
-          `Vision request failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+          `Vision request failed (${targetUrl}): ${error instanceof Error ? error.message : 'unknown error'}`,
         );
       }
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
         throw new VisionExtractionError(
-          `Vision request failed with status ${response.status}${errorText ? `: ${errorText.slice(0, 300)}` : ''}`,
+          `Vision request failed (${targetUrl}) with status ${response.status}${errorText ? `: ${errorText.slice(0, 300)}` : ''}`,
         );
       }
 
