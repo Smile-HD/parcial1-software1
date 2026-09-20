@@ -328,8 +328,21 @@ describe('interface classifier (14.5)', () => {
           position: { x: 100, y: 100 },
           kind: 'class',
           isAbstract: false,
-          attributes: [],
-          methods: [],
+          attributes: [{ id: 'attr-amount', name: 'amount', type: 'BigDecimal', visibility: '+' }],
+          methods: [
+            {
+              id: 'meth-getAmount',
+              name: 'getAmount',
+              returnType: 'BigDecimal',
+              parameters: [],
+            },
+            {
+              id: 'meth-setAmount',
+              name: 'setAmount',
+              returnType: 'void',
+              parameters: [{ name: 'amount', type: 'BigDecimal' }],
+            },
+          ],
         },
         {
           id: '11111111-1111-4111-8111-000000000002',
@@ -354,7 +367,20 @@ describe('interface classifier (14.5)', () => {
           kind: 'class',
           isAbstract: false,
           attributes: [],
-          methods: [],
+          methods: [
+            {
+              id: 'meth-getId',
+              name: 'getId',
+              returnType: 'Long',
+              parameters: [],
+            },
+            {
+              id: 'meth-setId',
+              name: 'setId',
+              returnType: 'void',
+              parameters: [{ name: 'id', type: 'Long' }],
+            },
+          ],
         },
         {
           id: '11111111-1111-4111-8111-000000000006',
@@ -405,6 +431,9 @@ describe('interface classifier (14.5)', () => {
     expect(paymentFile.content).toContain('public Boolean processPayment(BigDecimal amount) {');
     expect(paymentFile.content).toContain('return false;');
     expect(paymentFile.content).toContain('import java.math.BigDecimal;');
+    // Accessors must be defined exactly once (no duplicate method definition compilation errors)
+    expect(paymentFile.content.split('public BigDecimal getAmount()').length - 1).toBe(1);
+    expect(paymentFile.content.split('public void setAmount(BigDecimal').length - 1).toBe(1);
 
     const baseEntityFile = res.files.find((f) => f.path.endsWith('BaseEntity.java'))!;
     expect(baseEntityFile).toBeDefined();
@@ -415,6 +444,9 @@ describe('interface classifier (14.5)', () => {
     expect(baseEntityFile.content).toContain('return "";');
     expect(baseEntityFile.content).not.toContain('&quot;');
     expect(baseEntityFile.content).toContain('public void setAuditInfo(String info) {');
+    // Primary key accessors must be defined exactly once
+    expect(baseEntityFile.content.split('public Long getId()').length - 1).toBe(1);
+    expect(baseEntityFile.content.split('public void setId(Long').length - 1).toBe(1);
   });
 });
 

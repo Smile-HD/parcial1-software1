@@ -459,13 +459,32 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
       extendsClass: null,
       inheritanceRoot: false,
       implementsInterfaces: [],
-      methods: cls.methods.map((m) => mapEntityMethod(cls, m, warnings, false)),
+      methods: [],
     });
   }
 
   // Adjunta relaciones a partir de asociaciones, omitiendo/advirtiendo según codegen:R3.
   for (const assoc of diagram.associations) {
     attachRelationship(assoc, classInfo, entities, warnings);
+  }
+
+  // Mapea métodos explícitos de la clase UML en la entidad, omitiendo getters/setters ya generados
+  for (const cls of diagram.classes) {
+    if (cls.kind === 'interface') continue;
+    const info = classInfo.get(cls.id);
+    if (!info) continue;
+    const entity = entities.get(info.javaName);
+    if (!entity) continue;
+    for (const m of cls.methods) {
+      const mapped = mapEntityMethod(cls, m, warnings, false);
+      if (isAccessorAlreadyGenerated(entity, mapped.name, mapped.parameters)) {
+        continue;
+      }
+      if (entity.methods.some((em) => em.name.toLowerCase() === mapped.name.toLowerCase() && em.parameters.length === mapped.parameters.length)) {
+        continue;
+      }
+      entity.methods.push(mapped);
+    }
   }
 
   // 14c: generalización → herencia single-table, realización → implements.
@@ -892,7 +911,46 @@ function applyGeneralizations(
   }
 }
 
-  /** 14c: realización → cláusula `implements` en la entidad realizadora + métodos de contrato de interfaz. */
+/** Determina si un método ya está cubierto por los accessors generados automáticamente (getId/setId, campos o relaciones). */
+function isAccessorAlreadyGenerated(
+  entity: EntityModel,
+  methodName: string,
+  parameters: { name: string; type: string }[],
+): boolean {
+  const normMethod = methodName.toLowerCase();
+
+  // 1. Acceso a clave primaria sintética getId / setId (siempre generados en la raíz)
+  if (normMethod === 'getid' && parameters.length === 0) return true;
+  if (normMethod === 'setid' && parameters.length === 1 && (parameters[0].type === 'Long' || parameters[0].type === 'long' || parameters[0].type === 'Integer' || parameters[0].type === 'int')) return true;
+
+  // 2. Getters / Setters generados para campos básicos
+  for (const field of entity.fields) {
+    const normField = field.name.toLowerCase();
+    if (parameters.length === 0) {
+      if (normMethod === `get${normField}`) return true;
+      if (field.javaType === 'Boolean' && normMethod === `is${normField}`) return true;
+    }
+    if (parameters.length === 1) {
+      if (normMethod === `set${normField}`) return true;
+    }
+  }
+
+  // 3. Getters / Setters generados para relaciones
+  for (const rel of entity.relationships) {
+    const singular = rel.targetEntity.toLowerCase();
+    const plural = (rel.targetEntity + 's').toLowerCase();
+    if (parameters.length === 0) {
+      if (normMethod === `get${singular}` || normMethod === `get${plural}`) return true;
+    }
+    if (parameters.length === 1) {
+      if (normMethod === `set${singular}` || normMethod === `set${plural}`) return true;
+    }
+  }
+
+  return false;
+}
+
+/** 14c: realización → cláusula `implements` en la entidad realizadora + métodos de contrato de interfaz. */
 function applyRealizations(
   diagram: Diagram,
   classInfo: Map<string, ClassInfo>,
@@ -938,33 +996,22 @@ function applyRealizations(
       for (const m of ifaceCls.methods) {
         const mappedMethod = mapEntityMethod(ifaceCls, m, warnings, true);
 
-        // Verificar si la entidad ya tiene un getter/setter que cumpla con el método
-        const hasGetter = entity.fields.some(
-          (f) =>
-            mappedMethod.parameters.length === 0 &&
-            mappedMethod.returnType.toLowerCase() === f.javaType.toLowerCase() &&
-            (mappedMethod.name.toLowerCase() === `get${f.name}`.toLowerCase() ||
-             (f.javaType === 'Boolean' && mappedMethod.name.toLowerCase() === `is${f.name}`.toLowerCase()))
-        );
-        const hasSetter = entity.fields.some(
-          (f) =>
-            mappedMethod.parameters.length === 1 &&
-            mappedMethod.returnType === 'void' &&
-            mappedMethod.parameters[0].type.toLowerCase() === f.javaType.toLowerCase() &&
-            mappedMethod.name.toLowerCase() === `set${f.name}`.toLowerCase()
-        );
+        // Si ya está cubierto por getId/setId, campos o relaciones, omitir
+        if (isAccessorAlreadyGenerated(entity, mappedMethod.name, mappedMethod.parameters)) {
+          continue;
+        }
 
         // Verificar si la entidad ya tiene este método en su lista de methods
         const existingMethod = entity.methods.find(
           (em) =>
-            em.name === mappedMethod.name &&
+            em.name.toLowerCase() === mappedMethod.name.toLowerCase() &&
             em.parameters.length === mappedMethod.parameters.length &&
-            em.parameters.every((p, idx) => p.type === mappedMethod.parameters[idx].type)
+            em.parameters.every((p, idx) => p.type.toLowerCase() === mappedMethod.parameters[idx].type.toLowerCase())
         );
 
         if (existingMethod) {
           existingMethod.isOverride = true;
-        } else if (!hasGetter && !hasSetter) {
+        } else {
           entity.methods.push(mappedMethod);
         }
       }
