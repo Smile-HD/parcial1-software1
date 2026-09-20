@@ -347,6 +347,37 @@ describe('interface classifier (14.5)', () => {
             },
           ],
         },
+        {
+          id: '11111111-1111-4111-8111-000000000005',
+          name: 'BaseEntity',
+          position: { x: 100, y: 300 },
+          kind: 'class',
+          isAbstract: false,
+          attributes: [],
+          methods: [],
+        },
+        {
+          id: '11111111-1111-4111-8111-000000000006',
+          name: 'Auditable',
+          position: { x: 300, y: 300 },
+          kind: 'interface',
+          isAbstract: true,
+          attributes: [],
+          methods: [
+            {
+              id: '11111111-1111-4111-8111-000000000007',
+              name: 'getAuditInfo',
+              returnType: 'String',
+              parameters: [],
+            },
+            {
+              id: '11111111-1111-4111-8111-000000000008',
+              name: 'setAuditInfo',
+              returnType: 'void',
+              parameters: [{ name: 'info', type: 'String' }],
+            },
+          ],
+        },
       ],
       associations: [],
       generalizations: [],
@@ -355,6 +386,11 @@ describe('interface classifier (14.5)', () => {
           id: '11111111-1111-4111-8111-000000000004',
           clientClassId: '11111111-1111-4111-8111-000000000001',
           supplierInterfaceId: '11111111-1111-4111-8111-000000000002',
+        },
+        {
+          id: '11111111-1111-4111-8111-000000000009',
+          clientClassId: '11111111-1111-4111-8111-000000000005',
+          supplierInterfaceId: '11111111-1111-4111-8111-000000000006',
         },
       ],
       dependencies: [],
@@ -369,6 +405,16 @@ describe('interface classifier (14.5)', () => {
     expect(paymentFile.content).toContain('public Boolean processPayment(BigDecimal amount) {');
     expect(paymentFile.content).toContain('return false;');
     expect(paymentFile.content).toContain('import java.math.BigDecimal;');
+
+    const baseEntityFile = res.files.find((f) => f.path.endsWith('BaseEntity.java'))!;
+    expect(baseEntityFile).toBeDefined();
+    expect(baseEntityFile.content).toContain('public class BaseEntity implements Auditable {');
+    expect(baseEntityFile.content).toContain('@Override');
+    expect(baseEntityFile.content).toContain('public String getAuditInfo() {');
+    // Ensure raw quotes: MUST NOT contain HTML escaped &quot;&quot;
+    expect(baseEntityFile.content).toContain('return "";');
+    expect(baseEntityFile.content).not.toContain('&quot;');
+    expect(baseEntityFile.content).toContain('public void setAuditInfo(String info) {');
   });
 });
 

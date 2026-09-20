@@ -176,7 +176,7 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
     {{/if}}
     public {{returnType}} {{name}}({{#each parameters}}{{type}} {{name}}{{#unless @last}}, {{/unless}}{{/each}}) {
         {{#if defaultReturnValue}}
-        {{defaultReturnValue}}
+        {{{defaultReturnValue}}}
         {{/if}}
     }
 
