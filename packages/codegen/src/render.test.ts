@@ -66,6 +66,11 @@ describe('entity template', () => {
     expect(java).toContain('public static void applyDefaults(Customer entity)');
     expect(java).toContain('entity.setName("Nuevo " + "Customer")');
     expect(java).toContain('entity.setActive(true)');
+
+    // Human-readable toString instead of Object memory address
+    expect(java).toContain('public String toString()');
+    expect(java).toContain('return "Customer{"');
+    expect(java).toContain('"id=" + getId()');
   });
 
   it('renders the owning ManyToOne on Order and imports java.time/java.math types', () => {
@@ -412,6 +417,9 @@ describe('assistant templates (18.1)', () => {
     expect(java).toContain('127.0.0.1');
     expect(java).toContain('localhost');
     expect(java).toContain('assistant:R1');
+    expect(java).toContain('matchKnownEntity');
+    expect(java).toContain('extractJsonContent');
+    expect(java).toContain('c.startsWith("product")');
   });
 
   it('AuditLog.java appends ISO-timestamped lines with SHA-256', () => {

@@ -127,13 +127,7 @@ public class OllamaEngine implements AssistantEngine {
             if (actionEnum == null) return Optional.empty();
 
             // Re-validación del lado del servidor contra la lista blanca (assistant:R2)
-            String validEntity = null;
-            for (String known : knownEntities) {
-                if (known.equalsIgnoreCase(entity)) {
-                    validEntity = known;
-                    break;
-                }
-            }
+            String validEntity = matchKnownEntity(entity);
             if (validEntity == null) return Optional.empty();
 
             // Extraer ID opcional
@@ -153,15 +147,67 @@ public class OllamaEngine implements AssistantEngine {
         }
     }
 
+    private String matchKnownEntity(String candidate) {
+        if (candidate == null || candidate.isBlank()) return null;
+        String c = candidate.trim().toLowerCase().replaceAll("[^a-z0-9]", "");
+
+        // 1. Coincidencia exacta insensible a mayúsculas
+        for (String known : knownEntities) {
+            String k = known.toLowerCase().replaceAll("[^a-z0-9]", "");
+            if (k.equals(c)) return known;
+        }
+
+        // 2. Mapeos idiomáticos, plurales y variaciones en español
+        for (String known : knownEntities) {
+            String k = known.toLowerCase().replaceAll("[^a-z0-9]", "");
+            if (c.equals(k + "s") || c.equals(k + "es") || (k.endsWith("y") && c.equals(k.substring(0, k.length() - 1) + "ies"))) return known;
+            if (k.equals(c + "s") || k.equals(c + "es") || (c.endsWith("y") && k.equals(c.substring(0, c.length() - 1) + "ies"))) return known;
+
+            // Mapeos típicos inglés-español
+            if (k.equals("product") && (c.startsWith("product") || c.equals("articulo") || c.equals("item"))) return known;
+            if (k.equals("customer") && (c.startsWith("client") || c.startsWith("consumidor"))) return known;
+            if (k.equals("order") && (c.startsWith("orden") || c.startsWith("pedido"))) return known;
+            if (k.equals("category") && c.startsWith("categor")) return known;
+            if (k.equals("supplier") && c.startsWith("proveed")) return known;
+            if ((k.equals("employee") || k.equals("employees")) && c.startsWith("emplead")) return known;
+            if (k.equals("user") && c.startsWith("usuari")) return known;
+
+            // Coincidencia por prefijo común de al menos 4 caracteres (ej. "product" y "producto")
+            int minLen = Math.min(k.length(), c.length());
+            if (minLen >= 4 && (k.startsWith(c.substring(0, Math.min(5, c.length()))) || c.startsWith(k.substring(0, Math.min(5, k.length()))))) {
+                return known;
+            }
+        }
+        return null;
+    }
+
     private String extractJsonContent(String responseBody) {
         int idx = responseBody.indexOf("\"content\"");
         if (idx < 0) return null;
-        int start = responseBody.indexOf('"', idx + 9) + 1;
-        int end = responseBody.indexOf('"', start);
-        if (start <= 0 || end < 0) return null;
+        int start = responseBody.indexOf('"', idx + 9);
+        if (start < 0) return null;
+        start++; // avanzar tras la comilla de apertura del valor
+
+        int end = -1;
+        boolean escaped = false;
+        for (int i = start; i < responseBody.length(); i++) {
+            char ch = responseBody.charAt(i);
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                end = i;
+                break;
+            }
+        }
+        if (end < 0) return null;
+
         return responseBody.substring(start, end)
             .replace("\\\"", "\"")
-            .replace("\\n", "\n");
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t");
     }
 
     private String extractField(String json, String field) {

@@ -275,4 +275,16 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
 {{/unless}}
 {{/each}}
     }
+
+    @Override
+    public String toString() {
+        return "{{className}}{" +
+            "id=" + getId() +
+{{#each fields}}
+{{#unless isCollection}}
+            ", {{name}}=" + {{name}} +
+{{/unless}}
+{{/each}}
+            '}';
+    }
 }
