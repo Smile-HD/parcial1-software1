@@ -53,6 +53,7 @@ export function registerPhotoImportRoutes(app: FastifyInstance, vision: VisionPo
   // POST /diagrams/:id/photo — crea trabajo asíncrono de importación de foto
   app.post<{ Params: { id: string }; Body: { image?: string; mimeType?: string } }>(
     '/diagrams/:id/photo',
+    { bodyLimit: 25 * 1024 * 1024 },
     async (request, reply) => {
       const diagramId = request.params.id;
       const imageBase64 = request.body?.image;

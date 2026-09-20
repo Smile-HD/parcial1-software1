@@ -287,7 +287,10 @@ function readMaxAttemptsFromEnv(): number {
 
 /** Construye la aplicación Fastify (rutas registradas, sin escuchar). Exportado para pruebas de humo. */
 export function buildApp(options?: AppOptions): FastifyInstance {
-  const app = Fastify({ logger: options?.logger ?? true });
+  const app = Fastify({
+    logger: options?.logger ?? true,
+    bodyLimit: 25 * 1024 * 1024, // 25 MB para soportar payloads base64 de fotos e importaciones
+  });
   // Cableado (interpreter-llm-resilience, R2/R5): la ruta de LLM de producción —
   // cualquier OpenAiLlm seleccionado por entorno o inyección directa que SEA una
   // instancia de OpenAiLlm — se envuelve en RetryRepairingLlmPort para que una salida
