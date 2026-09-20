@@ -305,6 +305,32 @@ describe('ImportPhotoButton — happy path (upload + poll + review + approve)', 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('handles large photo files (>100KB) without call stack size exceeded error', async () => {
+    const diagramId = uuid();
+    const doc = makeDoc(diagramId);
+    const jobId = uuid();
+    const batchDelta = batch(diagramId, [
+      classCreate(diagramId, uuid(), 'LargeDiagram', 10),
+    ]);
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ jobId }, 202))
+      .mockResolvedValueOnce(jsonResponse({ id: jobId, status: 'succeeded', batch: batchDelta }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    // 150 KB valid PNG bytes (exceeds V8 65536 stack argument limit if spread)
+    const largePng = new Uint8Array(150_000);
+    largePng[0] = 0x89; largePng[1] = 0x50; largePng[2] = 0x4e; largePng[3] = 0x47;
+    largePng[4] = 0x0d; largePng[5] = 0x0a; largePng[6] = 0x1a; largePng[7] = 0x0a;
+
+    const { container } = renderButton(diagramId, doc);
+    await pickFile(container, makeFile('large.png', largePng, 'image/png'));
+
+    const modal = await screen.findByRole('dialog', { name: /photo review/i });
+    expect(modal).toBeTruthy();
+    expect(screen.getByText('LargeDiagram')).toBeTruthy();
+  });
+
   it('polls multiple times before receiving the completed result', async () => {
     vi.useFakeTimers();
     const diagramId = uuid();

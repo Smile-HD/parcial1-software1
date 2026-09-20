@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BatchDeltaSchema, projectYDocToDiagram, type BatchDelta, type Delta } from '@app/core';
 
 import { DiagramApiError } from '../api/diagramApi';
+import { bytesToBase64 } from '../api/base64';
 import { applyDeltaToYDoc } from '../canvas/applyDeltaToYDoc';
 import { useT } from '../i18n';
 import {
@@ -195,7 +196,7 @@ export function ImportPhotoButton({
       try {
         const ab = await file.arrayBuffer();
         const bytes = new Uint8Array(ab);
-        base64 = btoa(String.fromCharCode(...bytes));
+        base64 = bytesToBase64(bytes);
       } catch (error) {
         const message = error instanceof Error ? error.message : tr('photo.readFailed');
         setState({ phase: 'failed', message });
