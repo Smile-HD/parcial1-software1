@@ -681,5 +681,189 @@ describe('XMI 2.1 Exporter', () => {
       expect((naryDelta as any)?.name).toBe('TernariaCentral');
     });
   });
+
+  describe('Mapeo y exportación de tipos de datos a XMI y Enterprise Architect', () => {
+    it('exporta tipos de datos primitivos y resuelve case-insensitively (INT, STRING, BoOlEaN, date)', () => {
+      const diagram = DiagramSchema.parse({
+        id: randomUUID(),
+        name: 'Type Export Test',
+        classes: [
+          {
+            id: C.order,
+            name: 'Order',
+            position: { x: 100, y: 100 },
+            kind: 'class',
+            isAbstract: false,
+            attributes: [
+              { id: randomUUID(), name: 'total', type: 'double', visibility: '-', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'age', type: 'INT', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'code', type: 'STRING', visibility: '#', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'active', type: 'BoOlEaN', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'createdAt', type: 'date', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'guid', type: 'UUID', visibility: '+', isStatic: false, isDerived: false },
+            ],
+            methods: [
+              {
+                id: randomUUID(),
+                name: 'calculate',
+                returnType: 'DOUBLE',
+                parameters: [{ name: 'factor', type: 'float' }],
+                visibility: '+',
+                isStatic: false,
+              },
+            ],
+          },
+        ],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      });
+
+      const xmi = exportDiagramToXmi(diagram);
+
+      // 1. ownedAttribute en UML con xmi:idref
+      expect(xmi).toContain('<type xmi:idref="EAJava_double"/>');
+      expect(xmi).toContain('<type xmi:idref="EAJava_int"/>');
+      expect(xmi).toContain('<type xmi:idref="EAJava_String"/>');
+      expect(xmi).toContain('<type xmi:idref="EAJava_boolean"/>');
+      expect(xmi).toContain('<type xmi:idref="EAJava_Date"/>');
+      expect(xmi).toContain('<type xmi:idref="EAJava_UUID"/>');
+
+      // 2. Extensión EA con attributes y properties type
+      expect(xmi).toContain('<properties type="double"');
+      expect(xmi).toContain('<properties type="int"');
+      expect(xmi).toContain('<properties type="String"');
+      expect(xmi).toContain('<properties type="boolean"');
+      expect(xmi).toContain('<properties type="Date"');
+      expect(xmi).toContain('<properties type="UUID"');
+
+      // 3. Operaciones y parámetros en extensión EA
+      expect(xmi).toContain('<type type="double"');
+      expect(xmi).toContain('<properties pos="0" type="float"/>');
+
+      // 4. Paquete de primitivos para EA
+      expect(xmi).toContain('<primitivetypes>');
+      expect(xmi).toContain('EAPrimitiveTypesPackage');
+      expect(xmi).toContain('EAJavaTypesPackage');
+      expect(xmi).toContain('<packagedElement xmi:type="uml:PrimitiveType" xmi:id="EAJava_int" name="int"');
+      expect(xmi).toContain('<packagedElement xmi:type="uml:PrimitiveType" xmi:id="EAJava_String" name="String"');
+
+      // 5. Round-trip exitoso hacia el parser
+      const model = parseXmiDocument(xmi);
+      const order = model.classes.find((c) => c.name === 'Order')!;
+      expect(order.attributes.find((a) => a.name === 'total')?.type).toBe('double');
+      expect(order.attributes.find((a) => a.name === 'age')?.type).toBe('int');
+      expect(order.attributes.find((a) => a.name === 'code')?.type).toBe('String');
+      expect(order.attributes.find((a) => a.name === 'active')?.type).toBe('boolean');
+      expect(order.attributes.find((a) => a.name === 'createdAt')?.type).toBe('Date');
+      expect(order.attributes.find((a) => a.name === 'guid')?.type).toBe('UUID');
+      expect(order.methods[0].returnType).toBe('double');
+      expect(order.methods[0].parameters[0].type).toBe('float');
+    });
+
+    it('deja el tipo de datos vacío si no hay ningún tipo disponible o es none/void para atributos', () => {
+      // Usamos un objeto diagram directo para probar casos donde el tipo esté vacío o ausente
+      const diagram: Diagram = {
+        id: randomUUID(),
+        name: 'Untyped Diagram',
+        classes: [
+          {
+            id: C.order,
+            name: 'Item',
+            position: { x: 50, y: 50 },
+            kind: 'class',
+            isAbstract: false,
+            attributes: [
+              { id: randomUUID(), name: 'sinTipo1', type: '', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'sinTipo2', type: '   ', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'sinTipo3', type: 'none', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'sinTipo4', type: 'void', visibility: '+', isStatic: false, isDerived: false },
+            ],
+            methods: [
+              {
+                id: randomUUID(),
+                name: 'sinRetorno',
+                returnType: '',
+                parameters: [{ name: 'paramSinTipo', type: '' }],
+                visibility: '+',
+                isStatic: false,
+              },
+            ],
+          },
+        ],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      };
+
+      const xmi = exportDiagramToXmi(diagram);
+
+      // Los atributos sin tipo NO deben emitir etiqueta <type xmi:idref="..." />
+      expect(xmi).not.toContain('<type xmi:idref=""/>');
+      expect(xmi).not.toContain('<type xmi:idref="none"/>');
+      expect(xmi).not.toContain('<type xmi:idref="void"/>');
+
+      // En la extensión de EA los atributos deben tener properties type=""
+      expect(xmi).toContain('<properties type="" collection="false"');
+
+      // En la extensión de EA el método y su parámetro deben tener type=""
+      expect(xmi).toContain('<type type=""');
+      expect(xmi).toContain('<properties pos="0" type=""/>');
+    });
+
+    it('resuelve referencias a clases del diagrama de forma insensible a mayúsculas/minúsculas', () => {
+      const diagram = DiagramSchema.parse({
+        id: randomUUID(),
+        name: 'Class Reference Test',
+        classes: [
+          {
+            id: C.order,
+            name: 'Cliente',
+            position: { x: 100, y: 100 },
+            kind: 'class',
+            isAbstract: false,
+            attributes: [],
+            methods: [],
+          },
+          {
+            id: C.line,
+            name: 'Factura',
+            position: { x: 300, y: 100 },
+            kind: 'class',
+            isAbstract: false,
+            attributes: [
+              // Tipo escrito en minúsculas 'cliente' o 'CLIENTE', debe apuntar al ID de la clase 'Cliente'
+              { id: randomUUID(), name: 'titular', type: 'cliente', visibility: '+', isStatic: false, isDerived: false },
+              { id: randomUUID(), name: 'pagador', type: 'CLIENTE', visibility: '+', isStatic: false, isDerived: false },
+            ],
+            methods: [],
+          },
+        ],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      });
+
+      const xmi = exportDiagramToXmi(diagram);
+
+      // Debe apuntar al ID de la clase Cliente (C.order)
+      expect(xmi).toContain(`<type xmi:idref="${C.order}"/>`);
+
+      // En la extensión de EA debe mostrar el nombre canónico de la clase 'Cliente'
+      expect(xmi).toContain('<properties type="Cliente" collection="false"');
+
+      // Round-trip al parser debe resolver ambos a 'Cliente'
+      const model = parseXmiDocument(xmi);
+      const factura = model.classes.find((c) => c.name === 'Factura')!;
+      expect(factura.attributes.find((a) => a.name === 'titular')?.type).toBe('Cliente');
+      expect(factura.attributes.find((a) => a.name === 'pagador')?.type).toBe('Cliente');
+    });
+  });
 });
 

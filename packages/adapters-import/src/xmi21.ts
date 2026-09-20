@@ -407,10 +407,18 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       indexPrimitiveTypes(el); // paquetes de tipos primitivos anidados
     }
   };
-  indexPrimitiveTypes(xmiRoot?.['xmi:Extension']?.['primitivetypes'] ?? xmiRoot?.['Extension']?.['primitivetypes']);
+  const extensionNodes = toArray(xmiRoot?.['xmi:Extension'] ?? xmiRoot?.['Extension']);
+  for (const ext of extensionNodes) {
+    indexPrimitiveTypes(ext?.['primitivetypes']);
+  }
 
-  const resolveType = (idref: string | undefined): string | undefined =>
-    idref ? (nameIndex.get(idref) ?? idref) : undefined;
+  const resolveType = (idref: string | undefined): string | undefined => {
+    if (!idref) return undefined;
+    const resolved = nameIndex.get(idref);
+    if (resolved) return resolved;
+    if (idref.startsWith('EAJava_')) return idref.slice('EAJava_'.length);
+    return idref;
+  };
 
   // Indexar conectores de Enterprise Architect desde <xmi:Extension> para nombres, roles y etiquetas
   interface EaConnector {
@@ -422,10 +430,10 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     targetMultiplicity?: string;
   }
   const eaConnectorMap = new Map<string, EaConnector>();
-  const connectorNodes = toArray(
-    xmiRoot?.['xmi:Extension']?.['connectors']?.['connector'] ??
-    xmiRoot?.['Extension']?.['connectors']?.['connector']
-  );
+  const connectorNodes: any[] = [];
+  for (const ext of extensionNodes) {
+    connectorNodes.push(...toArray(ext?.['connectors']?.['connector']));
+  }
   for (const conn of connectorNodes) {
     const connId = conn['@_xmi:idref'] || conn['@_idref'];
     if (!connId) continue;

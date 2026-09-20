@@ -23,6 +23,120 @@ function boolAttr(name: string, val: boolean | undefined): string {
   return val ? ` ${name}="true"` : '';
 }
 
+function eaScope(visibility: string | undefined): string {
+  switch (visibility) {
+    case '-': return 'Private';
+    case '#': return 'Protected';
+    case '~': return 'Package';
+    case '+':
+    default:
+      return 'Public';
+  }
+}
+
+export interface ResolvedTypeInfo {
+  id: string;
+  name: string;
+  isClass: boolean;
+}
+
+/**
+ * Normaliza y resuelve un tipo de datos UML de forma insensible a mayúsculas/minúsculas.
+ * Si no se detecta ningún tipo de dato válido (vacío, undefined, null, 'none' o 'void' para atributos),
+ * retorna null para que no se invente un tipo espurio ni se rompa la exportación.
+ * Si coincide con una clase del diagrama (case-insensitively), retorna el ID y nombre de dicha clase.
+ * Si es un tipo primitivo conocido, retorna el ID canónico de EA y su nombre.
+ * Si es un tipo personalizado no primitivo, genera un ID EAJava válido preservando su nombre.
+ */
+export function resolveDataType(
+  rawType: string | undefined,
+  classes: Class[],
+  isAttribute = false
+): ResolvedTypeInfo | null {
+  if (!rawType) return null;
+  const trimmed = rawType.trim();
+  if (trimmed.length === 0) return null;
+
+  const lower = trimmed.toLowerCase();
+  if (lower === 'none' || lower === 'undefined' || lower === 'null') {
+    return null;
+  }
+  if (isAttribute && lower === 'void') {
+    return null;
+  }
+
+  // 1. Coincidencia insensible a mayúsculas con clases existentes en el diagrama
+  const matchedClass = classes.find(
+    c => c.name.toLowerCase() === lower || c.id === trimmed
+  );
+  if (matchedClass) {
+    return {
+      id: matchedClass.id,
+      name: matchedClass.name,
+      isClass: true,
+    };
+  }
+
+  // 2. Diccionario de primitivos estándar (case-insensitive)
+  switch (lower) {
+    case 'string':
+    case 'str':
+      return trimmed === 'string'
+        ? { id: 'EAJava_string', name: 'string', isClass: false }
+        : { id: 'EAJava_String', name: 'String', isClass: false };
+    case 'int':
+      return { id: 'EAJava_int', name: 'int', isClass: false };
+    case 'integer':
+      return trimmed === 'integer'
+        ? { id: 'EAJava_int', name: 'int', isClass: false }
+        : { id: 'EAJava_Integer', name: 'Integer', isClass: false };
+    case 'boolean':
+    case 'bool':
+      return trimmed === 'Boolean'
+        ? { id: 'EAJava_Boolean', name: 'Boolean', isClass: false }
+        : { id: 'EAJava_boolean', name: 'boolean', isClass: false };
+    case 'double':
+      return { id: 'EAJava_double', name: 'double', isClass: false };
+    case 'float':
+      return { id: 'EAJava_float', name: 'float', isClass: false };
+    case 'long':
+      return trimmed === 'Long'
+        ? { id: 'EAJava_Long', name: 'Long', isClass: false }
+        : { id: 'EAJava_long', name: 'long', isClass: false };
+    case 'short':
+      return { id: 'EAJava_short', name: 'short', isClass: false };
+    case 'byte':
+      return { id: 'EAJava_byte', name: 'byte', isClass: false };
+    case 'char':
+    case 'character':
+      return { id: 'EAJava_char', name: 'char', isClass: false };
+    case 'date':
+      return { id: 'EAJava_Date', name: 'Date', isClass: false };
+    case 'datetime':
+      return { id: 'EAJava_DateTime', name: 'DateTime', isClass: false };
+    case 'timestamp':
+      return { id: 'EAJava_Timestamp', name: 'Timestamp', isClass: false };
+    case 'uuid':
+    case 'guid':
+      return { id: 'EAJava_UUID', name: 'UUID', isClass: false };
+    case 'bigdecimal':
+    case 'decimal':
+      return { id: 'EAJava_BigDecimal', name: 'BigDecimal', isClass: false };
+    case 'number':
+      return { id: 'EAJava_double', name: 'double', isClass: false };
+    case 'void':
+      return { id: 'EAJava_void', name: 'void', isClass: false };
+  }
+
+  // 3. Tipo personalizado arbitrario
+  const cleanId = trimmed.replace(/[^a-zA-Z0-9_]/g, '_');
+  return {
+    id: `EAJava_${cleanId}`,
+    name: trimmed,
+    isClass: false,
+  };
+}
+
 // ── Funciones auxiliares de multiplicidad ─────────────────────────────────────
 
 /**
@@ -87,6 +201,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   const cleanId = diagram.id.replace(/-/g, '_');
   const packageId = `EAPK_${cleanId}`;
   const diagramId = `EAID_${cleanId}`;
+  const primitiveTypesMap = new Map<string, ResolvedTypeInfo>();
 
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(`<xmi:XMI xmi:version="2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`);
@@ -115,7 +230,11 @@ export function exportDiagramToXmi(diagram: Diagram): string {
         lines.push(`        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="1"/>`);
         lines.push(`        <upperValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="1"/>`);
       }
-      lines.push(`        <type xmi:idref="${esc(attr.type)}"/>`);
+      const resolved = resolveDataType(attr.type, diagram.classes, true);
+      if (resolved) {
+        if (!resolved.isClass) primitiveTypesMap.set(resolved.id, resolved);
+        lines.push(`        <type xmi:idref="${esc(resolved.id)}"/>`);
+      }
       lines.push(`      </ownedAttribute>`);
     }
 
@@ -129,14 +248,17 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
       // Parámetros de entrada
       for (const param of method.parameters) {
-        lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="${esc(param.name)}" direction="in" type="${esc(param.type)}"/>`);
+        const resolvedParam = resolveDataType(param.type, diagram.classes, true);
+        if (resolvedParam && !resolvedParam.isClass) primitiveTypesMap.set(resolvedParam.id, resolvedParam);
+        const typeAttr = resolvedParam ? ` type="${esc(resolvedParam.name)}"` : '';
+        lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="${esc(param.name)}" direction="in"${typeAttr}/>`);
       }
 
       // Parámetro de retorno (direction="return")
-      if (method.returnType && method.returnType !== 'void') {
-        lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="return" direction="return" type="${esc(method.returnType)}"/>`);
-      } else if (method.returnType === 'void') {
-        lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="return" direction="return" type="${esc(method.returnType)}"/>`);
+      const resolvedRet = resolveDataType(method.returnType, diagram.classes, false);
+      if (resolvedRet) {
+        if (!resolvedRet.isClass) primitiveTypesMap.set(resolvedRet.id, resolvedRet);
+        lines.push(`        <ownedParameter xmi:type="uml:Parameter" xmi:id="${randomUUID()}" name="return" direction="return" type="${esc(resolvedRet.name)}"/>`);
       }
 
       lines.push(`      </ownedOperation>`);
@@ -239,6 +361,48 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`        <model package="${packageId}" tpos="0" ea_localid="${i + 2}" ea_eleType="element"/>`);
     lines.push(`        <properties isSpecification="false" sType="${sType}" nType="0" scope="public"/>`);
     lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
+
+    if (cls.attributes.length > 0) {
+      lines.push(`        <attributes>`);
+      for (const attr of cls.attributes) {
+        const resolved = resolveDataType(attr.type, diagram.classes, true);
+        const typeStr = resolved ? esc(resolved.name) : '';
+        const scope = eaScope(attr.visibility);
+        const staticFlag = attr.isStatic ? '1' : '0';
+        lines.push(`          <attribute xmi:idref="${attr.id}" name="${esc(attr.name)}" scope="${scope}">`);
+        lines.push(`            <properties type="${typeStr}" collection="false" static="${staticFlag}" duplicates="0" changeability="changeable"/>`);
+        lines.push(`          </attribute>`);
+      }
+      lines.push(`        </attributes>`);
+    }
+
+    if (cls.methods.length > 0) {
+      lines.push(`        <operations>`);
+      for (const method of cls.methods) {
+        const resolvedRet = resolveDataType(method.returnType, diagram.classes, false);
+        const returnTypeStr = resolvedRet ? esc(resolvedRet.name) : '';
+        const scope = eaScope(method.visibility);
+        const staticStr = method.isStatic ? 'true' : 'false';
+        const isAbstractStr = cls.kind === 'interface' || cls.isAbstract ? 'true' : 'false';
+        lines.push(`          <operation xmi:idref="${method.id}" name="${esc(method.name)}" scope="${scope}">`);
+        lines.push(`            <type type="${returnTypeStr}" static="${staticStr}" isAbstract="${isAbstractStr}"/>`);
+        if (method.parameters.length > 0) {
+          lines.push(`            <parameters>`);
+          for (let pIdx = 0; pIdx < method.parameters.length; pIdx++) {
+            const param = method.parameters[pIdx];
+            const resolvedParam = resolveDataType(param.type, diagram.classes, true);
+            const paramTypeStr = resolvedParam ? esc(resolvedParam.name) : '';
+            lines.push(`              <parameter xmi:idref="${randomUUID()}" name="${esc(param.name)}" visibility="public">`);
+            lines.push(`                <properties pos="${pIdx}" type="${paramTypeStr}"/>`);
+            lines.push(`              </parameter>`);
+          }
+          lines.push(`            </parameters>`);
+        }
+        lines.push(`          </operation>`);
+      }
+      lines.push(`        </operations>`);
+    }
+
     lines.push(`      </element>`);
   }
   for (let i = 0; i < diagram.naryAssociations.length; i++) {
@@ -297,6 +461,18 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`      </connector>`);
   }
   lines.push(`    </connectors>`);
+
+  if (primitiveTypesMap.size > 0) {
+    lines.push(`    <primitivetypes>`);
+    lines.push(`      <packagedElement xmi:type="uml:Package" xmi:id="EAPrimitiveTypesPackage" name="EA_PrimitiveTypes_Package" visibility="public">`);
+    lines.push(`        <packagedElement xmi:type="uml:Package" xmi:id="EAJavaTypesPackage" name="EA_Java_Types_Package" visibility="public">`);
+    for (const prim of primitiveTypesMap.values()) {
+      lines.push(`          <packagedElement xmi:type="uml:PrimitiveType" xmi:id="${prim.id}" name="${esc(prim.name)}" visibility="public"/>`);
+    }
+    lines.push(`        </packagedElement>`);
+    lines.push(`      </packagedElement>`);
+    lines.push(`    </primitivetypes>`);
+  }
 
   lines.push(`    <diagrams>`);
   lines.push(`      <diagram xmi:id="${diagramId}">`);
