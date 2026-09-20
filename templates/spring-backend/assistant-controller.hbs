@@ -220,6 +220,7 @@ public class AssistantController {
         if ("{{this}}".equals(name)) {
             {{this}} entity = new {{this}}();
             {{this}}.applyFields(entity, fields);
+            {{this}}.applyDefaults(entity);
             return {{camel this}}Service.save(entity);
         }
         {{/each}}

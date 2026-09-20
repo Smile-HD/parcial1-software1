@@ -61,6 +61,11 @@ describe('entity template', () => {
     expect(java).toContain('public static void applyFields(Customer entity, java.util.Map<String, String> fields)');
     expect(java).toContain('case "name", "nombre"');
     expect(java).toContain('case "active", "activo"');
+
+    // D11v2: applyDefaults static method for partial CREATE Bean Validation compliance
+    expect(java).toContain('public static void applyDefaults(Customer entity)');
+    expect(java).toContain('entity.setName("Nuevo " + "Customer")');
+    expect(java).toContain('entity.setActive(true)');
   });
 
   it('renders the owning ManyToOne on Order and imports java.time/java.math types', () => {
@@ -75,6 +80,9 @@ describe('entity template', () => {
     expect(java).toContain('import java.math.BigDecimal;');
     expect(java).toContain('private LocalDate orderDate;');
     expect(java).toContain('private BigDecimal total;');
+    expect(java).toContain('public static void applyDefaults(Order entity)');
+    expect(java).toContain('entity.setTotal(java.math.BigDecimal.ZERO);');
+    expect(java).toContain('entity.setOrderDate(java.time.LocalDate.now());');
     // Order 0..* -- 0..* Product: lexicographic-owner rule makes Order the
     // owning ManyToMany side (documented in entity.hbs).
     expect(java).toContain('@ManyToMany');
@@ -82,10 +90,12 @@ describe('entity template', () => {
     expect(java).toContain('private Set<Product> products');
   });
 
-  it('renders the inverse ManyToMany side on Product with mappedBy', () => {
+  it('renders the inverse ManyToMany side on Product with mappedBy and robust assistant methods', () => {
     const java = fileAt(`src/main/java/${PKG_PATH}/Product.java`);
     expect(java).toContain('@ManyToMany(mappedBy = "products", fetch = FetchType.EAGER)');
     expect(java).toContain('private Set<Order> orders');
+    expect(java).toContain('public static void applyDefaults(Product entity)');
+    expect(java).toContain('public static void applyFields(Product entity, java.util.Map<String, String> fields)');
   });
 
   it('renders the inverse OneToOne side on ShippingAddress with mappedBy', () => {
@@ -434,6 +444,7 @@ describe('assistant templates (18.1)', () => {
     expect(java).toContain('AssistantResponse');
     expect(java).toContain('CAPABILITY_MESSAGE');
     expect(java).toContain('applyFields');
+    expect(java).toContain('applyDefaults');
     expect(java).toContain('deleteEntity');
     expect(java).toContain('updateEntity');
     expect(java).toContain('createEntity');
@@ -547,5 +558,13 @@ describe('rendering entities with normalized informal names', () => {
     const controllerFile = files.find((f) => f.path === `src/main/java/${PKG_PATH}/web/CustomerOrderController.java`);
     expect(controllerFile).toBeDefined();
     expect(controllerFile?.content).toContain('public class CustomerOrderController');
+
+    // Robust applyFields & applyDefaults on custom entity
+    expect(entityFile?.content).toContain('public static void applyFields(CustomerOrder entity, java.util.Map<String, String> fields)');
+    expect(entityFile?.content).toContain('public static void applyDefaults(CustomerOrder entity)');
+    expect(entityFile?.content).toContain('entity.set_123code(0);');
+    expect(entityFile?.content).toContain('entity.setPhoneNumber("-");');
+    expect(entityFile?.content).toContain('k.contains("phonenumber")');
   });
 });
+

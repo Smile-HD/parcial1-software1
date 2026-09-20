@@ -170,12 +170,14 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
 
 {{/if}}
 {{/each}}
-{{#if fields.length}}
     /**
      * Aplica valores de campos desde un mapa de cadenas (D11v2 — asistente CREATE/UPDATE).
      * Despacho flexible y permisivo con coincidencia de sinónimos y conversión de tipos segura.
      */
     public static void applyFields({{className}} entity, java.util.Map<String, String> fields) {
+{{#if extendsClass}}
+        {{extendsClass}}.applyFields(entity, fields);
+{{/if}}
         if (fields == null || fields.isEmpty()) return;
         for (var entry : fields.entrySet()) {
             String rawKey = entry.getKey();
@@ -188,20 +190,33 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
                 switch (k) {
 {{#each fields}}
 {{#unless isCollection}}
-                    case "{{lower name}}"{{#if (eq (lower name) "name")}}, "nombre", "nom", "title", "titulo"{{/if}}{{#if (eq (lower name) "price")}}, "precio", "costo", "cost", "monto", "amount", "valor"{{/if}}{{#if (eq (lower name) "description")}}, "descripcion", "detalle"{{/if}}{{#if (eq (lower name) "email")}}, "correo", "mail"{{/if}}{{#if (eq (lower name) "phone")}}, "telefono", "celular", "tel"{{/if}}{{#if (eq (lower name) "address")}}, "direccion", "ubicacion"{{/if}}{{#if (eq (lower name) "city")}}, "ciudad"{{/if}}{{#if (eq (lower name) "age")}}, "edad"{{/if}}{{#if (eq (lower name) "active")}}, "activo", "estado"{{/if}} -> {
+                    case "{{lower name}}"{{#if (eq (lower name) "name")}}, "nombre", "nom", "title", "titulo"{{/if}}{{#if (eq (lower name) "price")}}, "precio", "costo", "cost", "monto", "amount", "valor"{{/if}}{{#if (eq (lower name) "description")}}, "descripcion", "detalle", "desc", "detalles", "info", "nota"{{/if}}{{#if (eq (lower name) "stockqty")}}, "stock", "quantity", "cantidad", "cant", "qty", "inventario", "existencias"{{/if}}{{#if (eq (lower name) "stock")}}, "stockqty", "quantity", "cantidad", "cant", "qty", "inventario", "existencias"{{/if}}{{#if (eq (lower name) "quantity")}}, "stock", "stockqty", "cantidad", "cant", "qty", "inventario"{{/if}}{{#if (eq (lower name) "cantidad")}}, "stock", "stockqty", "quantity", "cant", "qty", "inventario"{{/if}}{{#if (eq (lower name) "email")}}, "correo", "mail"{{/if}}{{#if (eq (lower name) "phone")}}, "telefono", "celular", "tel", "fono", "movil"{{/if}}{{#if (eq (lower name) "address")}}, "direccion", "ubicacion", "domicilio"{{/if}}{{#if (eq (lower name) "city")}}, "ciudad", "municipio"{{/if}}{{#if (eq (lower name) "age")}}, "edad"{{/if}}{{#if (eq (lower name) "active")}}, "activo", "estado", "status"{{/if}} -> {
                         entity.set{{cap name}}({{#if (eq javaType "String")}}v{{else if (eq javaType "Integer")}}Integer.parseInt(v.replaceAll("[^0-9-]", "")){{else if (eq javaType "Long")}}Long.parseLong(v.replaceAll("[^0-9-]", "")){{else if (eq javaType "Double")}}Double.parseDouble(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Float")}}Float.parseFloat(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Boolean")}}Boolean.parseBoolean(v){{else if (eq javaType "BigDecimal")}}new java.math.BigDecimal(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Character")}}v.charAt(0){{else if (eq javaType "LocalDate")}}java.time.LocalDate.parse(v){{else if (eq javaType "LocalDateTime")}}java.time.LocalDateTime.parse(v){{else if (eq javaType "LocalTime")}}java.time.LocalTime.parse(v){{else}}v{{/if}});
                     }
 {{/unless}}
 {{/each}}
                     default -> {
+                        boolean matched = false;
+{{#each fields}}
+{{#unless isCollection}}
+                        if (!matched && (k.contains("{{lower name}}") || "{{lower name}}".contains(k))) {
+                            try {
+                                entity.set{{cap name}}({{#if (eq javaType "String")}}v{{else if (eq javaType "Integer")}}Integer.parseInt(v.replaceAll("[^0-9-]", "")){{else if (eq javaType "Long")}}Long.parseLong(v.replaceAll("[^0-9-]", "")){{else if (eq javaType "Double")}}Double.parseDouble(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Float")}}Float.parseFloat(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Boolean")}}Boolean.parseBoolean(v){{else if (eq javaType "BigDecimal")}}new java.math.BigDecimal(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Character")}}v.charAt(0){{else if (eq javaType "LocalDate")}}java.time.LocalDate.parse(v){{else if (eq javaType "LocalDateTime")}}java.time.LocalDateTime.parse(v){{else if (eq javaType "LocalTime")}}java.time.LocalTime.parse(v){{else}}v{{/if}});
+                                matched = true;
+                            } catch (Exception ignored) {}
+                        }
+{{/unless}}
+{{/each}}
                         // Si el modelo usó una clave desconocida, asignar al primer campo de texto si está vacío
+                        if (!matched) {
 {{#each fields}}
 {{#if @first}}
 {{#if (eq javaType "String")}}
-                        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(v); }
+                            if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(v); }
 {{/if}}
 {{/if}}
 {{/each}}
+                        }
                     }
                 }
             } catch (Exception ignored) {
@@ -209,5 +224,55 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
             }
         }
     }
+
+    /**
+     * Completa con valores por defecto cualquier campo no asignado (D11v2 — asistente CREATE).
+     * Evita violaciones de Bean Validation (@NotNull/@NotBlank) al crear entidades con datos parciales.
+     */
+    public static void applyDefaults({{className}} entity) {
+{{#if extendsClass}}
+        {{extendsClass}}.applyDefaults(entity);
 {{/if}}
+{{#each fields}}
+{{#unless isCollection}}
+{{#if (eq javaType "String")}}
+        if (entity.get{{cap name}}() == null || entity.get{{cap name}}().isBlank()) {
+{{#if (eq (lower name) "description")}}
+            entity.set{{cap name}}("Creado por asistente de voz");
+{{else if (eq (lower name) "name")}}
+            entity.set{{cap name}}("Nuevo " + "{{../className}}");
+{{else if (eq (lower name) "title")}}
+            entity.set{{cap name}}("Nuevo " + "{{../className}}");
+{{else}}
+            entity.set{{cap name}}("-");
+{{/if}}
+        }
+{{else if (eq javaType "Integer")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(0); }
+{{else if (eq javaType "Long")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(0L); }
+{{else if (eq javaType "Double")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(0.0); }
+{{else if (eq javaType "Float")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(0.0f); }
+{{else if (eq javaType "BigDecimal")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(java.math.BigDecimal.ZERO); }
+{{else if (eq javaType "Boolean")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(true); }
+{{else if (eq javaType "Short")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}((short) 0); }
+{{else if (eq javaType "Byte")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}((byte) 0); }
+{{else if (eq javaType "Character")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}('A'); }
+{{else if (eq javaType "LocalDate")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(java.time.LocalDate.now()); }
+{{else if (eq javaType "LocalDateTime")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(java.time.LocalDateTime.now()); }
+{{else if (eq javaType "LocalTime")}}
+        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(java.time.LocalTime.now()); }
+{{/if}}
+{{/unless}}
+{{/each}}
+    }
 }
