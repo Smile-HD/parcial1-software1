@@ -280,6 +280,13 @@ export function ImportPhotoButton({
           }
           return { ...d, name: uniqueName };
         }
+        if (d.kind === 'naryAssociation') {
+          const nary = d as { memberEnds?: { classId: string }[] };
+          if (Array.isArray(nary.memberEnds)) {
+            const survivingEnds = nary.memberEnds.filter((e) => visibleIds.has(e.classId));
+            return { ...d, memberEnds: survivingEnds };
+          }
+        }
         return d;
       })
       .filter((d) => {
@@ -328,8 +335,7 @@ export function ImportPhotoButton({
         if (d.kind === 'naryAssociation') {
           const nary = d as { memberEnds?: { classId: string }[] };
           if (!Array.isArray(nary.memberEnds)) return false;
-          const survivingEnds = nary.memberEnds.filter((e) => visibleIds.has(e.classId));
-          return survivingEnds.length >= 3;
+          return nary.memberEnds.length >= 3;
         }
         return true;
       });

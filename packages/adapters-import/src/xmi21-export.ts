@@ -83,7 +83,6 @@ function aggregationAttr(a: Association): string {
  *   </xmi:XMI>
  */
 export function exportDiagramToXmi(diagram: Diagram): string {
-  const now = new Date().toISOString();
   const lines: string[] = [];
   const cleanId = diagram.id.replace(/-/g, '_');
   const packageId = `EAPK_${cleanId}`;
@@ -146,7 +145,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     // Generalización como hijo de la subclase
     const subGens = diagram.generalizations.filter(g => g.subClassId === cls.id);
     for (const gen of subGens) {
-      lines.push(`      <generalization xmi:type="uml:Generalization" xmi:id="${gen.id}" general="${gen.superClassId}"/>`);
+      lines.push(`      <generalization xmi:type="uml:Generalization" xmi:id="${gen.id}" general="${gen.superClassId}"${gen.name ? ` name="${esc(gen.name)}"` : ''}/>`);
     }
 
     lines.push(`    </packagedElement>`);
@@ -192,12 +191,12 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
   // ── Realizaciones ────────────────────────────────────────────────────────
   for (const real of diagram.realizations) {
-    lines.push(`    <packagedElement xmi:type="uml:Realization" xmi:id="${real.id}" client="${real.clientClassId}" supplier="${real.supplierInterfaceId}"/>`);
+    lines.push(`    <packagedElement xmi:type="uml:Realization" xmi:id="${real.id}" client="${real.clientClassId}" supplier="${real.supplierInterfaceId}"${real.name ? ` name="${esc(real.name)}"` : ''}/>`);
   }
 
   // ── Dependencias ─────────────────────────────────────────────────────────
   for (const dep of diagram.dependencies) {
-    lines.push(`    <packagedElement xmi:type="uml:Dependency" xmi:id="${dep.id}" client="${dep.clientClassId}" supplier="${dep.supplierClassId}"/>`);
+    lines.push(`    <packagedElement xmi:type="uml:Dependency" xmi:id="${dep.id}" client="${dep.clientClassId}" supplier="${dep.supplierClassId}"${dep.name ? ` name="${esc(dep.name)}"` : ''}/>`);
   }
 
   // ── Asociaciones N-arias ──────────────────────────────────────────────────
@@ -225,8 +224,6 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   lines.push(`  </uml:Model>`);
 
   // ── Extensión nativa de Enterprise Architect (renderizado directo del diagrama) ──
-  // Permite que EA cree automáticamente el objeto de diagrama Class en el árbol
-  // y posicione todas las clases visualmente en las coordenadas correspondientes.
   lines.push(`  <xmi:Extension extender="Enterprise Architect" extenderID="6.5">`);
   lines.push(`    <elements>`);
   lines.push(`      <element xmi:idref="${packageId}" xmi:type="uml:Package" name="${esc(diagram.name)}" scope="public">`);
@@ -244,12 +241,68 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
     lines.push(`      </element>`);
   }
+  for (let i = 0; i < diagram.naryAssociations.length; i++) {
+    const nary = diagram.naryAssociations[i];
+    lines.push(`      <element xmi:idref="${nary.id}" xmi:type="uml:Association" name="${esc(nary.name ?? 'NaryAssociation')}" scope="public">`);
+    lines.push(`        <model package="${packageId}" tpos="0" ea_localid="${diagram.classes.length + i + 2}" ea_eleType="element"/>`);
+    lines.push(`        <properties isSpecification="false" sType="Association" nType="0" scope="public"/>`);
+    lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
+    lines.push(`      </element>`);
+  }
   lines.push(`    </elements>`);
+
+  // Conectores con nombres, roles y etiquetas en estilo Enterprise Architect
+  lines.push(`    <connectors>`);
+  for (const assoc of diagram.associations) {
+    const srcRole = assoc.sourceRole ? ` lt="${esc(assoc.sourceRole)}"` : '';
+    const tgtRole = assoc.targetRole ? ` rt="${esc(assoc.targetRole)}"` : '';
+    const srcMult = assoc.sourceMultiplicity ? ` lb="${esc(assoc.sourceMultiplicity)}"` : '';
+    const tgtMult = assoc.targetMultiplicity ? ` rb="${esc(assoc.targetMultiplicity)}"` : '';
+    const assocName = assoc.name ? ` mt="${esc(assoc.name)}"` : '';
+    lines.push(`      <connector xmi:idref="${assoc.id}">`);
+    lines.push(`        <source xmi:idref="${assoc.sourceClassId}">`);
+    if (assoc.sourceRole) lines.push(`          <role name="${esc(assoc.sourceRole)}"/>`);
+    if (assoc.sourceMultiplicity) lines.push(`          <type multiplicity="${esc(assoc.sourceMultiplicity)}"/>`);
+    lines.push(`        </source>`);
+    lines.push(`        <target xmi:idref="${assoc.targetClassId}">`);
+    if (assoc.targetRole) lines.push(`          <role name="${esc(assoc.targetRole)}"/>`);
+    if (assoc.targetMultiplicity) lines.push(`          <type multiplicity="${esc(assoc.targetMultiplicity)}"/>`);
+    lines.push(`        </target>`);
+    lines.push(`        <properties ea_type="Association" direction="Unspecified"${assoc.name ? ` name="${esc(assoc.name)}"` : ''}/>`);
+    lines.push(`        <labels${assocName}${srcRole}${tgtRole}${srcMult}${tgtMult}/>`);
+    lines.push(`      </connector>`);
+  }
+  for (const gen of diagram.generalizations) {
+    lines.push(`      <connector xmi:idref="${gen.id}">`);
+    lines.push(`        <source xmi:idref="${gen.subClassId}"/>`);
+    lines.push(`        <target xmi:idref="${gen.superClassId}"/>`);
+    lines.push(`        <properties ea_type="Generalization"${gen.name ? ` name="${esc(gen.name)}"` : ''}/>`);
+    lines.push(`        <labels${gen.name ? ` mt="${esc(gen.name)}"` : ''}/>`);
+    lines.push(`      </connector>`);
+  }
+  for (const real of diagram.realizations) {
+    lines.push(`      <connector xmi:idref="${real.id}">`);
+    lines.push(`        <source xmi:idref="${real.clientClassId}"/>`);
+    lines.push(`        <target xmi:idref="${real.supplierInterfaceId}"/>`);
+    lines.push(`        <properties ea_type="Realization"${real.name ? ` name="${esc(real.name)}"` : ''}/>`);
+    lines.push(`        <labels${real.name ? ` mt="${esc(real.name)}"` : ''}/>`);
+    lines.push(`      </connector>`);
+  }
+  for (const dep of diagram.dependencies) {
+    lines.push(`      <connector xmi:idref="${dep.id}">`);
+    lines.push(`        <source xmi:idref="${dep.clientClassId}"/>`);
+    lines.push(`        <target xmi:idref="${dep.supplierClassId}"/>`);
+    lines.push(`        <properties ea_type="Dependency"${dep.name ? ` name="${esc(dep.name)}"` : ''}/>`);
+    lines.push(`        <labels${dep.name ? ` mt="${esc(dep.name)}"` : ''}/>`);
+    lines.push(`      </connector>`);
+  }
+  lines.push(`    </connectors>`);
+
   lines.push(`    <diagrams>`);
   lines.push(`      <diagram xmi:id="${diagramId}">`);
   lines.push(`        <model package="${packageId}" localID="1" owner="${packageId}"/>`);
   lines.push(`        <properties name="${esc(diagram.name)}" type="Logical"/>`);
-  lines.push(`        <project author="UMLDesignTool" version="1.0" created="${now}" modified="${now}"/>`);
+  lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
   lines.push(`        <elements>`);
   for (let i = 0; i < diagram.classes.length; i++) {
     const cls = diagram.classes[i];
@@ -259,6 +312,19 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     const bottom = top + 90;
     const duid = cls.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
     lines.push(`          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${cls.id}" seqno="${i + 1}" style="DUID=${duid};"/>`);
+  }
+  const classPosMap = new Map(diagram.classes.map(c => [c.id, c.position]));
+  for (let i = 0; i < diagram.naryAssociations.length; i++) {
+    const nary = diagram.naryAssociations[i];
+    const memberPositions = nary.memberEnds.map(e => classPosMap.get(e.classId)).filter((p): p is { x: number; y: number } => Boolean(p));
+    const cx = memberPositions.length > 0 ? memberPositions.reduce((s, p) => s + p.x, 0) / memberPositions.length : 200;
+    const cy = memberPositions.length > 0 ? memberPositions.reduce((s, p) => s + p.y, 0) / memberPositions.length : 200;
+    const left = Math.round(cx - 20);
+    const top = Math.round(cy - 20);
+    const right = left + 40;
+    const bottom = top + 40;
+    const duid = nary.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
+    lines.push(`          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${nary.id}" seqno="${diagram.classes.length + i + 1}" style="DUID=${duid};"/>`);
   }
   lines.push(`        </elements>`);
   lines.push(`      </diagram>`);
@@ -271,6 +337,12 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   lines.push(`    <layout diagramId="${diagram.id}">`);
   for (const cls of diagram.classes) {
     lines.push(`      <element xmiIdref="${cls.id}" x="${Math.round(cls.position.x)}" y="${Math.round(cls.position.y)}"/>`);
+  }
+  for (const nary of diagram.naryAssociations) {
+    const memberPositions = nary.memberEnds.map(e => classPosMap.get(e.classId)).filter((p): p is { x: number; y: number } => Boolean(p));
+    const cx = memberPositions.length > 0 ? memberPositions.reduce((s, p) => s + p.x, 0) / memberPositions.length : 200;
+    const cy = memberPositions.length > 0 ? memberPositions.reduce((s, p) => s + p.y, 0) / memberPositions.length : 200;
+    lines.push(`      <element xmiIdref="${nary.id}" x="${Math.round(cx)}" y="${Math.round(cy)}"/>`);
   }
   lines.push(`    </layout>`);
   lines.push(`  </xmi:Extension>`);

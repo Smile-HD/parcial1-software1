@@ -28,16 +28,19 @@ export type XmiModel = {
     id: string;
     subClassId: string;
     superClassId: string;
+    name?: string;
   }>;
   realizations: Array<{
     id: string;
     clientId: string;
     supplierId: string;
+    name?: string;
   }>;
   dependencies: Array<{
     id: string;
     clientId: string;
     supplierId: string;
+    name?: string;
   }>;
   naryAssociations: Array<{
     id: string;
@@ -249,7 +252,8 @@ function parseXmiDocument(xml: string): XmiModel {
     const id = g['@_id'] || randomUUID();
     const sub = g['@_child'] || '';
     const sup = g['@_parent'] || '';
-    if (sub && sup) model.generalizations.push({ id, subClassId: sub, superClassId: sup });
+    const name = g['@_name'] || undefined;
+    if (sub && sup) model.generalizations.push({ id, subClassId: sub, superClassId: sup, ...(name ? { name } : {}) });
   });
 
   // Realizaciones
@@ -257,7 +261,8 @@ function parseXmiDocument(xml: string): XmiModel {
     const id = r['@_id'] || randomUUID();
     const client = r['@_client'] || '';
     const supplier = r['@_supplier'] || '';
-    if (client && supplier) model.realizations.push({ id, clientId: client, supplierId: supplier });
+    const name = r['@_name'] || undefined;
+    if (client && supplier) model.realizations.push({ id, clientId: client, supplierId: supplier, ...(name ? { name } : {}) });
   });
 
   // Dependencias
@@ -265,7 +270,8 @@ function parseXmiDocument(xml: string): XmiModel {
     const id = d['@_id'] || randomUUID();
     const client = d['@_client'] || '';
     const supplier = d['@_supplier'] || '';
-    if (client && supplier) model.dependencies.push({ id, clientId: client, supplierId: supplier });
+    const name = d['@_name'] || undefined;
+    if (client && supplier) model.dependencies.push({ id, clientId: client, supplierId: supplier, ...(name ? { name } : {}) });
   });
 
   // N-arias (si están presentes)
@@ -406,26 +412,68 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   const resolveType = (idref: string | undefined): string | undefined =>
     idref ? (nameIndex.get(idref) ?? idref) : undefined;
 
+  // Indexar conectores de Enterprise Architect desde <xmi:Extension> para nombres, roles y etiquetas
+  interface EaConnector {
+    name?: string;
+    labels?: { mt?: string; lt?: string; rt?: string; lb?: string; rb?: string };
+    sourceRole?: string;
+    targetRole?: string;
+    sourceMultiplicity?: string;
+    targetMultiplicity?: string;
+  }
+  const eaConnectorMap = new Map<string, EaConnector>();
+  const connectorNodes = toArray(
+    xmiRoot?.['xmi:Extension']?.['connectors']?.['connector'] ??
+    xmiRoot?.['Extension']?.['connectors']?.['connector']
+  );
+  for (const conn of connectorNodes) {
+    const connId = conn['@_xmi:idref'] || conn['@_idref'];
+    if (!connId) continue;
+    const props = conn['properties'];
+    const labels = conn['labels'];
+    const name = props?.['@_name'] || conn['@_name'] || labels?.['@_mt'] || undefined;
+    const lt = labels?.['@_lt'] || conn['source']?.['role']?.['@_name'] || undefined;
+    const rt = labels?.['@_rt'] || conn['target']?.['role']?.['@_name'] || undefined;
+    const lb = labels?.['@_lb'] || conn['source']?.['type']?.['@_multiplicity'] || undefined;
+    const rb = labels?.['@_rb'] || conn['target']?.['type']?.['@_multiplicity'] || undefined;
+    eaConnectorMap.set(connId, {
+      name,
+      labels: { mt: labels?.['@_mt'], lt, rt, lb, rb },
+      sourceRole: lt,
+      targetRole: rt,
+      sourceMultiplicity: lb,
+      targetMultiplicity: rb,
+    });
+  }
+
   // ---- Paso 2: construir clases (características + generalizaciones hijas) y un
   // índice global de propiedades (los `ownedEnd` propiedad de la asociación y los
   // `ownedAttribute` reflejados en la clase son las MISMAS Propiedades UML, direccionables por xmi:id).
   type EndProp = { type: string | undefined; aggregation: string | undefined; lower: string | undefined; upper: string | undefined; name: string | undefined };
   const propertyIndex = new Map<string, EndProp>();
   const memberEndRefs = new Set<string>();
-  const readProp = (el: any): EndProp => ({
-    type: el?.['type']?.['@_xmi:idref'],
-    aggregation: el?.['@_aggregation'],
-    lower: el?.['lowerValue']?.['@_value'],
-    upper: el?.['upperValue']?.['@_value'],
-    name: el?.['@_name'],
-  });
+  const readProp = (el: any): EndProp => {
+    const rawType = el?.['type']?.['@_xmi:idref'] ??
+      el?.['type']?.['@_idref'] ??
+      el?.['type']?.['@_href']?.replace(/^#/, '') ??
+      el?.['@_type'] ??
+      (typeof el?.['type'] === 'string' ? el['type'] : undefined);
+    return {
+      type: rawType,
+      aggregation: el?.['@_aggregation'] ?? el?.['aggregation'],
+      lower: el?.['lowerValue']?.['@_value'] ?? el?.['lowerValue']?.['@_body'] ?? el?.['@_lower'],
+      upper: el?.['upperValue']?.['@_value'] ?? el?.['upperValue']?.['@_body'] ?? el?.['@_upper'],
+      name: el?.['@_name'] ?? el?.['name'],
+    };
+  };
 
   for (const assoc of associationNodes) {
     for (const end of toArray(assoc['ownedEnd'])) {
-      if (end['@_xmi:id']) propertyIndex.set(end['@_xmi:id'], readProp(end));
+      const endId = end['@_xmi:id'] || end['@_id'];
+      if (endId) propertyIndex.set(endId, readProp(end));
     }
     for (const me of toArray(assoc['memberEnd'])) {
-      const ref = me?.['@_xmi:idref'];
+      const ref = me?.['@_xmi:idref'] || me?.['@_idref'] || me?.['@_href']?.replace(/^#/, '');
       if (ref) memberEndRefs.add(ref);
     }
   }
@@ -448,39 +496,42 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       const isRelationEnd = Boolean(attr['@_association']) || Boolean(attrId && memberEndRefs.has(attrId));
       if (isRelationEnd) continue;
 
-      // XMI 2.1 almacena el tipo de la característica como referencia hija, no como atributo.
-      const typeId = resolveType(attr['type']?.['@_xmi:idref'] || attr['type']?.['@_idref'] || attr['@_type'] || attr['type']);
-      // LiteralIntegers lower/upper → cadena de multiplicidad UML (1/1 → "1").
-      const lower = attr['lowerValue']?.['@_value'];
-      const upper = attr['upperValue']?.['@_value'];
-      let multiplicity: string | undefined;
-      if (lower !== undefined || upper !== undefined) {
-        const l = lower ?? '1';
-        const u = upper ?? '1';
-        multiplicity = (l === u && l !== '-1') ? l : `${l === '-1' ? '*' : l}..${u === '-1' ? '*' : u}`;
+      // multi-tenencia de multiplicidad: atributo 'multiplicity' directo o subelementos lowerValue/upperValue
+      const rawMult = attr['@_multiplicity'] || attr['multiplicity'];
+      let mult: string | undefined;
+      if (rawMult) {
+        mult = String(rawMult);
+      } else {
+        const lower = attr['lowerValue']?.['@_value'];
+        const upper = attr['upperValue']?.['@_value'];
+        if (lower !== undefined || upper !== undefined) {
+          const l = lower ?? '1';
+          const u = upper ?? '1';
+          mult = (l === u && l !== '-1') ? l : `${l === '-1' ? '*' : l}..${u === '-1' ? '*' : u}`;
+        }
       }
 
+      const rawType = attr['@_type'] || attr['type']?.['@_xmi:idref'] || attr['type']?.['@_idref'] || attr['type']?.['@_href']?.replace(/^#/, '') || (typeof attr['type'] === 'string' ? attr['type'] : undefined);
       classAttrs.push({
-        name: attr['@_name'] || attr['name'] || '',
-        type: typeId || attr['@_type'] || attr['type'] || 'String',
+        id: attrId || randomUUID(),
+        name: attr['@_name'] || attr['name'] || 'unnamed',
+        type: resolveType(rawType) ?? rawType ?? 'String',
         visibility: attr['@_visibility'] || '+',
         isStatic: attr['@_isStatic'] === 'true',
         isDerived: attr['@_isDerived'] === 'true',
-        ...(multiplicity !== undefined ? { multiplicity } : {}),
+        ...(mult ? { multiplicity: mult } : {}),
       });
     }
 
-    // ownedOperation → métodos. En las exportaciones de EA 6.5 los parámetros de cada operación
-    // son hijos `ownedParameter` cuyo tipo es un idref de ATRIBUTO (type="EAJava_int"),
-    // y el "parámetro" de retorno (direction="return") es el returnType — nunca debe filtrarse
-    // a la lista de parámetros.
+    // ownedOperation (métodos de la clase)
     for (const op of toArray(el['ownedOperation'] ?? el['UML:Operation'] ?? el['operation'])) {
+      const params = toArray(op['ownedParameter'] ?? op['UML:Parameter'] ?? op['parameter']);
       let namedReturnType: string | undefined;
       let firstReturnType: string | undefined;
       const parameters: Array<{ name: string; type: string }> = [];
-      for (const p of toArray(op['ownedParameter'] ?? op['UML:Parameter'] ?? op['parameter'])) {
-        // El idref de tipo se encuentra aquí en el atributo @_type (no es un hijo <type>).
-        const resolved = resolveType(p['@_type'] || p['type']);
+
+      for (const p of params) {
+        const resolved = resolveType(p['@_type'] || p['type']?.['@_xmi:idref'] || p['type']?.['@_idref'] || p['type']?.['@_href']?.replace(/^#/, '') || (typeof p['type'] === 'string' ? p['type'] : undefined));
         if (p['@_direction'] === 'return') {
           if (p['@_name'] === 'return') {
             if (namedReturnType === undefined && resolved) namedReturnType = resolved;
@@ -489,8 +540,8 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
           }
           continue;
         }
-        if ((p['@_name'] || p['name']) && resolved) {
-          parameters.push({ name: p['@_name'] || p['name'], type: resolved });
+        if (p['@_name'] || p['name']) {
+          parameters.push({ name: p['@_name'] || p['name'], type: resolved ?? 'String' });
         }
       }
       const returnType = namedReturnType ?? firstReturnType ?? 'void';
@@ -519,22 +570,17 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     // dentro de la subclase. Por ende: subClassId = esta clase, superClassId = @general.
     for (const g of toArray(el['generalization'])) {
       const sup = g['@_general'];
+      const genId = g['@_xmi:id'] || g['@_id'] || randomUUID();
+      const eaConn = eaConnectorMap.get(genId);
+      const name = g['@_name'] || g['name'] || eaConn?.name || eaConn?.labels?.mt || undefined;
       if (sup) {
-        model.generalizations.push({ id: g['@_xmi:id'] || randomUUID(), subClassId: id, superClassId: sup });
+        model.generalizations.push({ id: genId, subClassId: id, superClassId: sup, ...(name ? { name } : {}) });
       }
     }
   }
 
   // ---- Paso 3: asociaciones. Resolver cada idref de memberEnd a través del
   // índice de propiedades; derivar el par conectado y el tipo de agregación.
-  //
-  // Decisión de propiedad de la composición (documentada para paridad con el
-  // fixture manual ea-sample): en las exportaciones de EA 6.5, la propiedad del extremo
-  // que porta aggregation="composite|shared" tiene un idref `type` que apunta al TODO
-  // (el extremo donde se ubica el diamante) — p. ej. conector EAID_E31D9ED5 con
-  // ea_type=Aggregation/subtype=Strong con source=Producto/target=Class1 y su extremo
-  // compuesto tipifica Producto. Emitimos source=todo, target=parte y aggregationEnd='source',
-  // exactamente como el fixture manual codifica Order◆—OrderLine (el origen porta el marcador compuesto).
   const multiplicityOf = (e: EndProp): string | undefined => {
     if (e.lower === undefined && e.upper === undefined) return undefined;
     const l = e.lower ?? '1';
@@ -543,17 +589,23 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   };
 
   for (const assoc of associationNodes) {
-    const id = assoc['@_xmi:id'] || randomUUID();
-    const refs = toArray(assoc['memberEnd']).map((me: any) => me?.['@_xmi:idref']).filter(Boolean);
-    const ends = refs.map((r: string) => propertyIndex.get(r)).filter(Boolean) as EndProp[];
+    const id = assoc['@_xmi:id'] || assoc['@_id'] || randomUUID();
+    const refs = toArray(assoc['memberEnd']).map((me: any) => me?.['@_xmi:idref'] || me?.['@_idref'] || me?.['@_href']?.replace(/^#/, '')).filter(Boolean);
+    let ends = refs.map((r: string) => propertyIndex.get(r)).filter(Boolean) as EndProp[];
+    if (ends.length < 2) {
+      const directOwnedEnds = toArray(assoc['ownedEnd']).map((oe: any) => readProp(oe)).filter((e) => Boolean(e.type));
+      if (directOwnedEnds.length >= 2) {
+        ends = directOwnedEnds;
+      }
+    }
     const typedEnds = ends.filter(e => e.type);
     if (typedEnds.length < 2) continue; // asociación colgante sin memberEnd: omitir, nunca inventar
 
+    const eaConn = eaConnectorMap.get(id);
+    const assocName = assoc['@_name'] || assoc['name'] || eaConn?.name || eaConn?.labels?.mt || undefined;
+
     // ---- Enrutamiento N-ario: una asociación con 3+ extremos miembro tipificados distintos
-    // es una auténtica asociación n-aria UML (p. ej. EAID_56CC2820 vinculando Class2, Class4 y Class3).
-    // Emitirla como origen/destino binario descartaría silenciosamente los extremos intermedios,
-    // por lo que se envía a naryAssociations. Los ids de clase duplicados dentro de una misma asociación
-    // se colapsan (el motor los prohíbe).
+    // es una auténtica asociación n-aria UML.
     if (typedEnds.length >= 3) {
       const seen = new Set<string>();
       const memberEnds: XmiModel['naryAssociations'][number]['memberEnds'] = [];
@@ -572,7 +624,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
         model.naryAssociations.push({
           id,
           memberEnds,
-          ...(assoc['@_name'] ? { name: assoc['@_name'] } : {}),
+          ...(assocName ? { name: assocName } : {}),
         });
       }
       continue;
@@ -607,45 +659,46 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       target = lastEnd.type;
     }
 
-    // Los extremos en exportaciones reales de EA a menudo no tienen nombre/multiplicidad: esos campos
-    // permanecen omitidos para que el lote utilice los valores vacíos por defecto de PR13d (opcionales).
-    const sourceMultiplicity = multiplicityOf(firstEnd);
-    const targetMultiplicity = multiplicityOf(lastEnd);
+    const sourceMultiplicity = multiplicityOf(firstEnd) ?? eaConn?.sourceMultiplicity;
+    const targetMultiplicity = multiplicityOf(lastEnd) ?? eaConn?.targetMultiplicity;
+    const sourceRole = firstEnd.name ?? eaConn?.sourceRole;
+    const targetRole = lastEnd.name ?? eaConn?.targetRole;
+
     model.associations.push({
       id,
       source,
       target,
       aggregation,
       aggregationEnd,
-      ...(assoc['@_name'] ? { name: assoc['@_name'] } : {}),
-      ...(firstEnd.name ? { sourceRole: firstEnd.name } : {}),
-      ...(lastEnd.name ? { targetRole: lastEnd.name } : {}),
+      ...(assocName ? { name: assocName } : {}),
+      ...(sourceRole ? { sourceRole } : {}),
+      ...(targetRole ? { targetRole } : {}),
       ...(sourceMultiplicity !== undefined ? { sourceMultiplicity } : {}),
       ...(targetMultiplicity !== undefined ? { targetMultiplicity } : {}),
     });
   }
 
   // ---- Realizaciones (uml:Realization como packagedElement de nivel superior):
-  // el cliente realiza al proveedor, donde el proveedor es la interfaz. El paso de emisión
-  // resuelve ambos mediante el mapa de ids de clasificadores y omite extremos no resolubles.
   for (const r of realizationNodes) {
     const client = r['@_client'];
     const supplier = r['@_supplier'];
+    const realId = r['@_xmi:id'] || r['@_id'] || randomUUID();
+    const eaConn = eaConnectorMap.get(realId);
+    const name = r['@_name'] || r['name'] || eaConn?.name || eaConn?.labels?.mt || undefined;
     if (client && supplier) {
-      model.realizations.push({ id: r['@_xmi:id'] || randomUUID(), clientId: client, supplierId: supplier });
+      model.realizations.push({ id: realId, clientId: client, supplierId: supplier, ...(name ? { name } : {}) });
     }
   }
 
   // ---- Dependencias (uml:Dependency como packagedElement de nivel superior):
-  // cliente depende-de proveedor. A diferencia de una realización, el motor permite que el
-  // proveedor (y cliente) sea CUALQUIER clasificador, interfaz incluida (la regla
-  // RealizationTargetNotInterface no aplica a dependencias). La dirección coincide con la ruta
-  // manual de UML:Dependency y la semántica delta clientClassId -> supplierClassId del motor.
   for (const dep of dependencyNodes) {
     const client = dep['@_client'];
     const supplier = dep['@_supplier'];
+    const depId = dep['@_xmi:id'] || dep['@_id'] || randomUUID();
+    const eaConn = eaConnectorMap.get(depId);
+    const name = dep['@_name'] || dep['name'] || eaConn?.name || eaConn?.labels?.mt || undefined;
     if (client && supplier) {
-      model.dependencies.push({ id: dep['@_xmi:id'] || randomUUID(), clientId: client, supplierId: supplier });
+      model.dependencies.push({ id: depId, clientId: client, supplierId: supplier, ...(name ? { name } : {}) });
     }
   }
 
@@ -850,6 +903,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       realizationId: randomUUID(),
       clientClassId: clientUuid,
       supplierInterfaceId: supplierUuid,
+      ...(r.name !== undefined ? { name: r.name } : {}),
     } as RealizationDelta);
   }
 
@@ -872,6 +926,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       dependencyId: randomUUID(),
       clientClassId: clientUuid,
       supplierClassId: supplierUuid,
+      ...(d.name !== undefined ? { name: d.name } : {}),
     } as DependencyDelta);
   }
 

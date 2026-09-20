@@ -245,6 +245,7 @@ export function normalizeBatchPayload(raw: unknown): unknown {
       if (sub && sup && sub !== sup) {
         d.subClassId = sub;
         d.superClassId = sup;
+        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
         generalizationDeltas.push(d);
       }
     } else if (d.kind === 'realization') {
@@ -253,6 +254,7 @@ export function normalizeBatchPayload(raw: unknown): unknown {
       if (client && supplier) {
         d.clientClassId = client;
         d.supplierInterfaceId = supplier;
+        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
         realizationDeltas.push(d);
       }
     } else if (d.kind === 'association') {
@@ -261,6 +263,9 @@ export function normalizeBatchPayload(raw: unknown): unknown {
       if (src && tgt) {
         d.sourceClassId = src;
         d.targetClassId = tgt;
+        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
+        if (typeof d.sourceRole === 'string' && d.sourceRole.trim()) d.sourceRole = d.sourceRole.trim();
+        if (typeof d.targetRole === 'string' && d.targetRole.trim()) d.targetRole = d.targetRole.trim();
         associationDeltas.push(d);
       }
     } else if (d.kind === 'dependency') {
@@ -269,21 +274,111 @@ export function normalizeBatchPayload(raw: unknown): unknown {
       if (client && supplier) {
         d.clientClassId = client;
         d.supplierClassId = supplier;
+        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
         dependencyDeltas.push(d);
       }
     } else if (d.kind === 'naryAssociation' && Array.isArray(d.memberEnds)) {
+      const multRegex = /^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/;
+      const seenEnds = new Set<string>();
       const survivingEnds = (d.memberEnds as Record<string, unknown>[])
-        .map((end) => ({
-          ...end,
-          classId: resolveId(end.classId),
-        }))
-        .filter((end): end is Record<string, unknown> & { classId: string } => typeof end.classId === 'string');
+        .map((end) => {
+          const cid = resolveId(end.classId);
+          if (!cid || seenEnds.has(cid)) return null;
+          seenEnds.add(cid);
+          const mult = typeof end.multiplicity === 'string' && multRegex.test(end.multiplicity.trim())
+            ? end.multiplicity.trim()
+            : '1';
+          const role = typeof end.role === 'string' && end.role.trim() ? end.role.trim() : undefined;
+          return {
+            classId: cid,
+            multiplicity: mult,
+            ...(role ? { role } : {}),
+          };
+        })
+        .filter((end): end is { classId: string; multiplicity: string; role?: string } => end !== null);
       if (survivingEnds.length >= 3) {
         d.memberEnds = survivingEnds;
+        d.naryAssociationId = typeof d.naryAssociationId === 'string' && UUID_RE.test(d.naryAssociationId)
+          ? d.naryAssociationId
+          : crypto.randomUUID();
+        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
         naryAssociationDeltas.push(d);
       }
     } else {
       otherDeltas.push(d);
+    }
+  }
+
+  // Detección y colapso heurístico de rombos ternarios/n-arios:
+  // Si el modelo interpretó un rombo central como una clase intermedia sin miembros y conectada a >= 3 clases.
+  const classesWithMembers = new Set(memberDeltas.map((m) => m.classId as string));
+  const candidateHubIndices: number[] = [];
+
+  for (let i = 0; i < normalizedClassDeltas.length; i++) {
+    const clsDelta = normalizedClassDeltas[i];
+    const cid = clsDelta.classId as string;
+    const name = String(clsDelta.name ?? '').toLowerCase();
+    const hasMembers = classesWithMembers.has(cid);
+    if (hasMembers) continue;
+
+    // Asociaciones binarias que conectan con esta clase
+    const connectedAssocs = associationDeltas.filter(
+      (a) => a.sourceClassId === cid || a.targetClassId === cid,
+    );
+
+    const isExplicitDiamond = name.includes('diamond') || name.includes('ternari') || name.includes('nary');
+    if (connectedAssocs.length >= 3 || (isExplicitDiamond && connectedAssocs.length >= 2)) {
+      candidateHubIndices.push(i);
+    }
+  }
+
+  // Convertir los hubs candidatos en naryAssociation y remover la clase y asociaciones binarias
+  for (const hubIdx of candidateHubIndices.reverse()) {
+    const hub = normalizedClassDeltas[hubIdx];
+    const hubId = hub.classId as string;
+    const hubAssocs = associationDeltas.filter(
+      (a) => a.sourceClassId === hubId || a.targetClassId === hubId,
+    );
+
+    const seenClasses = new Set<string>();
+    const memberEnds: { classId: string; multiplicity: string; role?: string }[] = [];
+
+    for (const a of hubAssocs) {
+      const isHubSource = a.sourceClassId === hubId;
+      const targetCid = (isHubSource ? a.targetClassId : a.sourceClassId) as string;
+      if (!targetCid || seenClasses.has(targetCid)) continue;
+      seenClasses.add(targetCid);
+
+      const mult = (isHubSource ? a.targetMultiplicity : a.sourceMultiplicity) as string | undefined;
+      const role = (isHubSource ? a.targetRole : a.sourceRole) as string | undefined;
+      const multRegex = /^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/;
+      const cleanMult = typeof mult === 'string' && multRegex.test(mult.trim()) ? mult.trim() : '1';
+
+      memberEnds.push({
+        classId: targetCid,
+        multiplicity: cleanMult,
+        ...(typeof role === 'string' && role.trim() ? { role: role.trim() } : {}),
+      });
+    }
+
+    if (memberEnds.length >= 3) {
+      normalizedClassDeltas.splice(hubIdx, 1);
+      // Remover asociaciones binarias que conectaban con el hub
+      for (let j = associationDeltas.length - 1; j >= 0; j--) {
+        if (associationDeltas[j].sourceClassId === hubId || associationDeltas[j].targetClassId === hubId) {
+          associationDeltas.splice(j, 1);
+        }
+      }
+      naryAssociationDeltas.push({
+        kind: 'naryAssociation',
+        op: 'create',
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        naryAssociationId: crypto.randomUUID(),
+        name: String(hub.name ?? '').replace(/diamond/gi, '').trim() || undefined,
+        memberEnds,
+      });
     }
   }
 
@@ -334,6 +429,14 @@ const SYSTEM_PROMPT = [
   '   - Interpret UML visibility markers: "+" = public, "-" = private, "#" = protected, "~" = package.',
   '   - Extract attribute types (e.g. "- id: Long", "+ name: String") and method signatures (e.g. "+ calculateTotal(tax: Double): Double").',
   '   - Extract multiplicities on association ends (e.g. "1", "0..1", "*", "1..*").',
+  '3. Relationship Texts, Names & Roles (CRITICAL):',
+  '   - Extract any label or text along/above relationship lines into "name" (e.g. "facturas", "productos", "registra", "subordinados", "manages").',
+  '   - Extract role names placed at the ends of lines into "sourceRole" and "targetRole" (e.g. "jefe", "subordinados", "cliente", "compras").',
+  '   - Extract labels on generalizations, realizations, or dependencies into "name".',
+  '4. Ternary / N-ary Associations (Central Diamond) (CRITICAL):',
+  '   - When 3 or more classes connect to a central diamond shape (ternary or n-ary association, e.g. "diamond SuministroTernario"):',
+  '     DO NOT create a class for the diamond.',
+  '     Instead, emit a delta with kind: "naryAssociation", with its "name" and "memberEnds" array linking each connected class with its multiplicity and role.',
   '',
   '### BatchDelta JSON Output Structure:',
   '{',
@@ -348,14 +451,16 @@ const SYSTEM_PROMPT = [
   '    { "kind": "member", "op": "addAttribute", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "attrName", "type": "String", "visibility": "+" },',
   '    // For every method:',
   '    { "kind": "member", "op": "addMethod", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "methodName", "returnType": "void", "parameters": [{ "name": "param1", "type": "String" }], "visibility": "+" },',
-  '    // For associations:',
-  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true },',
+  '    // For associations (with name, roles, multiplicities):',
+  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true },',
   '    // For inheritance (subClass extends superClass):',
-  '    { "kind": "generalization", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "generalizationId": "<uuid>", "subClassId": "<subClassId>", "superClassId": "<superClassId>" },',
+  '    { "kind": "generalization", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "generalizationId": "<uuid>", "subClassId": "<subClassId>", "superClassId": "<superClassId>", "name": "optionalLabel" },',
   '    // For interface implementation:',
-  '    { "kind": "realization", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "realizationId": "<uuid>", "clientClassId": "<classId>", "supplierInterfaceId": "<interfaceId>" },',
+  '    { "kind": "realization", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "realizationId": "<uuid>", "clientClassId": "<classId>", "supplierInterfaceId": "<interfaceId>", "name": "optionalLabel" },',
   '    // For dependencies:',
-  '    { "kind": "dependency", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "dependencyId": "<uuid>", "clientClassId": "<classId>", "supplierClassId": "<classId>" }',
+  '    { "kind": "dependency", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "dependencyId": "<uuid>", "clientClassId": "<classId>", "supplierClassId": "<classId>", "name": "optionalLabel" },',
+  '    // For ternary or n-ary associations (diamond connecting 3+ classes):',
+  '    { "kind": "naryAssociation", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "naryAssociationId": "<uuid>", "name": "TernaryAssocName", "memberEnds": [ { "classId": "<class1>", "multiplicity": "1", "role": "role1" }, { "classId": "<class2>", "multiplicity": "0..*", "role": "role2" }, { "classId": "<class3>", "multiplicity": "1", "role": "role3" } ] }',
   '  ]',
   '}',
   '',

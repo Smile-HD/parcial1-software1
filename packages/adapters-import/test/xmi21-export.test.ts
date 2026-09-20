@@ -585,5 +585,101 @@ describe('XMI 2.1 Exporter', () => {
       }
     });
   });
+
+  describe('Preservación de textos de relaciones y conectores EA', () => {
+    it('exporta conectores EA con labels mt (nombre), lt/rt (roles) y lb/rb (multiplicidades)', () => {
+      const diagram = goldenDiagram();
+      const xmi = exportDiagramToXmi(diagram);
+
+      // Debe contener bloque connectors con etiquetas EA
+      expect(xmi).toContain('<connectors>');
+      expect(xmi).toContain('ea_type="Association"');
+      expect(xmi).toContain('mt="order_lines"');
+      expect(xmi).toContain('lt="parent"');
+      expect(xmi).toContain('rt="child"');
+      expect(xmi).toContain('lb="1"');
+      expect(xmi).toContain('rb="0..*"');
+
+      // Las asociaciones N-arias deben estar registradas en elements y en diagrams de EA
+      expect(xmi).toContain('<element xmi:idref="');
+      expect(xmi).toContain('sType="Association"');
+    });
+
+    it('round-trip preserva nombres en generalizaciones, realizaciones y dependencias', () => {
+      const customDiagram = DiagramSchema.parse({
+        id: randomUUID(),
+        name: 'Relation Names Test',
+        classes: [
+          { id: C.order, name: 'Order', position: { x: 100, y: 100 }, kind: 'class', isAbstract: false, attributes: [], methods: [] },
+          { id: C.line, name: 'OrderLine', position: { x: 300, y: 100 }, kind: 'class', isAbstract: false, attributes: [], methods: [] },
+          { id: C.payable, name: 'Payable', position: { x: 100, y: 300 }, kind: 'interface', isAbstract: true, attributes: [], methods: [] },
+          { id: C.customer, name: 'Customer', position: { x: 300, y: 300 }, kind: 'class', isAbstract: false, attributes: [], methods: [] },
+        ],
+        associations: [
+          {
+            id: randomUUID(),
+            sourceClassId: C.order,
+            targetClassId: C.line,
+            directed: true,
+            aggregation: 'none',
+            name: 'items',
+            sourceRole: 'pedido',
+            targetRole: 'detalle',
+          },
+        ],
+        generalizations: [
+          { id: randomUUID(), subClassId: C.line, superClassId: C.order, name: 'hereda_de' },
+        ],
+        realizations: [
+          { id: randomUUID(), clientClassId: C.order, supplierInterfaceId: C.payable, name: 'implementa_pago' },
+        ],
+        dependencies: [
+          { id: randomUUID(), clientClassId: C.order, supplierClassId: C.customer, name: 'usa_cliente' },
+        ],
+        naryAssociations: [
+          {
+            id: randomUUID(),
+            name: 'TernariaCentral',
+            memberEnds: [
+              { classId: C.order, multiplicity: '1', role: 'rol_orden' },
+              { classId: C.line, multiplicity: '0..*', role: 'rol_linea' },
+              { classId: C.customer, multiplicity: '1', role: 'rol_cliente' },
+            ],
+          },
+        ],
+      });
+
+      const xmi = exportDiagramToXmi(customDiagram);
+      const model = parseXmiDocument(xmi);
+
+      // Nombres de asociaciones y roles
+      expect(model.associations[0].name).toBe('items');
+      expect(model.associations[0].sourceRole).toBe('pedido');
+      expect(model.associations[0].targetRole).toBe('detalle');
+
+      // Nombres de generalización, realización y dependencia
+      expect(model.generalizations[0].name).toBe('hereda_de');
+      expect(model.realizations[0].name).toBe('implementa_pago');
+      expect(model.dependencies[0].name).toBe('usa_cliente');
+
+      // Nombre y extremos de asociación N-aria
+      expect(model.naryAssociations[0].name).toBe('TernariaCentral');
+      expect(model.naryAssociations[0].memberEnds).toHaveLength(3);
+
+      // Verificación en delta batch
+      const batch = xmiToDeltaBatch(model, customDiagram.id);
+      const genDelta = batch.deltas.find((d) => d.kind === 'generalization');
+      expect((genDelta as any)?.name).toBe('hereda_de');
+
+      const realDelta = batch.deltas.find((d) => d.kind === 'realization');
+      expect((realDelta as any)?.name).toBe('implementa_pago');
+
+      const depDelta = batch.deltas.find((d) => d.kind === 'dependency');
+      expect((depDelta as any)?.name).toBe('usa_cliente');
+
+      const naryDelta = batch.deltas.find((d) => d.kind === 'naryAssociation');
+      expect((naryDelta as any)?.name).toBe('TernariaCentral');
+    });
+  });
 });
 

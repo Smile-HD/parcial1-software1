@@ -450,4 +450,70 @@ describe('OpenAiVision', () => {
     expect(normalized.deltas[1]?.kind).toBe('member');
     expect(normalized.deltas[1]?.name).toBe('validAttr');
   });
+
+  it('normalizeBatchPayload preserves relationship names, roles, and label annotations', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'Cliente' },
+        { kind: 'class', op: 'create', classId: 'c2', name: 'Factura' },
+        {
+          kind: 'association',
+          op: 'create',
+          sourceClassId: 'c1',
+          targetClassId: 'c2',
+          name: 'facturas',
+          sourceRole: 'emisor',
+          targetRole: 'compras',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: { kind: string; name?: string; sourceRole?: string; targetRole?: string }[];
+    };
+    const assoc = normalized.deltas.find((d) => d.kind === 'association');
+    expect(assoc).toBeDefined();
+    expect(assoc?.name).toBe('facturas');
+    expect(assoc?.sourceRole).toBe('emisor');
+    expect(assoc?.targetRole).toBe('compras');
+  });
+
+  it('normalizeBatchPayload collapses diamond hub classes into naryAssociation deltas', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'Proveedor' },
+        { kind: 'class', op: 'create', classId: 'c2', name: 'Producto' },
+        { kind: 'class', op: 'create', classId: 'c3', name: 'Empleado' },
+        { kind: 'class', op: 'create', classId: 'diamondHub', name: 'SuministroTernario' },
+        { kind: 'association', op: 'create', sourceClassId: 'c1', targetClassId: 'diamondHub', sourceMultiplicity: '1' },
+        { kind: 'association', op: 'create', sourceClassId: 'c2', targetClassId: 'diamondHub', sourceMultiplicity: '0..*' },
+        { kind: 'association', op: 'create', sourceClassId: 'c3', targetClassId: 'diamondHub', sourceMultiplicity: '1', sourceRole: 'supervisa' },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: { kind: string; name?: string; memberEnds?: { classId: string; multiplicity: string; role?: string }[] }[];
+    };
+
+    // The diamond hub class and binary associations must be collapsed into a single naryAssociation
+    const classes = normalized.deltas.filter((d) => d.kind === 'class');
+    expect(classes).toHaveLength(3);
+    expect(classes.map((c) => c.name)).not.toContain('SuministroTernario');
+
+    const assocs = normalized.deltas.filter((d) => d.kind === 'association');
+    expect(assocs).toHaveLength(0);
+
+    const nary = normalized.deltas.find((d) => d.kind === 'naryAssociation');
+    expect(nary).toBeDefined();
+    expect(nary?.name).toBe('SuministroTernario');
+    expect(nary?.memberEnds).toHaveLength(3);
+    expect(nary?.memberEnds?.map((e) => e.multiplicity).sort()).toEqual(['0..*', '1', '1']);
+    const supervisingEnd = nary?.memberEnds?.find((e) => e.role === 'supervisa');
+    expect(supervisingEnd).toBeDefined();
+  });
 });
+

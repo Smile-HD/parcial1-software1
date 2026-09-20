@@ -146,11 +146,11 @@ describe('unit 13e.9 — language toggle in the app toolbar', () => {
     expect(await screen.findByTestId('palette-class')).toBeTruthy();
     expect(screen.getByTestId('lang-en')).toBeTruthy();
     expect(screen.getByTestId('lang-es')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(screen.getByTestId('toolbar-share').textContent).toContain('Share');
     expect(screen.getByText('Toolbox')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('lang-es'));
-    expect(screen.getByRole('button', { name: 'Guardar' })).toBeTruthy();
+    expect(screen.getByTestId('toolbar-share').textContent).toContain('Compartir');
     expect(screen.getByText('Caja de herramientas')).toBeTruthy();
     expect(screen.queryByText('Toolbox')).toBeNull();
 
