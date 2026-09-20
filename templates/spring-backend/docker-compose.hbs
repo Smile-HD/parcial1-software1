@@ -1,7 +1,6 @@
 # Generated local orchestration (maintainer decision 2026-09-07 — zip extras):
-# app on the `prod` profile + PostgreSQL 16 + Ollama for the AI assistant.
-# The datasource env vars below are LOCAL development defaults; real
-# deployments override them (see README — AWS path: EC2 + RDS PostgreSQL).
+# app on the `prod` profile + PostgreSQL 16.
+# Ollama runs natively/manually on the host machine.
 # Rendered by templates/spring-backend/docker-compose.hbs — do not edit by hand.
 services:
   app:
@@ -13,10 +12,11 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/appdb
       SPRING_DATASOURCE_USERNAME: appuser
       SPRING_DATASOURCE_PASSWORD: apppassword
-      ASSISTANT_OLLAMA_URL: http://ollama:11434
+      ASSISTANT_OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - db
-      - ollama-init
 
   db:
     image: postgres:16-alpine
@@ -27,24 +27,5 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # D11v2: Ollama local AI for the assistant (qwen2.5:1.5b — ~1GB, CPU-only).
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-
-  # Init container: pulls the model on first startup, then exits.
-  ollama-init:
-    image: ollama/ollama:latest
-    depends_on:
-      - ollama
-    restart: "no"
-    entrypoint: ["sh", "-c", "sleep 5 && ollama pull qwen2.5:1.5b"]
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-
 volumes:
   pgdata:
-  ollama_data:

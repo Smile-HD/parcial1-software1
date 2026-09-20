@@ -453,7 +453,7 @@ describe('application-properties includes assistant config (18.1)', () => {
     const props = fileAt('src/main/resources/application.properties');
     expect(props).toContain('assistant.model=qwen2.5:1.5b');
     expect(props).toContain('assistant.ollama.url=http://127.0.0.1:11434');
-    expect(props).toContain('assistant.auto-pull=true');
+    expect(props).toContain('assistant.auto-pull=false');
   });
 });
 
@@ -489,11 +489,9 @@ describe('production profile + zip extras (14.6b + maintainer decision D)', () =
     expect(compose).toContain('jdbc:postgresql://db:5432/');
     expect(compose).toContain('image: postgres:16-alpine');
     expect(compose).toContain('volumes:');
-    // D11v2: Ollama service and auto-pull init container
-    expect(compose).toContain('image: ollama/ollama:latest');
-    expect(compose).toContain('ollama-init:');
-    expect(compose).toContain('ollama pull qwen2.5:1.5b');
-    expect(compose).toContain('ollama_data:');
+    // D11v2: connects to host Ollama via host.docker.internal
+    expect(compose).toContain('http://host.docker.internal:11434');
+    expect(compose).toContain('host.docker.internal:host-gateway');
   });
 
   it('README documents local run, prod run and the AWS deploy path', () => {

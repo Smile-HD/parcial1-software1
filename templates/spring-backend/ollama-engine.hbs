@@ -45,9 +45,9 @@ public class OllamaEngine implements AssistantEngine {
                          String entitySchemaDescription) {
         URI uri = URI.create(baseUrl);
         String host = uri.getHost();
-        if (host == null || (!host.equals("127.0.0.1") && !host.equals("localhost") && !host.equals("::1"))) {
+        if (host == null || (!host.equals("127.0.0.1") && !host.equals("localhost") && !host.equals("::1") && !host.equals("host.docker.internal"))) {
             throw new IllegalStateException(
-                "Ollama base URL must be localhost/127.0.0.1 (assistant:R1) — got: " + host);
+                "Ollama base URL must be localhost/127.0.0.1 or host.docker.internal (assistant:R1) — got: " + host);
         }
         this.chatUrl = baseUrl + "/api/chat";
         this.model = model;
