@@ -865,5 +865,68 @@ describe('XMI 2.1 Exporter', () => {
       expect(factura.attributes.find((a) => a.name === 'pagador')?.type).toBe('Cliente');
     });
   });
+
+  describe('Exportación de asociaciones N-arias (ternarias) a Enterprise Architect', () => {
+    it('exporta conectores, enlaces en <elements> y elementos de diagrama para que la ternaria no quede en el aire', () => {
+      const classAId = randomUUID();
+      const classBId = randomUUID();
+      const classCId = randomUUID();
+      const naryId = randomUUID();
+
+      const diagram = DiagramSchema.parse({
+        id: randomUUID(),
+        name: 'Ternary Test',
+        classes: [
+          { id: classAId, name: 'Profesor', kind: 'class', isAbstract: false, position: { x: 100, y: 100 }, attributes: [], methods: [] },
+          { id: classBId, name: 'Materia', kind: 'class', isAbstract: false, position: { x: 300, y: 100 }, attributes: [], methods: [] },
+          { id: classCId, name: 'Semestre', kind: 'class', isAbstract: false, position: { x: 200, y: 300 }, attributes: [], methods: [] },
+        ],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [
+          {
+            id: naryId,
+            name: 'Dicta',
+            memberEnds: [
+              { classId: classAId, role: 'docente', multiplicity: '1' },
+              { classId: classBId, role: 'asignatura', multiplicity: '1..*' },
+              { classId: classCId, role: 'periodo', multiplicity: '1' },
+            ],
+          },
+        ],
+      });
+
+      const xmi = exportDiagramToXmi(diagram);
+
+      // 1. Debe tener <links> dentro del <element> de la asociación N-aria
+      expect(xmi).toContain(`<element xmi:idref="${naryId}" xmi:type="uml:Association"`);
+      expect(xmi).toContain(`<Association xmi:id="${naryId}_end0" start="${naryId}" end="${classAId}"/>`);
+      expect(xmi).toContain(`<Association xmi:id="${naryId}_end1" start="${naryId}" end="${classBId}"/>`);
+      expect(xmi).toContain(`<Association xmi:id="${naryId}_end2" start="${naryId}" end="${classCId}"/>`);
+
+      // 2. Debe tener un <connector> por cada extremo miembro
+      expect(xmi).toContain(`<connector xmi:idref="${naryId}_end0">`);
+      expect(xmi).toContain(`<connector xmi:idref="${naryId}_end1">`);
+      expect(xmi).toContain(`<connector xmi:idref="${naryId}_end2">`);
+      expect(xmi).toContain(`<source xmi:idref="${naryId}">`);
+      expect(xmi).toContain(`<target xmi:idref="${classAId}">`);
+      expect(xmi).toContain(`lt="docente"`);
+      expect(xmi).toContain(`lb="1"`);
+
+      // 3. En el diagrama de EA debe tener elementos de diagrama para el nodo central y para los conectores
+      expect(xmi).toContain(`subject="${naryId}"`);
+      expect(xmi).toContain(`subject="${naryId}_end0"`);
+      expect(xmi).toContain(`subject="${naryId}_end1"`);
+      expect(xmi).toContain(`subject="${naryId}_end2"`);
+
+      // 4. Round-trip completo al parser
+      const parsed = parseXmiDocument(xmi);
+      expect(parsed.naryAssociations).toHaveLength(1);
+      expect(parsed.naryAssociations[0].name).toBe('Dicta');
+      expect(parsed.naryAssociations[0].memberEnds).toHaveLength(3);
+    });
+  });
 });
 

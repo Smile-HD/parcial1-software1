@@ -34,6 +34,10 @@ function eaScope(visibility: string | undefined): string {
   }
 }
 
+function toDuid(id: string): string {
+  return id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
+}
+
 export interface ResolvedTypeInfo {
   id: string;
   name: string;
@@ -411,6 +415,14 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`        <model package="${packageId}" tpos="0" ea_localid="${diagram.classes.length + i + 2}" ea_eleType="element"/>`);
     lines.push(`        <properties isSpecification="false" sType="Association" nType="0" scope="public"/>`);
     lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
+    if (nary.memberEnds.length > 0) {
+      lines.push(`        <links>`);
+      for (let j = 0; j < nary.memberEnds.length; j++) {
+        const end = nary.memberEnds[j];
+        lines.push(`          <Association xmi:id="${nary.id}_end${j}" start="${nary.id}" end="${end.classId}"/>`);
+      }
+      lines.push(`        </links>`);
+    }
     lines.push(`      </element>`);
   }
   lines.push(`    </elements>`);
@@ -460,6 +472,34 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`        <labels${dep.name ? ` mt="${esc(dep.name)}"` : ''}/>`);
     lines.push(`      </connector>`);
   }
+  for (const nary of diagram.naryAssociations) {
+    for (let j = 0; j < nary.memberEnds.length; j++) {
+      const end = nary.memberEnds[j];
+      const endId = `${nary.id}_end${j}`;
+      const roleAttr = end.role ? ` name="${esc(end.role)}"` : '';
+      const multAttr = end.multiplicity ? ` multiplicity="${esc(end.multiplicity)}"` : '';
+      const roleLabel = end.role ? ` lt="${esc(end.role)}"` : '';
+      const multLabel = end.multiplicity ? ` lb="${esc(end.multiplicity)}"` : '';
+      lines.push(`      <connector xmi:idref="${endId}">`);
+      lines.push(`        <source xmi:idref="${nary.id}">`);
+      lines.push(`          <model type="Association"/>`);
+      lines.push(`          <role visibility="Public" targetScope="instance"/>`);
+      lines.push(`          <type aggregation="none" containment="Unspecified"/>`);
+      lines.push(`          <modifiers isOrdered="false" changeable="none" isNavigable="false"/>`);
+      lines.push(`          <style value="Union=0;Derived=0;AllowDuplicates=0;Owned=0;Navigable=Unspecified;"/>`);
+      lines.push(`        </source>`);
+      lines.push(`        <target xmi:idref="${end.classId}">`);
+      lines.push(`          <model type="Class"/>`);
+      lines.push(`          <role${roleAttr} visibility="Public" targetScope="instance"/>`);
+      lines.push(`          <type${multAttr} aggregation="none" containment="Unspecified"/>`);
+      lines.push(`          <modifiers isOrdered="false" changeable="none" isNavigable="false"/>`);
+      lines.push(`          <style value="Union=0;Derived=0;AllowDuplicates=0;Owned=0;Navigable=Unspecified;"/>`);
+      lines.push(`        </target>`);
+      lines.push(`        <properties ea_type="Association" direction="Unspecified"/>`);
+      lines.push(`        <labels${roleLabel}${multLabel}/>`);
+      lines.push(`      </connector>`);
+    }
+  }
   lines.push(`    </connectors>`);
 
   if (primitiveTypesMap.size > 0) {
@@ -486,7 +526,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     const top = Math.round(cls.position.y);
     const right = left + 140;
     const bottom = top + 90;
-    const duid = cls.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
+    const duid = toDuid(cls.id);
     lines.push(`          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${cls.id}" seqno="${i + 1}" style="DUID=${duid};"/>`);
   }
   const classPosMap = new Map(diagram.classes.map(c => [c.id, c.position]));
@@ -499,8 +539,37 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     const top = Math.round(cy - 20);
     const right = left + 40;
     const bottom = top + 40;
-    const duid = nary.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'EADUID';
+    const duid = toDuid(nary.id);
     lines.push(`          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${nary.id}" seqno="${diagram.classes.length + i + 1}" style="DUID=${duid};"/>`);
+  }
+  for (const assoc of diagram.associations) {
+    const sDuid = toDuid(assoc.sourceClassId);
+    const tDuid = toDuid(assoc.targetClassId);
+    lines.push(`          <element geometry="EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;" subject="${assoc.id}" style="Mode=3;EOID=${tDuid};SOID=${sDuid};Color=-1;LWidth=0;Hidden=0;"/>`);
+  }
+  for (const gen of diagram.generalizations) {
+    const sDuid = toDuid(gen.subClassId);
+    const tDuid = toDuid(gen.superClassId);
+    lines.push(`          <element geometry="EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;" subject="${gen.id}" style="Mode=3;EOID=${tDuid};SOID=${sDuid};Color=-1;LWidth=0;Hidden=0;"/>`);
+  }
+  for (const real of diagram.realizations) {
+    const sDuid = toDuid(real.clientClassId);
+    const tDuid = toDuid(real.supplierInterfaceId);
+    lines.push(`          <element geometry="EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;" subject="${real.id}" style="Mode=3;EOID=${tDuid};SOID=${sDuid};Color=-1;LWidth=0;Hidden=0;"/>`);
+  }
+  for (const dep of diagram.dependencies) {
+    const sDuid = toDuid(dep.clientClassId);
+    const tDuid = toDuid(dep.supplierClassId);
+    lines.push(`          <element geometry="EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;" subject="${dep.id}" style="Mode=3;EOID=${tDuid};SOID=${sDuid};Color=-1;LWidth=0;Hidden=0;"/>`);
+  }
+  for (const nary of diagram.naryAssociations) {
+    const naryDuid = toDuid(nary.id);
+    for (let j = 0; j < nary.memberEnds.length; j++) {
+      const end = nary.memberEnds[j];
+      const classDuid = toDuid(end.classId);
+      const endId = `${nary.id}_end${j}`;
+      lines.push(`          <element geometry="SX=0;SY=0;EX=0;EY=0;EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;" subject="${endId}" style="Mode=3;EOID=${classDuid};SOID=${naryDuid};Color=-1;LWidth=0;Hidden=0;"/>`);
+    }
   }
   lines.push(`        </elements>`);
   lines.push(`      </diagram>`);
