@@ -515,5 +515,152 @@ describe('OpenAiVision', () => {
     const supervisingEnd = nary?.memberEnds?.find((e) => e.role === 'supervisa');
     expect(supervisingEnd).toBeDefined();
   });
+
+  it('does NOT collapse regular classes with >= 3 associations into naryAssociation', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'cOrder', name: 'Order' },
+        { kind: 'class', op: 'create', classId: 'cCust', name: 'Customer' },
+        { kind: 'class', op: 'create', classId: 'cProd', name: 'Product' },
+        { kind: 'class', op: 'create', classId: 'cPay', name: 'Payment' },
+        { kind: 'association', op: 'create', sourceClassId: 'cCust', targetClassId: 'cOrder' },
+        { kind: 'association', op: 'create', sourceClassId: 'cOrder', targetClassId: 'cProd' },
+        { kind: 'association', op: 'create', sourceClassId: 'cOrder', targetClassId: 'cPay' },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: { kind: string; name?: string }[];
+    };
+
+    // Order must remain as a class with its 3 binary associations intact!
+    const classes = normalized.deltas.filter((d) => d.kind === 'class');
+    expect(classes).toHaveLength(4);
+    expect(classes.map((c) => c.name)).toContain('Order');
+
+    const assocs = normalized.deltas.filter((d) => d.kind === 'association');
+    expect(assocs).toHaveLength(3);
+
+    const nary = normalized.deltas.filter((d) => d.kind === 'naryAssociation');
+    expect(nary).toHaveLength(0);
+  });
+
+  it('normalizes aggregation and composition deltas and maps synonyms', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'Empresa' },
+        { kind: 'class', op: 'create', classId: 'c2', name: 'Empleado' },
+        { kind: 'class', op: 'create', classId: 'c3', name: 'Edificio' },
+        // Composition via kind: 'composition' and informal source/target
+        {
+          kind: 'composition',
+          source: 'Empresa',
+          target: 'Edificio',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '1..n',
+        },
+        // Aggregation via aggregation: 'aggregation'
+        {
+          kind: 'association',
+          sourceClassId: 'Empresa',
+          targetClassId: 'Empleado',
+          aggregation: 'aggregation',
+          aggregationEnd: 'source',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..N',
+        },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: {
+        kind: string;
+        aggregation?: string;
+        aggregationEnd?: string;
+        sourceMultiplicity?: string;
+        targetMultiplicity?: string;
+      }[];
+    };
+
+    const assocs = normalized.deltas.filter((d) => d.kind === 'association');
+    expect(assocs).toHaveLength(2);
+
+    // First: composition normalized
+    const comp = assocs[0];
+    expect(comp?.aggregation).toBe('composite');
+    expect(comp?.aggregationEnd).toBe('source');
+    expect(comp?.targetMultiplicity).toBe('1..*');
+
+    // Second: aggregation normalized
+    const agg = assocs[1];
+    expect(agg?.aggregation).toBe('shared');
+    expect(agg?.aggregationEnd).toBe('source');
+    expect(agg?.targetMultiplicity).toBe('0..*');
+
+    // The whole normalized payload must pass BatchDeltaSchema
+    const parsed = BatchDeltaSchema.safeParse(normalized);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('resolves fuzzy class references such as plurals and prefixes', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'Cliente' },
+        { kind: 'class', op: 'create', classId: 'c2', name: 'Factura' },
+        {
+          kind: 'association',
+          source: 'Clientes', // plural
+          target: 'class Factura', // prefix
+        },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: { kind: string; name?: string; classId?: string; sourceClassId?: string; targetClassId?: string }[];
+    };
+
+    const classes = normalized.deltas.filter((d) => d.kind === 'class');
+    const c1Id = classes.find((c) => c.name === 'Cliente')?.classId;
+    const c2Id = classes.find((c) => c.name === 'Factura')?.classId;
+
+    const assoc = normalized.deltas.find((d) => d.kind === 'association');
+    expect(assoc).toBeDefined();
+    expect(assoc?.sourceClassId).toBe(c1Id);
+    expect(assoc?.targetClassId).toBe(c2Id);
+  });
+
+  it('keeps inheritance (generalization) strictly separate from associations and aggregations', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'Animal' },
+        { kind: 'class', op: 'create', classId: 'c2', name: 'Perro' },
+        {
+          kind: 'generalization',
+          child: 'Perro',
+          parent: 'Animal',
+        },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: { kind: string; name?: string; classId?: string; subClassId?: string; superClassId?: string }[];
+    };
+
+    const classes = normalized.deltas.filter((d) => d.kind === 'class');
+    const animalId = classes.find((c) => c.name === 'Animal')?.classId;
+    const perroId = classes.find((c) => c.name === 'Perro')?.classId;
+
+    const gen = normalized.deltas.find((d) => d.kind === 'generalization');
+    expect(gen).toBeDefined();
+    expect(gen?.subClassId).toBe(perroId);
+    expect(gen?.superClassId).toBe(animalId);
+
+    const assocs = normalized.deltas.filter((d) => d.kind === 'association');
+    expect(assocs).toHaveLength(0);
+  });
 });
 

@@ -178,14 +178,69 @@ export function normalizeBatchPayload(raw: unknown): unknown {
     }
   }
 
-  // 2. Resuelve referencias a IDs conocidos
+  // 2. Resuelve referencias a IDs conocidos con coincidencia flexible (prefijos, mayúsculas, plurales)
   const resolveId = (idCandidate: unknown): string | undefined => {
     if (typeof idCandidate !== 'string') return undefined;
-    const key = idCandidate.trim();
-    const resolved = nameToId.get(key.toLowerCase()) ?? nameToId.get(key) ?? key;
-    // Si no hay clases en el lote, permitimos el ID tal cual (modo fixture/pruebas sintéticas)
-    if (validClassIds.size === 0) return resolved;
-    return validClassIds.has(resolved) ? resolved : undefined;
+    const raw = idCandidate.trim();
+    if (!raw) return undefined;
+
+    // Coincidencia directa o minúsculas
+    const direct = nameToId.get(raw.toLowerCase()) ?? nameToId.get(raw);
+    if (direct && (validClassIds.size === 0 || validClassIds.has(direct))) {
+      return direct;
+    }
+
+    // Limpieza de prefijos comunes y signos de puntuación ("class User", "cls_User", "<<interface>> User", etc.)
+    const cleanKey = raw
+      .replace(/^(?:class_|cls_|class\s+|interface\s+|<<interface>>\s*|<<abstract>>\s*)/i, '')
+      .replace(/[:"']/g, '')
+      .trim()
+      .toLowerCase();
+
+    const cleanMatch = nameToId.get(cleanKey);
+    if (cleanMatch && (validClassIds.size === 0 || validClassIds.has(cleanMatch))) {
+      return cleanMatch;
+    }
+
+    // Normalización de plurales en español e inglés ("clientes" -> "cliente", "orders" -> "order")
+    if (cleanKey.endsWith('es') && cleanKey.length > 3) {
+      const singular = cleanKey.slice(0, -2);
+      const m = nameToId.get(singular);
+      if (m && (validClassIds.size === 0 || validClassIds.has(m))) return m;
+    }
+    if (cleanKey.endsWith('s') && cleanKey.length > 2) {
+      const singular = cleanKey.slice(0, -1);
+      const m = nameToId.get(singular);
+      if (m && (validClassIds.size === 0 || validClassIds.has(m))) return m;
+    }
+
+    // Coincidencia por prefijo único si la longitud es suficiente (ej: "facturacion" -> "factura")
+    if (cleanKey.length >= 3) {
+      const matches: string[] = [];
+      for (const [normName, cid] of seenClassNames.entries()) {
+        if (normName === cleanKey || normName.startsWith(cleanKey) || cleanKey.startsWith(normName)) {
+          if (!matches.includes(cid)) matches.push(cid);
+        }
+      }
+      if (matches.length === 1) {
+        return matches[0];
+      }
+    }
+
+    if (validClassIds.size === 0) return raw;
+    return validClassIds.has(raw) ? raw : undefined;
+  };
+
+  const multRegex = /^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/;
+  const cleanMultiplicity = (val: unknown): string | undefined => {
+    if (typeof val !== 'string') return undefined;
+    let s = val.trim();
+    if (!s) return undefined;
+    // Normalizar N, n, M, m a comodín UML *
+    s = s.replace(/\b[nNmM]\b/g, '*');
+    s = s.replace(/\.\.[nNmM]/g, '..*');
+    s = s.replace(/[nNmM]\.\./g, '*..');
+    return multRegex.test(s) ? s : undefined;
   };
 
   let placedCount = 0;
@@ -240,54 +295,125 @@ export function normalizeBatchPayload(raw: unknown): unknown {
         memberDeltas.push(d);
       }
     } else if (d.kind === 'generalization') {
-      const sub = resolveId(d.subClassId);
-      const sup = resolveId(d.superClassId);
+      const rawSub = d.subClassId ?? d.sub ?? d.child ?? d.source ?? d.sourceClassId;
+      const rawSup = d.superClassId ?? d.super ?? d.parent ?? d.target ?? d.targetClassId;
+      const sub = resolveId(rawSub);
+      const sup = resolveId(rawSup);
       if (sub && sup && sub !== sup) {
-        d.subClassId = sub;
-        d.superClassId = sup;
-        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
-        generalizationDeltas.push(d);
+        const cleanGen: Record<string, unknown> = {
+          kind: 'generalization',
+          op: 'create',
+          id: d.id,
+          diagramId: d.diagramId,
+          timestamp: d.timestamp,
+          generalizationId: typeof d.generalizationId === 'string' && UUID_RE.test(d.generalizationId)
+            ? d.generalizationId
+            : crypto.randomUUID(),
+          subClassId: sub,
+          superClassId: sup,
+        };
+        if (typeof d.name === 'string' && d.name.trim()) cleanGen.name = d.name.trim();
+        generalizationDeltas.push(cleanGen);
       }
     } else if (d.kind === 'realization') {
-      const client = resolveId(d.clientClassId);
-      const supplier = resolveId(d.supplierInterfaceId);
+      const rawClient = d.clientClassId ?? d.client ?? d.source ?? d.sourceClassId;
+      const rawSupplier = d.supplierInterfaceId ?? d.supplier ?? d.interface ?? d.target ?? d.targetClassId;
+      const client = resolveId(rawClient);
+      const supplier = resolveId(rawSupplier);
       if (client && supplier) {
-        d.clientClassId = client;
-        d.supplierInterfaceId = supplier;
-        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
-        realizationDeltas.push(d);
+        const cleanReal: Record<string, unknown> = {
+          kind: 'realization',
+          op: 'create',
+          id: d.id,
+          diagramId: d.diagramId,
+          timestamp: d.timestamp,
+          realizationId: typeof d.realizationId === 'string' && UUID_RE.test(d.realizationId)
+            ? d.realizationId
+            : crypto.randomUUID(),
+          clientClassId: client,
+          supplierInterfaceId: supplier,
+        };
+        if (typeof d.name === 'string' && d.name.trim()) cleanReal.name = d.name.trim();
+        realizationDeltas.push(cleanReal);
       }
-    } else if (d.kind === 'association') {
-      const src = resolveId(d.sourceClassId);
-      const tgt = resolveId(d.targetClassId);
+    } else if (d.kind === 'association' || d.kind === 'composition' || d.kind === 'aggregation') {
+      const rawSrc = d.sourceClassId ?? d.sourceId ?? d.source ?? d.from ?? d.clientClassId ?? d.client;
+      const rawTgt = d.targetClassId ?? d.targetId ?? d.target ?? d.to ?? d.supplierClassId ?? d.supplier;
+      const src = resolveId(rawSrc);
+      const tgt = resolveId(rawTgt);
       if (src && tgt) {
-        d.sourceClassId = src;
-        d.targetClassId = tgt;
-        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
-        if (typeof d.sourceRole === 'string' && d.sourceRole.trim()) d.sourceRole = d.sourceRole.trim();
-        if (typeof d.targetRole === 'string' && d.targetRole.trim()) d.targetRole = d.targetRole.trim();
-        associationDeltas.push(d);
+        // Normalización de agregación y composición (reconoce sinónimos de LLM)
+        const rawAgg = String(
+          d.aggregation ??
+          (d.kind === 'composition' ? 'composite' : d.kind === 'aggregation' ? 'shared' : ''),
+        ).toLowerCase();
+
+        let aggKind: 'none' | 'shared' | 'composite' = 'none';
+        if (rawAgg === 'composite' || rawAgg === 'composition') {
+          aggKind = 'composite';
+        } else if (rawAgg === 'shared' || rawAgg === 'aggregation') {
+          aggKind = 'shared';
+        }
+
+        const cleanAssoc: Record<string, unknown> = {
+          kind: 'association',
+          op: 'create',
+          id: d.id,
+          diagramId: d.diagramId,
+          timestamp: d.timestamp,
+          associationId: typeof d.associationId === 'string' && UUID_RE.test(d.associationId)
+            ? d.associationId
+            : crypto.randomUUID(),
+          sourceClassId: src,
+          targetClassId: tgt,
+          directed: typeof d.directed === 'boolean' ? d.directed : true,
+          aggregation: aggKind,
+        };
+
+        if (aggKind !== 'none') {
+          cleanAssoc.aggregationEnd = d.aggregationEnd === 'target' ? 'target' : 'source';
+        }
+
+        const sm = cleanMultiplicity(d.sourceMultiplicity);
+        if (sm) cleanAssoc.sourceMultiplicity = sm;
+        const tm = cleanMultiplicity(d.targetMultiplicity);
+        if (tm) cleanAssoc.targetMultiplicity = tm;
+
+        if (typeof d.name === 'string' && d.name.trim()) cleanAssoc.name = d.name.trim();
+        if (typeof d.sourceRole === 'string' && d.sourceRole.trim()) cleanAssoc.sourceRole = d.sourceRole.trim();
+        if (typeof d.targetRole === 'string' && d.targetRole.trim()) cleanAssoc.targetRole = d.targetRole.trim();
+
+        associationDeltas.push(cleanAssoc);
       }
     } else if (d.kind === 'dependency') {
-      const client = resolveId(d.clientClassId);
-      const supplier = resolveId(d.supplierClassId);
+      const rawClient = d.clientClassId ?? d.client ?? d.source ?? d.sourceClassId;
+      const rawSupplier = d.supplierClassId ?? d.supplier ?? d.target ?? d.targetClassId;
+      const client = resolveId(rawClient);
+      const supplier = resolveId(rawSupplier);
       if (client && supplier) {
-        d.clientClassId = client;
-        d.supplierClassId = supplier;
-        if (typeof d.name === 'string' && d.name.trim()) d.name = d.name.trim();
-        dependencyDeltas.push(d);
+        const cleanDep: Record<string, unknown> = {
+          kind: 'dependency',
+          op: 'create',
+          id: d.id,
+          diagramId: d.diagramId,
+          timestamp: d.timestamp,
+          dependencyId: typeof d.dependencyId === 'string' && UUID_RE.test(d.dependencyId)
+            ? d.dependencyId
+            : crypto.randomUUID(),
+          clientClassId: client,
+          supplierClassId: supplier,
+        };
+        if (typeof d.name === 'string' && d.name.trim()) cleanDep.name = d.name.trim();
+        dependencyDeltas.push(cleanDep);
       }
     } else if (d.kind === 'naryAssociation' && Array.isArray(d.memberEnds)) {
-      const multRegex = /^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/;
       const seenEnds = new Set<string>();
       const survivingEnds = (d.memberEnds as Record<string, unknown>[])
         .map((end) => {
           const cid = resolveId(end.classId);
           if (!cid || seenEnds.has(cid)) return null;
           seenEnds.add(cid);
-          const mult = typeof end.multiplicity === 'string' && multRegex.test(end.multiplicity.trim())
-            ? end.multiplicity.trim()
-            : '1';
+          const mult = cleanMultiplicity(end.multiplicity) ?? '1';
           const role = typeof end.role === 'string' && end.role.trim() ? end.role.trim() : undefined;
           return {
             classId: cid,
@@ -310,7 +436,8 @@ export function normalizeBatchPayload(raw: unknown): unknown {
   }
 
   // Detección y colapso heurístico de rombos ternarios/n-arios:
-  // Si el modelo interpretó un rombo central como una clase intermedia sin miembros y conectada a >= 3 clases.
+  // CUIDADO CRÍTICO: SOLO colapsar clases cuyo nombre indique explícitamente que son un rombo o ternario
+  // (ej. "diamond", "rombo", "ternario", "nary", "hub"). JAMÁS colapsar clases de dominio normales (Order, User, etc.)
   const classesWithMembers = new Set(memberDeltas.map((m) => m.classId as string));
   const candidateHubIndices: number[] = [];
 
@@ -321,13 +448,22 @@ export function normalizeBatchPayload(raw: unknown): unknown {
     const hasMembers = classesWithMembers.has(cid);
     if (hasMembers) continue;
 
-    // Asociaciones binarias que conectan con esta clase
+    // Solo candidatos con nombre explícito de rombo/ternario/nodo conector
+    const isExplicitDiamond =
+      name.includes('diamond') ||
+      name.includes('rombo') ||
+      name.includes('ternari') ||
+      name.includes('nary') ||
+      name.startsWith('hub') ||
+      name === '';
+
+    if (!isExplicitDiamond) continue;
+
     const connectedAssocs = associationDeltas.filter(
       (a) => a.sourceClassId === cid || a.targetClassId === cid,
     );
 
-    const isExplicitDiamond = name.includes('diamond') || name.includes('ternari') || name.includes('nary');
-    if (connectedAssocs.length >= 3 || (isExplicitDiamond && connectedAssocs.length >= 2)) {
+    if (connectedAssocs.length >= 2) {
       candidateHubIndices.push(i);
     }
   }
@@ -351,8 +487,7 @@ export function normalizeBatchPayload(raw: unknown): unknown {
 
       const mult = (isHubSource ? a.targetMultiplicity : a.sourceMultiplicity) as string | undefined;
       const role = (isHubSource ? a.targetRole : a.sourceRole) as string | undefined;
-      const multRegex = /^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/;
-      const cleanMult = typeof mult === 'string' && multRegex.test(mult.trim()) ? mult.trim() : '1';
+      const cleanMult = cleanMultiplicity(mult) ?? '1';
 
       memberEnds.push({
         classId: targetCid,
@@ -423,20 +558,30 @@ const SYSTEM_PROMPT = [
   '1. Hand-drawn sketches & Whiteboards:',
   '   - Read handwritten text carefully. Transcribe class names in PascalCase (e.g. "Customer", "Order", "Product").',
   '   - Interpret informal boxes as classes or interfaces (look for <<interface>> or <<abstract>> markers).',
-  '   - Parse arrows and lines even if wavy: solid line with open triangle = generalization (inheritance); dashed line with triangle = realization; dashed line with arrow = dependency; solid line with diamond = aggregation/composition; simple line = association.',
+  '   - Parse arrows and lines even if wavy or hand-drawn.',
   '2. Software-generated diagrams:',
   '   - Read 3-compartment boxes: top = class name, middle = attributes, bottom = methods.',
   '   - Interpret UML visibility markers: "+" = public, "-" = private, "#" = protected, "~" = package.',
   '   - Extract attribute types (e.g. "- id: Long", "+ name: String") and method signatures (e.g. "+ calculateTotal(tax: Double): Double").',
-  '   - Extract multiplicities on association ends (e.g. "1", "0..1", "*", "1..*").',
-  '3. Relationship Texts, Names & Roles (CRITICAL):',
-  '   - Extract any label or text along/above relationship lines into "name" (e.g. "facturas", "productos", "registra", "subordinados", "manages").',
-  '   - Extract role names placed at the ends of lines into "sourceRole" and "targetRole" (e.g. "jefe", "subordinados", "cliente", "compras").',
-  '   - Extract labels on generalizations, realizations, or dependencies into "name".',
-  '4. Ternary / N-ary Associations (Central Diamond) (CRITICAL):',
-  '   - When 3 or more classes connect to a central diamond shape (ternary or n-ary association, e.g. "diamond SuministroTernario"):',
-  '     DO NOT create a class for the diamond.',
-  '     Instead, emit a delta with kind: "naryAssociation", with its "name" and "memberEnds" array linking each connected class with its multiplicity and role.',
+  '   - Extract multiplicities on association ends (e.g. "1", "0..1", "*", "1..*"). Standardize "N", "n", "M", "m" to "*".',
+  '3. Exhaustive Connector Scanning (CRITICAL):',
+  '   - Scan and trace EVERY line or arrow connecting boxes in the diagram. Do NOT omit any connection.',
+  '   - Even simple plain lines without arrowheads or text represent binary associations between classes.',
+  '4. Distinguishing Triangles vs Diamonds (CRITICAL - DO NOT CONFUSE):',
+  '   - TRIANGLE AT ARROW TIP (3 vertices, closed hollow triangle pointing to parent):',
+  '     * Solid line with hollow triangle: Generalization / Inheritance (`generalization`). "subClassId" is the child, "superClassId" is the parent. NEVER has multiplicities or aggregation.',
+  '     * Dashed line with hollow triangle: Realization / Implementation (`realization`). "clientClassId" is the class, "supplierInterfaceId" is the interface. NEVER has multiplicities.',
+  '     * Dashed line with open stick arrow: Dependency (`dependency`).',
+  '   - DIAMOND AT CLASS END (4 vertices, lozenge attached directly to a class box):',
+  '     * Hollow / white diamond at container class: Aggregation (`kind: "association"`, `"aggregation": "shared"`, `"aggregationEnd": "source"`).',
+  '     * Filled / black diamond at container class: Composition (`kind: "association"`, `"aggregation": "composite"`, `"aggregationEnd": "source"`).',
+  '     * Note: Aggregations and compositions are BINARY associations connecting exactly two classes, and CAN have multiplicities on ends.',
+  '   - CENTRAL FLOATING DIAMOND (4 vertices, floating independently in the middle with 3+ lines to different classes):',
+  '     * This is a Ternary or N-ary association (`kind: "naryAssociation"`).',
+  '     * DO NOT create a class for the central diamond. Emit a delta with kind: "naryAssociation" and "memberEnds".',
+  '5. Relationship Texts, Names & Roles:',
+  '   - Extract labels or text along/above lines into "name" (e.g. "facturas", "productos", "registra", "subordinados", "manages").',
+  '   - Extract role names placed at ends into "sourceRole" and "targetRole" (e.g. "jefe", "subordinados", "cliente", "compras").',
   '',
   '### BatchDelta JSON Output Structure:',
   '{',
@@ -451,15 +596,19 @@ const SYSTEM_PROMPT = [
   '    { "kind": "member", "op": "addAttribute", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "attrName", "type": "String", "visibility": "+" },',
   '    // For every method:',
   '    { "kind": "member", "op": "addMethod", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "methodName", "returnType": "void", "parameters": [{ "name": "param1", "type": "String" }], "visibility": "+" },',
-  '    // For associations (with name, roles, multiplicities):',
-  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true },',
-  '    // For inheritance (subClass extends superClass):',
+  '    // For standard associations:',
+  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true, "aggregation": "none" },',
+  '    // For aggregation (hollow diamond at container):',
+  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<containerClassId>", "targetClassId": "<partClassId>", "aggregation": "shared", "aggregationEnd": "source", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" },',
+  '    // For composition (solid diamond at container):',
+  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<containerClassId>", "targetClassId": "<partClassId>", "aggregation": "composite", "aggregationEnd": "source", "sourceMultiplicity": "1", "targetMultiplicity": "1..*" },',
+  '    // For inheritance (subClass extends superClass with closed triangle):',
   '    { "kind": "generalization", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "generalizationId": "<uuid>", "subClassId": "<subClassId>", "superClassId": "<superClassId>", "name": "optionalLabel" },',
-  '    // For interface implementation:',
+  '    // For interface implementation (dashed line with closed triangle):',
   '    { "kind": "realization", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "realizationId": "<uuid>", "clientClassId": "<classId>", "supplierInterfaceId": "<interfaceId>", "name": "optionalLabel" },',
-  '    // For dependencies:',
+  '    // For dependencies (dashed line with arrow):',
   '    { "kind": "dependency", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "dependencyId": "<uuid>", "clientClassId": "<classId>", "supplierClassId": "<classId>", "name": "optionalLabel" },',
-  '    // For ternary or n-ary associations (diamond connecting 3+ classes):',
+  '    // For ternary or n-ary associations (central floating diamond connecting 3+ classes):',
   '    { "kind": "naryAssociation", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "naryAssociationId": "<uuid>", "name": "TernaryAssocName", "memberEnds": [ { "classId": "<class1>", "multiplicity": "1", "role": "role1" }, { "classId": "<class2>", "multiplicity": "0..*", "role": "role2" }, { "classId": "<class3>", "multiplicity": "1", "role": "role3" } ] }',
   '  ]',
   '}',
