@@ -669,3 +669,39 @@ describe('assistant emission (design D11 / D11v2)', () => {
   });
 });
 
+describe('redundant FK attribute suppression (Hibernate DuplicateMappingException fix)', () => {
+  it('suppresses locationId attribute when a ManyToOne relationship to Location exists', () => {
+    const d = v2Diagram({
+      classes: [
+        v2Cls(ID2.customer, 'User', {
+          attributes: [
+            v2Attr('name', 'String'),
+            v2Attr('locationId', 'Long'),
+          ],
+        }),
+        v2Cls(ID2.order, 'Location', {
+          attributes: [v2Attr('city', 'String')],
+        }),
+      ],
+      associations: [
+        {
+          id: ID2.assoc,
+          sourceClassId: ID2.customer,
+          targetClassId: ID2.order,
+          sourceMultiplicity: '0..*',
+          targetMultiplicity: '1',
+          directed: true,
+          aggregation: 'none',
+        },
+      ],
+    });
+    const result = generate(d, { outputRoot: ROOT });
+    const user = entityOf(result.files, 'User');
+    expect(user.fields.find((f) => f.name === 'locationId')).toBeUndefined();
+    expect(user.fields.find((f) => f.name === 'name')).toBeDefined();
+    expect(user.relationships.some((r) => r.targetEntity === 'Location')).toBe(true);
+    expect(result.warnings.some((w) => w.code === 'duplicate-fk-column-suppressed')).toBe(true);
+  });
+});
+
+

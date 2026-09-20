@@ -429,6 +429,31 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   // 14c: asociaciones n-arias → entidades join intermedias (agregadas al mapa).
   buildNaryJoinEntities(diagram, classInfo, entities, warnings, basePackage);
 
+  // Suprime atributos básicos que duplican columnas FK gestionadas por relaciones
+  // para evitar org.hibernate.DuplicateMappingException en tiempo de ejecución.
+  for (const entity of entities.values()) {
+    const fkColumns = new Set<string>();
+    for (const rel of entity.relationships) {
+      if (rel.kind === 'ManyToOne' || (rel.kind === 'OneToOne' && rel.thisSideIsOwning)) {
+        fkColumns.add(`${toSnakeCase(rel.targetEntity)}_id`.toLowerCase());
+      }
+    }
+    if (fkColumns.size > 0) {
+      entity.fields = entity.fields.filter((field) => {
+        const col = toSnakeCase(field.name).toLowerCase();
+        if (fkColumns.has(col)) {
+          warnings.push({
+            code: 'duplicate-fk-column-suppressed',
+            message: `Attribute "${field.name}" on ${entity.className} maps to physical column "${col}" already managed by a relationship; basic field suppressed to avoid Hibernate DuplicateMappingException`,
+            element: `${entity.className}.${field.name}`,
+          });
+          return false;
+        }
+        return true;
+      });
+    }
+  }
+
   // Ensambla el mapa de archivos, verificando la contención de cada ruta planificada.
   const files: GeneratedFile[] = [];
   const push = (path: string, kind: GeneratedFileKind, template: string, model: unknown): void => {
@@ -939,4 +964,12 @@ function inverseKind(kind: RelationshipKind): RelationshipKind {
   if (kind === 'OneToMany') return 'ManyToOne';
   if (kind === 'ManyToOne') return 'OneToMany';
   return kind; // ManyToMany / OneToOne son simétricos
+}
+
+/** camelCase / PascalCase → snake_case. */
+function toSnakeCase(name: string): string {
+  return name
+    .replace(/([A-Z])/g, '_$1')
+    .toLowerCase()
+    .replace(/^_/, '');
 }
