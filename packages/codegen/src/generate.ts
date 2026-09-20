@@ -127,6 +127,16 @@ export interface EntityModel {
   inheritanceRoot: boolean;
   /** 14c: nombres de interfaces realizadas por esta clase → cláusula `implements`. */
   implementsInterfaces: string[];
+  /** Métodos a implementar (de interfaces realizadas o definidos en UML). */
+  methods: EntityMethodModel[];
+}
+
+export interface EntityMethodModel {
+  name: string;
+  returnType: string;
+  parameters: { name: string; type: string }[];
+  isOverride: boolean;
+  defaultReturnValue: string;
 }
 
 export interface InterfaceMethodModel {
@@ -163,6 +173,7 @@ export interface InterfaceModel {
  * | date                | LocalDate       |
  * | datetime / timestamp| LocalDateTime   |
  * | time                | LocalTime       |
+ * | void                | void            |
  */
 export const TYPE_MAPPING: Readonly<Record<string, string>> = {
   string: 'String',
@@ -179,7 +190,41 @@ export const TYPE_MAPPING: Readonly<Record<string, string>> = {
   datetime: 'LocalDateTime',
   timestamp: 'LocalDateTime',
   time: 'LocalTime',
+  void: 'void',
 };
+
+/** Valor de retorno por defecto para stubs de métodos Java. */
+export function defaultReturnValue(javaType: string): string {
+  switch (javaType) {
+    case 'void':
+      return '';
+    case 'boolean':
+    case 'Boolean':
+      return 'return false;';
+    case 'int':
+    case 'Integer':
+    case 'short':
+    case 'Short':
+    case 'byte':
+    case 'Byte':
+      return 'return 0;';
+    case 'long':
+    case 'Long':
+      return 'return 0L;';
+    case 'float':
+    case 'Float':
+      return 'return 0.0f;';
+    case 'double':
+    case 'Double':
+      return 'return 0.0;';
+    case 'BigDecimal':
+      return 'return java.math.BigDecimal.ZERO;';
+    case 'String':
+      return 'return "";';
+    default:
+      return 'return null;';
+  }
+}
 
 /** Mapea un tipo de atributo UML declarado a un tipo Java, marcando tipos no mapeados. */
 export function mapAttributeType(declaredType: string): { javaType: string; mapped: boolean } {
@@ -414,6 +459,7 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
       extendsClass: null,
       inheritanceRoot: false,
       implementsInterfaces: [],
+      methods: cls.methods.map((m) => mapEntityMethod(cls, m, warnings, false)),
     });
   }
 
@@ -693,6 +739,21 @@ function mapInterfaceMethod(
   };
 }
 
+/** Mapea una operación UML a un método Java de entidad con cuerpo stub y anotación @Override si procede. */
+function mapEntityMethod(
+  cls: Class,
+  method: Class['methods'][number],
+  warnings: CodegenWarning[],
+  isOverride = false,
+): EntityMethodModel {
+  const ifaceMethod = mapInterfaceMethod(cls, method, warnings);
+  return {
+    ...ifaceMethod,
+    isOverride,
+    defaultReturnValue: defaultReturnValue(ifaceMethod.returnType),
+  };
+}
+
 function attachRelationship(
   assoc: Association,
   classInfo: Map<string, ClassInfo>,
@@ -831,7 +892,7 @@ function applyGeneralizations(
   }
 }
 
-/** 14c: realización → cláusula `implements` en la entidad realizadora. */
+  /** 14c: realización → cláusula `implements` en la entidad realizadora + métodos de contrato de interfaz. */
 function applyRealizations(
   diagram: Diagram,
   classInfo: Map<string, ClassInfo>,
@@ -870,6 +931,44 @@ function applyRealizations(
     if (!entity.implementsInterfaces.includes(supplier.javaName)) {
       entity.implementsInterfaces.push(supplier.javaName);
     }
+
+    // 14c: implementar métodos de la interfaz en la entidad para satisfacer el contrato de Java
+    const ifaceCls = diagram.classes.find((c) => c.id === real.supplierInterfaceId);
+    if (ifaceCls && ifaceCls.methods.length > 0) {
+      for (const m of ifaceCls.methods) {
+        const mappedMethod = mapEntityMethod(ifaceCls, m, warnings, true);
+
+        // Verificar si la entidad ya tiene un getter/setter que cumpla con el método
+        const hasGetter = entity.fields.some(
+          (f) =>
+            mappedMethod.parameters.length === 0 &&
+            mappedMethod.returnType.toLowerCase() === f.javaType.toLowerCase() &&
+            (mappedMethod.name.toLowerCase() === `get${f.name}`.toLowerCase() ||
+             (f.javaType === 'Boolean' && mappedMethod.name.toLowerCase() === `is${f.name}`.toLowerCase()))
+        );
+        const hasSetter = entity.fields.some(
+          (f) =>
+            mappedMethod.parameters.length === 1 &&
+            mappedMethod.returnType === 'void' &&
+            mappedMethod.parameters[0].type.toLowerCase() === f.javaType.toLowerCase() &&
+            mappedMethod.name.toLowerCase() === `set${f.name}`.toLowerCase()
+        );
+
+        // Verificar si la entidad ya tiene este método en su lista de methods
+        const existingMethod = entity.methods.find(
+          (em) =>
+            em.name === mappedMethod.name &&
+            em.parameters.length === mappedMethod.parameters.length &&
+            em.parameters.every((p, idx) => p.type === mappedMethod.parameters[idx].type)
+        );
+
+        if (existingMethod) {
+          existingMethod.isOverride = true;
+        } else if (!hasGetter && !hasSetter) {
+          entity.methods.push(mappedMethod);
+        }
+      }
+    }
   }
 }
 
@@ -889,6 +988,15 @@ function buildNaryJoinEntities(
   basePackage: string,
 ): void {
   for (const nary of diagram.naryAssociations) {
+    if (nary.memberEnds.length < 3) {
+      warnings.push({
+        code: 'nary-insufficient-ends',
+        message: `N-ary association ${nary.id} has ${nary.memberEnds.length} ends (needs ≥3); skipped`,
+        element: nary.id,
+      });
+      continue;
+    }
+
     const members: { info: ClassInfo; multiplicity: string }[] = [];
     let blocked = false;
     for (const end of nary.memberEnds) {
@@ -954,6 +1062,7 @@ function buildNaryJoinEntities(
       extendsClass: null,
       inheritanceRoot: false,
       implementsInterfaces: [],
+      methods: [],
     };
     entities.set(joinName, join);
   }

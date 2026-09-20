@@ -557,5 +557,33 @@ describe('XMI 2.1 Exporter', () => {
       }
     });
   });
+
+  describe('Compatibilidad con Enterprise Architect (prevención de {bag})', () => {
+    it('emite isOrdered="false" isUnique="true" y límites 1..1 en atributos escalares para evitar {bag} en EA', () => {
+      const diagram = goldenDiagram();
+      const xmi = exportDiagramToXmi(diagram);
+
+      // Cada ownedAttribute debe tener isOrdered="false" e isUnique="true"
+      const ownedAttrMatches = xmi.match(/<ownedAttribute\b[^>]*>/g) ?? [];
+      expect(ownedAttrMatches.length).toBeGreaterThan(0);
+      for (const attrTag of ownedAttrMatches) {
+        expect(attrTag).toContain('isOrdered="false"');
+        expect(attrTag).toContain('isUnique="true"');
+        expect(attrTag).toContain('isReadOnly="false"');
+        expect(attrTag).toContain('isDerivedUnion="false"');
+      }
+
+      // Atributo escalar 'total' (sin multiplicidad previa) debe emitir lowerValue=1 y upperValue=1
+      expect(xmi).toMatch(/<ownedAttribute[^>]*name="total"[^>]*>[\s\S]*?<lowerValue[^>]*value="1"\/>[\s\S]*?<upperValue[^>]*value="1"\/>/);
+
+      // Extremos de asociación ownedEnd también deben tener isOrdered="false" e isUnique="true"
+      const ownedEndMatches = xmi.match(/<ownedEnd\b[^>]*>/g) ?? [];
+      expect(ownedEndMatches.length).toBeGreaterThan(0);
+      for (const endTag of ownedEndMatches) {
+        expect(endTag).toContain('isOrdered="false"');
+        expect(endTag).toContain('isUnique="true"');
+      }
+    });
+  });
 });
 

@@ -9,7 +9,7 @@ import java.util.Set;
 {{#if relationships.length}}
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 {{/if}}
-{{#each (typeImports fields)}}
+{{#each (typeImports fields methods)}}
 import {{this}};
 {{/each}}
 
@@ -169,6 +169,17 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
     }
 
 {{/if}}
+{{/each}}
+{{#each methods}}
+    {{#if isOverride}}
+    @Override
+    {{/if}}
+    public {{returnType}} {{name}}({{#each parameters}}{{type}} {{name}}{{#unless @last}}, {{/unless}}{{/each}}) {
+        {{#if defaultReturnValue}}
+        {{defaultReturnValue}}
+        {{/if}}
+    }
+
 {{/each}}
     /**
      * Aplica valores de campos desde un mapa de cadenas (D11v2 — asistente CREATE/UPDATE).

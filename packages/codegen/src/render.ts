@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import Handlebars from 'handlebars';
 
-import type { EntityFieldModel, InterfaceMethodModel, Renderer } from './generate.js';
+import type { EntityFieldModel, EntityMethodModel, InterfaceMethodModel, Renderer } from './generate.js';
 
 /**
  * Renderizador Handlebars para las plantillas de backend Spring (unidad 14b).
@@ -85,11 +85,20 @@ function registerHelpers(hb: typeof Handlebars): void {
   hb.registerHelper('snake', (name: string) => snake(String(name ?? '')));
   hb.registerHelper('plural', (name: string) => plural(String(name ?? '')));
   hb.registerHelper('route', (name: string) => route(String(name ?? '')));
-  hb.registerHelper('typeImports', (fields: EntityFieldModel[] | undefined) => {
+  hb.registerHelper('typeImports', (fields: EntityFieldModel[] | undefined, methods: unknown) => {
     const imports = new Set<string>();
     for (const field of fields ?? []) {
       const fqcn = TYPE_IMPORTS[field.javaType];
       if (fqcn !== undefined) imports.add(fqcn);
+    }
+    const methodList: EntityMethodModel[] = Array.isArray(methods) ? methods : [];
+    for (const method of methodList) {
+      const fqcn = TYPE_IMPORTS[method.returnType];
+      if (fqcn !== undefined) imports.add(fqcn);
+      for (const param of method.parameters ?? []) {
+        const paramFqcn = TYPE_IMPORTS[param.type];
+        if (paramFqcn !== undefined) imports.add(paramFqcn);
+      }
     }
     return [...imports].sort();
   });

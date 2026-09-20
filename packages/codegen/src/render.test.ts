@@ -316,6 +316,60 @@ describe('interface classifier (14.5)', () => {
     expect(java).toContain('import java.math.BigDecimal;');
     expect(java).not.toContain('@Entity');
   });
+
+  it('entity implementing an interface generates stub implementations for interface methods with correct return defaults and imports', () => {
+    const d: Diagram = {
+      id: '00000000-0000-4000-8000-000000000000',
+      name: 'Interface Method Contract Test',
+      classes: [
+        {
+          id: '11111111-1111-4111-8111-000000000001',
+          name: 'Payment',
+          position: { x: 100, y: 100 },
+          kind: 'class',
+          isAbstract: false,
+          attributes: [],
+          methods: [],
+        },
+        {
+          id: '11111111-1111-4111-8111-000000000002',
+          name: 'Payable',
+          position: { x: 300, y: 100 },
+          kind: 'interface',
+          isAbstract: true,
+          attributes: [],
+          methods: [
+            {
+              id: '11111111-1111-4111-8111-000000000003',
+              name: 'processPayment',
+              returnType: 'Boolean',
+              parameters: [{ name: 'amount', type: 'BigDecimal' }],
+            },
+          ],
+        },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [
+        {
+          id: '11111111-1111-4111-8111-000000000004',
+          clientClassId: '11111111-1111-4111-8111-000000000001',
+          supplierInterfaceId: '11111111-1111-4111-8111-000000000002',
+        },
+      ],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const res = generate(d, { outputRoot: ROOT, render });
+    const paymentFile = res.files.find((f) => f.path.endsWith('Payment.java'))!;
+    expect(paymentFile).toBeDefined();
+    expect(paymentFile.content).toContain('public class Payment implements Payable {');
+    expect(paymentFile.content).toContain('@Override');
+    expect(paymentFile.content).toContain('public Boolean processPayment(BigDecimal amount) {');
+    expect(paymentFile.content).toContain('return false;');
+    expect(paymentFile.content).toContain('import java.math.BigDecimal;');
+  });
 });
 
 describe('abstract class entity (14.5)', () => {

@@ -107,11 +107,16 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     // ownedAttribute (características de la clase — NO extremos de asociación)
     for (const attr of cls.attributes) {
       const attrId = attr.id;
-      lines.push(`      <ownedAttribute xmi:type="uml:Property" xmi:id="${attrId}" name="${esc(attr.name)}"${visAttr(attr.visibility)}${boolAttr('isStatic', attr.isStatic)}${boolAttr('isDerived', attr.isDerived)}>`);
-      lines.push(`        <type xmi:idref="${esc(attr.type)}"/>`);
+      const isStatic = attr.isStatic ? 'true' : 'false';
+      const isDerived = attr.isDerived ? 'true' : 'false';
+      lines.push(`      <ownedAttribute xmi:type="uml:Property" xmi:id="${attrId}" name="${esc(attr.name)}"${visAttr(attr.visibility)} isStatic="${isStatic}" isReadOnly="false" isDerived="${isDerived}" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
       if (attr.multiplicity) {
         lines.push(`        ${multiplicityXml(attr.multiplicity)}`);
+      } else {
+        lines.push(`        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="1"/>`);
+        lines.push(`        <upperValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="1"/>`);
       }
+      lines.push(`        <type xmi:idref="${esc(attr.type)}"/>`);
       lines.push(`      </ownedAttribute>`);
     }
 
@@ -160,7 +165,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
     // Extremo origen (ownedEnd)
     const srcAgg = (assoc.aggregation !== 'none' && sourceIsWhole) ? ` aggregation="${esc(assoc.aggregation)}"` : '';
-    lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_src"${srcAgg}${assoc.sourceRole ? ` name="${esc(assoc.sourceRole)}"` : ''}>`);
+    lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_src"${srcAgg}${assoc.sourceRole ? ` name="${esc(assoc.sourceRole)}"` : ''} isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
     lines.push(`        <type xmi:idref="${assoc.sourceClassId}"/>`);
     if (assoc.sourceMultiplicity) {
       lines.push(`        ${multiplicityXml(assoc.sourceMultiplicity)}`);
@@ -169,7 +174,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
     // Extremo destino (ownedEnd)
     const tgtAgg = (assoc.aggregation !== 'none' && !sourceIsWhole) ? ` aggregation="${esc(assoc.aggregation)}"` : '';
-    lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_tgt"${tgtAgg}${assoc.targetRole ? ` name="${esc(assoc.targetRole)}"` : ''}>`);
+    lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_tgt"${tgtAgg}${assoc.targetRole ? ` name="${esc(assoc.targetRole)}"` : ''} isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
     lines.push(`        <type xmi:idref="${assoc.targetClassId}"/>`);
     if (assoc.targetMultiplicity) {
       lines.push(`        ${multiplicityXml(assoc.targetMultiplicity)}`);
@@ -206,7 +211,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     for (let i = 0; i < nary.memberEnds.length; i++) {
       const end = nary.memberEnds[i];
       const endId = `${nary.id}_end${i}`;
-      lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${endId}"${end.role ? ` name="${esc(end.role)}"` : ''}>`);
+      lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${endId}"${end.role ? ` name="${esc(end.role)}"` : ''} isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
       lines.push(`        <type xmi:idref="${end.classId}"/>`);
       if (end.multiplicity) {
         lines.push(`        ${multiplicityXml(end.multiplicity)}`);
