@@ -14,20 +14,20 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * Ollama-backed intent classifier — PRIMARY path (design D11v2).
- * - Calls localhost Ollama ONLY (assistant:R1 — MUST NOT call remote).
- * - Uses ProxySelector.noProxy() to bypass dead SOCKS proxy in offline mode.
- * - Hard-refuses non-loopback base URLs at startup (code invariant).
- * - Strict JSON response parsing: out-of-enum = empty Optional (assistant:R3).
- * - D11v2: supports DELETE/UPDATE with id + field extraction via structured output.
- * Rendered by templates/spring-backend/ollama-engine.hbs — do not edit by hand.
+ * Clasificador de intenciones con Ollama — vía PRINCIPAL (diseño D11v2).
+ * - Llama ÚNICAMENTE a Ollama en localhost (assistant:R1 — NO DEBE llamar a endpoints remotos).
+ * - Usa ProxySelector.noProxy() para eludir proxies SOCKS inactivos en modo sin conexión.
+ * - Rechaza de forma estricta URLs base que no sean de loopback al iniciar (invariante de código).
+ * - Parseo estricto de JSON: valores fuera del enum = Optional vacío (assistant:R3).
+ * - D11v2: soporta DELETE/UPDATE con id + extracción de atributos mediante salidas estructuradas.
+ * Renderizado por templates/spring-backend/ollama-engine.hbs — no editar manualmente.
  */
 public class OllamaEngine implements AssistantEngine {
 
     private static final Logger log = Logger.getLogger(OllamaEngine.class.getName());
     private static final Duration TIMEOUT = Duration.ofSeconds(60);
 
-    /** Bypass every proxy (SOCKS, HTTP, etc.) — works on every Java version. */
+    /** Elude cualquier proxy (SOCKS, HTTP, etc.) — funciona en todas las versiones de Java. */
     private static final ProxySelector NO_PROXIES = new ProxySelector() {
         @Override public java.util.List<Proxy> select(URI uri) {
             return java.util.List.of(Proxy.NO_PROXY);
@@ -92,17 +92,19 @@ public class OllamaEngine implements AssistantEngine {
     }
 
     private String buildPrompt(String freeText) {
-        return "You are a CRUD assistant. Classify the user request into an action and entity.\n"
+        return "You are a database CRUD assistant. Convert the user's request into a JSON command.\n"
             + "Actions: list (show all), count (how many), create (add new), delete (remove by id), update (modify by id).\n"
             + "Entities available: " + String.join(", ", knownEntities) + ".\n"
             + entitySchemaDescription + "\n"
-            + "Rules:\n"
-            + "- entity MUST be exactly one of the available entity names (case-sensitive).\n"
-            + "- For delete/update, extract the numeric id from the text.\n"
-            + "- For create/update, extract field names and values as a JSON object in 'fields'.\n"
-            + "- Field names must match the entity schema exactly.\n"
-            + "- If the user speaks Spanish, map entity references to the correct English entity name.\n"
-            + "- Respond with JSON only: {\"action\":\"...\",\"entity\":\"...\",\"id\":N,\"fields\":{...}}\n"
+            + "Guidelines:\n"
+            + "- 'entity': match the closest available entity name (case-sensitive). If user speaks Spanish, translate (e.g. usuario->User, producto->Product).\n"
+            + "- 'id': for delete/update, extract any numeric ID mentioned (e.g. 1, 2, 3).\n"
+            + "- 'fields': for create/update, extract whatever attributes the user mentioned as key-value pairs.\n"
+            + "  * You do NOT need all attributes! Partial attributes are expected and completely valid.\n"
+            + "  * If the user only says 'crea un usuario Carlos', put: {\"name\": \"Carlos\"}.\n"
+            + "  * If the user doesn't mention any attributes, leave 'fields': {}.\n"
+            + "  * Do NOT refuse or ask questions. Always output valid JSON.\n"
+            + "- Format: {\"action\":\"...\",\"entity\":\"...\",\"id\":null,\"fields\":{...}}\n"
             + "User request: " + freeText;
     }
 
@@ -124,7 +126,7 @@ public class OllamaEngine implements AssistantEngine {
             };
             if (actionEnum == null) return Optional.empty();
 
-            // Server-side whitelist re-validate (assistant:R2)
+            // Re-validación del lado del servidor contra la lista blanca (assistant:R2)
             String validEntity = null;
             for (String known : knownEntities) {
                 if (known.equalsIgnoreCase(entity)) {
@@ -134,14 +136,14 @@ public class OllamaEngine implements AssistantEngine {
             }
             if (validEntity == null) return Optional.empty();
 
-            // Extract optional id
+            // Extraer ID opcional
             Long id = null;
             String idStr = extractField(content, "id");
             if (idStr != null) {
                 try { id = Long.parseLong(idStr.replaceAll("[^0-9]", "")); } catch (NumberFormatException ignored) {}
             }
 
-            // Extract optional fields
+            // Extraer campos opcionales
             Map<String, String> fields = extractFields(content);
 
             return Optional.of(new Intent(actionEnum, validEntity, id, fields));
@@ -168,17 +170,17 @@ public class OllamaEngine implements AssistantEngine {
         if (idx < 0) return null;
         int colon = json.indexOf(':', idx + key.length());
         if (colon < 0) return null;
-        // Skip whitespace after colon
+        // Omitir espacios en blanco después de dos puntos
         int pos = colon + 1;
         while (pos < json.length() && json.charAt(pos) == ' ') pos++;
         if (pos >= json.length()) return null;
-        // Numeric value (for id)
+        // Valor numérico (para id)
         if (Character.isDigit(json.charAt(pos))) {
             int numStart = pos;
             while (pos < json.length() && (Character.isDigit(json.charAt(pos)) || json.charAt(pos) == '.')) pos++;
             return json.substring(numStart, pos);
         }
-        // String value
+        // Valor de cadena
         if (json.charAt(pos) == '"') {
             int start = pos + 1;
             int end = json.indexOf('"', start);
@@ -188,7 +190,7 @@ public class OllamaEngine implements AssistantEngine {
         return null;
     }
 
-    /** Extract fields object from JSON (simple key-value pairs, string values only). */
+    /** Extraer objeto de campos desde JSON (soporta cadenas entre comillas, números y booleanos). */
     private Map<String, String> extractFields(String json) {
         int idx = json.indexOf("\"fields\"");
         if (idx < 0) return null;
@@ -201,40 +203,42 @@ public class OllamaEngine implements AssistantEngine {
             else if (json.charAt(i) == '}') { depth--; if (depth == 0) { braceEnd = i; break; } }
         }
         if (braceEnd < 0) return null;
-        String fieldsJson = json.substring(braceStart + 1, braceEnd).trim();
-        if (fieldsJson.isEmpty()) return null;
+        String s = json.substring(braceStart + 1, braceEnd).trim();
+        if (s.isEmpty()) return new HashMap<>();
 
         Map<String, String> result = new HashMap<>();
-        // Simple parser for "key":"value" pairs
-        int pos = 0;
-        while (pos < fieldsJson.length()) {
-            int keyStart = fieldsJson.indexOf('"', pos);
-            if (keyStart < 0) break;
-            int keyEnd = fieldsJson.indexOf('"', keyStart + 1);
-            if (keyEnd < 0) break;
-            String key = fieldsJson.substring(keyStart + 1, keyEnd);
+        int i = 0;
+        while (i < s.length()) {
+            int kStart = s.indexOf('"', i);
+            if (kStart < 0) break;
+            int kEnd = s.indexOf('"', kStart + 1);
+            if (kEnd < 0) break;
+            String key = s.substring(kStart + 1, kEnd).trim();
 
-            int valQuote = fieldsJson.indexOf('"', keyEnd + 1);
-            if (valQuote < 0) break;
-            // Check for numeric value before string value
-            int colonPos = fieldsJson.indexOf(':', keyEnd);
-            if (colonPos >= 0) {
-                int checkPos = colonPos + 1;
-                while (checkPos < fieldsJson.length() && fieldsJson.charAt(checkPos) == ' ') checkPos++;
-                if (checkPos < fieldsJson.length() && Character.isDigit(fieldsJson.charAt(checkPos))) {
-                    int numStart = checkPos;
-                    while (checkPos < fieldsJson.length()
-                            && (Character.isDigit(fieldsJson.charAt(checkPos)) || fieldsJson.charAt(checkPos) == '.'))
-                        checkPos++;
-                    result.put(key, fieldsJson.substring(numStart, checkPos));
-                    pos = checkPos;
-                    continue;
+            int colon = s.indexOf(':', kEnd + 1);
+            if (colon < 0) break;
+
+            int vStart = colon + 1;
+            while (vStart < s.length() && (s.charAt(vStart) == ' ' || s.charAt(vStart) == '\t' || s.charAt(vStart) == '\n' || s.charAt(vStart) == '\r')) vStart++;
+            if (vStart >= s.length()) break;
+
+            String val;
+            if (s.charAt(vStart) == '"') {
+                int vEnd = s.indexOf('"', vStart + 1);
+                if (vEnd < 0) break;
+                val = s.substring(vStart + 1, vEnd);
+                i = vEnd + 1;
+            } else {
+                int vEnd = vStart;
+                while (vEnd < s.length() && s.charAt(vEnd) != ',' && s.charAt(vEnd) != '}' && !Character.isWhitespace(s.charAt(vEnd))) {
+                    vEnd++;
                 }
+                val = s.substring(vStart, vEnd).trim();
+                i = vEnd;
             }
-            int valEnd = fieldsJson.indexOf('"', valQuote + 1);
-            if (valEnd < 0) break;
-            result.put(key, fieldsJson.substring(valQuote + 1, valEnd));
-            pos = valEnd + 1;
+            if (!key.isEmpty() && !val.isEmpty()) {
+                result.put(key, val);
+            }
         }
         return result.isEmpty() ? null : result;
     }

@@ -1,12 +1,12 @@
-# Generated container image: multi-stage build for zero-config Docker execution.
-# Stage 1: Build the Spring Boot application using Maven 3.9 + Java 21.
+# Imagen de contenedor generada: compilación multi-etapa para ejecución Docker sin configuración.
+# Etapa 1: Compilar la aplicación Spring Boot usando Maven 3.9 + Java 21.
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests
 
-# Stage 2: Minimal runtime image running the packaged Spring Boot jar.
+# Etapa 2: Imagen de ejecución mínima con el jar empaquetado de Spring Boot.
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar

@@ -11,10 +11,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Auto-provisioner for Ollama (design D11v2).
- * On startup: health-check Ollama, verify model presence, auto-pull if missing.
- * Exposes readiness state consumed by AssistantController /api/assistant/status.
- * Rendered by templates/spring-backend/ollama-provisioner.hbs — do not edit by hand.
+ * Auto-aprovisionador para Ollama (diseño D11v2).
+ * Al iniciar: verifica el estado de salud de Ollama, comprueba la presencia del modelo y lo descarga automáticamente si falta.
+ * Expone el estado de preparación consumido por AssistantController /api/assistant/status.
+ * Renderizado por templates/spring-backend/ollama-provisioner.hbs — no editar manualmente.
  */
 @Component
 public class OllamaProvisioner {
@@ -43,7 +43,7 @@ public class OllamaProvisioner {
     public void provision() {
         Thread.ofVirtual().name("ollama-provisioner").start(() -> {
             try {
-                // 1. Health check
+                // 1. Verificación de salud
                 if (!checkHealth()) {
                     log.warning("Ollama is not reachable at " + ollamaUrl
                         + " — assistant will use IntentMatcher fallback only. "
@@ -53,14 +53,14 @@ public class OllamaProvisioner {
                 ollamaAvailable = true;
                 log.info("Ollama is reachable at " + ollamaUrl);
 
-                // 2. Check if model exists
+                // 2. Comprobar si el modelo existe
                 if (checkModel()) {
                     modelReady = true;
                     log.info("Model " + model + " is available");
                     return;
                 }
 
-                // 3. Auto-pull if enabled
+                // 3. Auto-descarga si está habilitada
                 if (!autoPull) {
                     log.warning("Model " + model + " not found and auto-pull is disabled. "
                         + "Run: ollama pull " + model);
@@ -105,7 +105,7 @@ public class OllamaProvisioner {
                 .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) return false;
-            // Simple check: the model name appears in the tags response
+            // Verificación simple: el nombre del modelo aparece en la respuesta de tags
             return response.body().contains("\"" + model + "\"")
                 || response.body().contains("\"name\":\"" + model + "\"");
         } catch (Exception e) {

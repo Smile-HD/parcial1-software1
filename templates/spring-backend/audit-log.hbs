@@ -11,10 +11,10 @@ import java.time.Instant;
 import java.util.logging.Logger;
 
 /**
- * Append-only audit log for assistant actions (assistant:R4).
- * Format per line: ISO-timestamp|outcome|action|sha256-of-request
- * File: data/assistant-audit.log (relative to the working directory).
- * Rendered by templates/spring-backend/audit-log.hbs — do not edit by hand.
+ * Registro de auditoría de solo anexado para acciones del asistente (assistant:R4).
+ * Formato por línea: marca-de-tiempo-ISO|resultado|acción|sha256-de-petición
+ * Archivo: data/assistant-audit.log (relativo al directorio de trabajo).
+ * Renderizado por templates/spring-backend/audit-log.hbs — no editar manualmente.
  */
 public class AuditLog {
 

@@ -14,33 +14,33 @@ import {{this}};
 {{/each}}
 
 /**
- * Generated JPA entity for UML class {{className}}.
- * Rendered by templates/spring-backend/entity.hbs — do not edit by hand.
+ * Entidad JPA generada para la clase UML {{className}}.
+ * Renderizado por templates/spring-backend/entity.hbs — no editar manualmente.
  *
- * Relationship conventions (14b basic subset + 14c UML 2.5.1 mappings):
- * - the table name is quoted so reserved SQL words (e.g. ORDER) are valid;
- * - to-many collections fetch EAGER (documented 14b simplification — the
- *   generated CRUD surface is small; DTOs/lazy tuning are 14d concerns);
- * - each relationship carries @JsonIgnoreProperties for the back-reference so
- *   bidirectional graphs serialize without Jackson recursion;
- * - collection field names use the documented naive pluralization helper;
- * - @ManyToMany ownership is deterministic: the lexicographically smaller
- *   entity name owns the join table (self-referencing many-to-many is 14c);
- * - the inverse side always carries mappedBy to the owning field;
- * - composition (14c): the container-side collection declares
- *   cascade = CascadeType.ALL + orphanRemoval = true; shared aggregation is a
- *   plain association WITHOUT cascade (documented decision — shared members
- *   have independent lifecycles);
- * - generalization (14c): the hierarchy root declares
- *   @Inheritance(SINGLE_TABLE) + @DiscriminatorColumn; subclasses `extends`
- *   the root and declare NO @Table (single table stores the whole hierarchy)
- *   and never redeclare inherited fields;
- * - realization (14c): realized interfaces appear in an `implements` clause;
- * - abstract classes (14c) render as `abstract` entities;
- * - member visibility (14c): `-`/`+` → private, `#` → protected, `~` →
- *   package-private field modifiers (accessors stay public per JPA style);
- * - attribute multiplicity >1 (14c): `List<T>` with
- *   @ElementCollection(fetch = EAGER) (same lazy-JSON rationale as to-many).
+ * Convenciones de relaciones (subconjunto básico 14b + mapeos UML 2.5.1 en 14c):
+ * - el nombre de tabla va entre comillas para que palabras reservadas de SQL (ej. ORDER) sean válidas;
+ * - colecciones to-many cargan con EAGER (simplificación documentada en 14b — la
+ *   superficie CRUD generada es pequeña; DTOs/ajustes lazy corresponden a 14d);
+ * - cada relación lleva @JsonIgnoreProperties para la referencia inversa y evitar
+ *   recursión infinita en Jackson;
+ * - nombres de campos de colección usan el ayudante documentado de pluralización simple;
+ * - la propiedad de @ManyToMany es determinista: la entidad con nombre lexicográficamente
+ *   menor es dueña de la tabla de unión (many-to-many auto-referenciado en 14c);
+ * - el lado inverso siempre incluye mappedBy apuntando al campo propietario;
+ * - composición (14c): la colección del lado contenedor declara
+ *   cascade = CascadeType.ALL + orphanRemoval = true; la agregación compartida es una
+ *   asociación simple SIN cascade (decisión documentada — los miembros compartidos
+ *   tienen ciclos de vida independientes);
+ * - generalización (14c): la raíz de la jerarquía declara
+ *   @Inheritance(SINGLE_TABLE) + @DiscriminatorColumn; las subclases hacen `extends`
+ *   de la raíz, NO declaran @Table (una sola tabla almacena toda la jerarquía)
+ *   y nunca redeclaran atributos heredados;
+ * - realización (14c): las interfaces implementadas aparecen en una cláusula `implements`;
+ * - clases abstractas (14c) se renderizan como entidades `abstract`;
+ * - visibilidad de miembros (14c): `-`/`+` → private, `#` → protected, `~` →
+ *   modificadores package-private (los getters/setters se mantienen public según estilo JPA);
+ * - multiplicidad de atributos >1 (14c): `List<T>` con
+ *   @ElementCollection(fetch = EAGER) (misma justificación lazy-JSON que to-many).
  */
 @Entity
 {{#unless extendsClass}}
@@ -172,18 +172,40 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
 {{/each}}
 {{#if fields.length}}
     /**
-     * Apply field values from a string map (D11v2 — assistant CREATE/UPDATE).
-     * Generated type-safe setter dispatch with string-to-type conversion.
+     * Aplica valores de campos desde un mapa de cadenas (D11v2 — asistente CREATE/UPDATE).
+     * Despacho flexible y permisivo con coincidencia de sinónimos y conversión de tipos segura.
      */
     public static void applyFields({{className}} entity, java.util.Map<String, String> fields) {
+        if (fields == null || fields.isEmpty()) return;
         for (var entry : fields.entrySet()) {
-            switch (entry.getKey()) {
+            String rawKey = entry.getKey();
+            if (rawKey == null) continue;
+            String k = rawKey.trim().toLowerCase().replaceAll("[^a-z0-9]", "");
+            String v = entry.getValue();
+            if (v == null || v.isBlank()) continue;
+
+            try {
+                switch (k) {
 {{#each fields}}
 {{#unless isCollection}}
-                case "{{name}}" -> entity.set{{cap name}}({{#if (eq javaType "String")}}entry.getValue(){{else if (eq javaType "Integer")}}Integer.parseInt(entry.getValue()){{else if (eq javaType "Long")}}Long.parseLong(entry.getValue()){{else if (eq javaType "Double")}}Double.parseDouble(entry.getValue()){{else if (eq javaType "Float")}}Float.parseFloat(entry.getValue()){{else if (eq javaType "Boolean")}}Boolean.parseBoolean(entry.getValue()){{else if (eq javaType "BigDecimal")}}new java.math.BigDecimal(entry.getValue()){{else if (eq javaType "Character")}}entry.getValue().charAt(0){{else if (eq javaType "LocalDate")}}java.time.LocalDate.parse(entry.getValue()){{else if (eq javaType "LocalDateTime")}}java.time.LocalDateTime.parse(entry.getValue()){{else if (eq javaType "LocalTime")}}java.time.LocalTime.parse(entry.getValue()){{else}}entry.getValue(){{/if}});
+                    case "{{lower name}}"{{#if (eq (lower name) "name")}}, "nombre", "nom", "title", "titulo"{{/if}}{{#if (eq (lower name) "price")}}, "precio", "costo", "cost", "monto", "amount", "valor"{{/if}}{{#if (eq (lower name) "description")}}, "descripcion", "detalle"{{/if}}{{#if (eq (lower name) "email")}}, "correo", "mail"{{/if}}{{#if (eq (lower name) "phone")}}, "telefono", "celular", "tel"{{/if}}{{#if (eq (lower name) "address")}}, "direccion", "ubicacion"{{/if}}{{#if (eq (lower name) "city")}}, "ciudad"{{/if}}{{#if (eq (lower name) "age")}}, "edad"{{/if}}{{#if (eq (lower name) "active")}}, "activo", "estado"{{/if}} -> {
+                        entity.set{{cap name}}({{#if (eq javaType "String")}}v{{else if (eq javaType "Integer")}}Integer.parseInt(v.replaceAll("[^0-9-]", "")){{else if (eq javaType "Long")}}Long.parseLong(v.replaceAll("[^0-9-]", "")){{else if (eq javaType "Double")}}Double.parseDouble(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Float")}}Float.parseFloat(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Boolean")}}Boolean.parseBoolean(v){{else if (eq javaType "BigDecimal")}}new java.math.BigDecimal(v.replaceAll("[^0-9.-]", "")){{else if (eq javaType "Character")}}v.charAt(0){{else if (eq javaType "LocalDate")}}java.time.LocalDate.parse(v){{else if (eq javaType "LocalDateTime")}}java.time.LocalDateTime.parse(v){{else if (eq javaType "LocalTime")}}java.time.LocalTime.parse(v){{else}}v{{/if}});
+                    }
 {{/unless}}
 {{/each}}
-                default -> { /* unknown field — silently ignored */ }
+                    default -> {
+                        // Si el modelo usó una clave desconocida, asignar al primer campo de texto si está vacío
+{{#each fields}}
+{{#if @first}}
+{{#if (eq javaType "String")}}
+                        if (entity.get{{cap name}}() == null) { entity.set{{cap name}}(v); }
+{{/if}}
+{{/if}}
+{{/each}}
+                    }
+                }
+            } catch (Exception ignored) {
+                // Omitir silenciosamente valores con formato incorrecto para no abortar la creación completa
             }
         }
     }

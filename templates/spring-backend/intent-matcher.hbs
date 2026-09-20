@@ -7,11 +7,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Deterministic bilingual keyword matcher — FALLBACK for when Ollama is unavailable
- * (design D11v2). Covers LIST, COUNT, DELETE (with ID regex). UPDATE/CREATE with
- * field extraction require Ollama and return UNMATCHED here.
- * Returns UNMATCHED (not a guess) when confidence is insufficient (assistant:R3).
- * Rendered by templates/spring-backend/intent-matcher.hbs — do not edit by hand.
+ * Comparador determinista bilingüe de palabras clave — RESPALDO para cuando Ollama no está disponible
+ * (diseño D11v2). Cubre LIST, COUNT, DELETE (con regex para ID). UPDATE/CREATE con
+ * extracción de atributos requieren Ollama y devuelven UNMATCHED aquí.
+ * Devuelve UNMATCHED (sin adivinar) cuando la confianza es insuficiente (assistant:R3).
+ * Renderizado por templates/spring-backend/intent-matcher.hbs — no editar manualmente.
  */
 public class IntentMatcher {
 
@@ -55,7 +55,7 @@ public class IntentMatcher {
         Map.entry("actualizar", AssistantEngine.Intent.Action.UPDATE)
     );
 
-    /** Regex to extract the first integer in the text (used as entity ID). */
+    /** Expresión regular para extraer el primer número entero en el texto (usado como ID de entidad). */
     private static final Pattern ID_PATTERN = Pattern.compile("\\b(\\d+)\\b");
 
     private final Set<String> knownEntities;
@@ -68,7 +68,7 @@ public class IntentMatcher {
         if (freeText == null || freeText.isBlank()) return AssistantEngine.Intent.UNMATCHED;
         String lower = normalize(freeText);
 
-        // 1. Find action (longest-match wins for multi-word phrases)
+        // 1. Encontrar acción (la coincidencia más larga gana para frases de varias palabras)
         AssistantEngine.Intent.Action action = null;
         int longestMatch = -1;
         for (var entry : ACTION_KEYWORDS.entrySet()) {
@@ -79,11 +79,11 @@ public class IntentMatcher {
         }
         if (action == null) return AssistantEngine.Intent.UNMATCHED;
 
-        // 2. Find entity (dynamic matching against knownEntities)
+        // 2. Encontrar entidad (búsqueda dinámica contra knownEntities)
         String entityName = findEntity(lower);
         if (entityName == null) return AssistantEngine.Intent.UNMATCHED;
 
-        // 3. Extract ID for DELETE/UPDATE
+        // 3. Extraer ID para DELETE/UPDATE
         Long id = null;
         if (action == AssistantEngine.Intent.Action.DELETE
                 || action == AssistantEngine.Intent.Action.UPDATE) {
@@ -93,13 +93,13 @@ public class IntentMatcher {
             }
         }
 
-        // D11v2: field extraction for UPDATE/CREATE is too complex for regex;
-        // those fall through to Ollama. IntentMatcher returns what it can.
+        // D11v2: la extracción de atributos para UPDATE/CREATE es demasiado compleja para regex;
+        // esas peticiones se delegan a Ollama. IntentMatcher retorna lo que puede.
         return new AssistantEngine.Intent(action, entityName, id, null);
     }
 
     private String findEntity(String text) {
-        // Direct English match (with common plurals: +s, +es, y→ies)
+        // Coincidencia directa en inglés (con plurales comunes: +s, +es, y→ies)
         for (String entity : knownEntities) {
             String lower = entity.toLowerCase();
             if (text.contains(lower) || text.contains(lower + "s") || text.contains(lower + "es")) {
@@ -109,9 +109,9 @@ public class IntentMatcher {
                 return entity;
             }
         }
-        // D11v2: naive normalization for Spanish entity names in the diagram.
-        // Strip common suffixes (-s, -es) and compare case-insensitively.
-        // E.g. "vehiculos" → "vehiculo" ≈ "Vehiculo" (a known entity).
+        // D11v2: normalización ingenua para nombres de entidad en español en el diagrama.
+        // Remueve sufijos comunes (-s, -es) y compara sin distinguir mayúsculas/minúsculas.
+        // Ej. "vehiculos" → "vehiculo" ≈ "Vehiculo" (entidad conocida).
         for (String entity : knownEntities) {
             String lowerEntity = entity.toLowerCase();
             // Try matching stripped suffixes from the text tokens

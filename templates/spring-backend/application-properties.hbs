@@ -1,6 +1,6 @@
-# Generated Spring configuration — H2 FILE mode (design decision 10:
-# data survives restarts under ./data, offline-friendly).
-# Rendered by templates/spring-backend/application-properties.hbs — do not edit by hand.
+# Configuración de Spring generada — modo archivo H2 (decisión de diseño 10:
+# los datos persisten entre reinicios en ./data, ideal para uso sin conexión).
+# Renderizado por templates/spring-backend/application-properties.hbs — no editar manualmente.
 spring.application.name=generated-backend
 server.port=8080
 
@@ -12,7 +12,7 @@ spring.datasource.password=
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.open-in-view=false
 
-#18: Offline assistant (design D11 — qwen2.5:1.5b on localhost Ollama)
+# 18: Asistente offline (diseño D11 — qwen2.5:1.5b en Ollama localhost)
 assistant.model={{assistantModel}}
 assistant.ollama.url={{assistantOllamaUrl}}
 assistant.auto-pull=false

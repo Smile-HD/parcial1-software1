@@ -5,7 +5,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
-
+flutter_assistant_plan.md
 # Test coverage
 coverage/
 

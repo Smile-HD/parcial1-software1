@@ -4,19 +4,19 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Port for intent classification (design D11 / D11v2).
- * Implementations must NOT call remote AI endpoints (assistant:R1).
- * Rendered by templates/spring-backend/assistant-engine.hbs — do not edit by hand.
+ * Puerto para clasificación de intenciones (diseño D11 / D11v2).
+ * Las implementaciones NO deben llamar a endpoints de IA remotos (assistant:R1).
+ * Renderizado por templates/spring-backend/assistant-engine.hbs — no editar manualmente.
  */
 public interface AssistantEngine {
 
     /**
-     * Classify free text into a structured intent.
-     * Returns empty Optional when the engine cannot classify with confidence.
+     * Clasifica texto libre en una intención estructurada.
+     * Retorna un Optional vacío cuando el motor no puede clasificar con suficiente confianza.
      */
     Optional<Intent> classify(String freeText);
 
-    /** Classified intent: action + entity name + optional id and fields. */
+    /** Intención clasificada: acción + nombre de entidad + id opcional y campos. */
     record Intent(Action action, String entityName, Long id, Map<String, String> fields) {
         public enum Action { LIST, COUNT, CREATE, DELETE, UPDATE }
         public static final Intent UNMATCHED = new Intent(null, null, null, null);

@@ -9,14 +9,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Generated REST CRUD controller for {{className}} (codegen:R4 — create,
- * read single, read list, update, delete).
+ * Controlador REST CRUD generado para {{className}} (codegen:R4 — crear,
+ * leer individual, listar, actualizar, eliminar).
  *
- * 14c maintainer decision: the controller delegates to the thin service
- * layer and NEVER touches the repository directly (3+1 architecture).
- * A missing entity surfaces as jakarta.persistence.EntityNotFoundException
- * from the service and is translated to HTTP 404 below.
- * Rendered by templates/spring-backend/controller.hbs — do not edit by hand.
+ * Decisión de arquitectura 14c: el controlador delega a la capa delgada de servicio
+ * y NUNCA interactúa con el repositorio directamente (arquitectura 3+1).
+ * Cuando una entidad no existe, el servicio lanza jakarta.persistence.EntityNotFoundException
+ * que se traduce a HTTP 404 abajo.
+ * Renderizado por templates/spring-backend/controller.hbs — no editar manualmente.
  */
 @RestController
 @RequestMapping("/api/{{route className}}")
@@ -46,7 +46,7 @@ public class {{className}}Controller {
 
     @PutMapping("/{id}")
     public {{className}} update(@PathVariable Long id, @Valid @RequestBody {{className}} entity) {
-        service.findById(id); // 404 when the row is absent
+        service.findById(id); // 404 si el registro no existe
         entity.setId(id);
         return service.save(entity);
     }
@@ -60,6 +60,6 @@ public class {{className}}Controller {
     @ExceptionHandler(EntityNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public void notFound(EntityNotFoundException ex) {
-        // Empty 404 body — same contract as the pre-14c ResponseStatusException.
+        // Cuerpo 404 vacío — mismo contrato que el ResponseStatusException previo a 14c.
     }
 }

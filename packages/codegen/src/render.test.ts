@@ -59,8 +59,8 @@ describe('entity template', () => {
 
     // D11v2: applyFields static method for assistant CREATE/UPDATE
     expect(java).toContain('public static void applyFields(Customer entity, java.util.Map<String, String> fields)');
-    expect(java).toContain('case "name" -> entity.setName(entry.getValue());');
-    expect(java).toContain('case "active" -> entity.setActive(Boolean.parseBoolean(entry.getValue()));');
+    expect(java).toContain('case "name", "nombre"');
+    expect(java).toContain('case "active", "activo"');
   });
 
   it('renders the owning ManyToOne on Order and imports java.time/java.math types', () => {

@@ -81,6 +81,7 @@ function registerHelpers(hb: typeof Handlebars): void {
   hb.registerHelper('lt', (a: unknown, b: unknown) => String(a) < String(b));
   hb.registerHelper('camel', (name: string) => camel(String(name ?? '')));
   hb.registerHelper('cap', (name: string) => cap(String(name ?? '')));
+  hb.registerHelper('lower', (name: string) => String(name ?? '').toLowerCase());
   hb.registerHelper('snake', (name: string) => snake(String(name ?? '')));
   hb.registerHelper('plural', (name: string) => plural(String(name ?? '')));
   hb.registerHelper('route', (name: string) => route(String(name ?? '')));

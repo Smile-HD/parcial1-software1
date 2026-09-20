@@ -19,13 +19,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Generated REST endpoint for the offline assistant (design D11v2).
- * POST /api/assistant accepts a free-text request and returns a structured
- * response with outcome: executed | canned | unavailable | refused.
+ * Endpoint REST generado para el asistente sin conexión (diseño D11v2).
+ * POST /api/assistant acepta una petición en texto libre y devuelve una respuesta
+ * estructurada con resultado: executed | canned | unavailable | refused.
  *
- * D11v2 flow: Ollama (primary) → IntentMatcher (fallback when Ollama is down).
- * Every action is audited (assistant:R4).
- * Rendered by templates/spring-backend/assistant-controller.hbs — do not edit by hand.
+ * Flujo D11v2: Ollama (primario) → IntentMatcher (respaldo cuando Ollama no está disponible).
+ * Cada acción es auditada (assistant:R4).
+ * Renderizado por templates/spring-backend/assistant-controller.hbs — no editar manualmente.
  */
 @RestController
 @RequestMapping("/api/assistant")
@@ -38,9 +38,9 @@ public class AssistantController {
     );
 
     /**
-     * Entity field schemas for Ollama prompt context (D11v2).
-     * Lets the model know which fields each entity has so it can extract
-     * field names and values from natural language.
+     * Esquemas de campos de entidades para el contexto del prompt de Ollama (D11v2).
+     * Permite al modelo conocer los campos de cada entidad para extraer nombres
+     * de atributos y valores a partir de lenguaje natural.
      */
     private static final String ENTITY_SCHEMA_DESCRIPTION =
 {{#each entitySchemas}}
@@ -82,12 +82,12 @@ public class AssistantController {
             return new AssistantResponse("canned", null, null, CAPABILITY_MESSAGE);
         }
 
-        // D11v2: Ollama is the PRIMARY path — try it first if available
+        // D11v2: Ollama es la vía PRINCIPAL — intentar primero si está disponible
         if (provisioner.isModelReady()) {
             try {
                 Intent ollamaIntent = ollama.classify(text).orElse(null);
                 if (ollamaIntent != null && ollamaIntent.isMatched()) {
-                    // Server-side whitelist re-validate (assistant:R2)
+                    // Re-validación del lado del servidor contra la lista blanca (assistant:R2)
                     if (!KNOWN_ENTITIES.contains(ollamaIntent.entityName())) {
                         auditLog.log("refused", "classify", text);
                         return new AssistantResponse("refused", null, null, CAPABILITY_MESSAGE);
@@ -96,14 +96,14 @@ public class AssistantController {
                 }
             } catch (Exception e) {
                 log.warning("Ollama engine error: " + e.getMessage());
-                // Fall through to IntentMatcher
+                // Continuar hacia el IntentMatcher
             }
         }
 
-        // D11v2: IntentMatcher is the FALLBACK — deterministic, no network
+        // D11v2: IntentMatcher es el RESPALDO — determinista, sin red
         Intent matched = matcher.classify(text);
         if (matched.isMatched()) {
-            // DELETE/UPDATE without id from matcher is still usable for LIST/COUNT
+            // DELETE/UPDATE sin id desde el matcher sigue siendo usable para LIST/COUNT
             if ((matched.action() == Intent.Action.UPDATE || matched.action() == Intent.Action.CREATE)
                     && matched.fields() == null && !provisioner.isModelReady()) {
                 auditLog.log("unavailable", matched.action().name().toLowerCase(), text);
@@ -114,12 +114,12 @@ public class AssistantController {
             return executeIntent(matched, text);
         }
 
-        // Nothing matched
+        // Ninguna coincidencia
         auditLog.log("canned", "classify", text);
         return new AssistantResponse("canned", null, null, CAPABILITY_MESSAGE);
     }
 
-    /** GET /api/assistant/status — reports Ollama and model readiness to the client. */
+    /** GET /api/assistant/status — reporta al cliente la disponibilidad de Ollama y el modelo. */
     @GetMapping("/status")
     public StatusResponse status() {
         return new StatusResponse(
@@ -160,28 +160,24 @@ public class AssistantController {
                         entity + " " + intent.id() + " deleted successfully.");
                 }
                 case UPDATE -> {
-                    if (intent.id() == null) {
+                    Long targetId = intent.id();
+                    if (targetId == null && intent.fields() != null && intent.fields().containsKey("id")) {
+                        try { targetId = Long.parseLong(intent.fields().get("id").replaceAll("[^0-9]", "")); } catch (Exception ignored) {}
+                    }
+                    if (targetId == null) {
                         auditLog.log("refused", action, originalRequest);
                         yield new AssistantResponse("refused", action, entity,
-                            "Please specify which " + entity + " to update (e.g. 'update " + entity + " 3 name Laptop').");
+                            "Please specify which " + entity + " to update by id (e.g. 'update " + entity + " 3').");
                     }
-                    if (intent.fields() == null || intent.fields().isEmpty()) {
-                        auditLog.log("refused", action, originalRequest);
-                        yield new AssistantResponse("refused", action, entity,
-                            "Please specify which fields to update.");
-                    }
-                    Object updated = updateEntity(entity, intent.id(), intent.fields());
+                    Map<String, String> fields = intent.fields() != null ? intent.fields() : Map.of();
+                    Object updated = updateEntity(entity, targetId, fields);
                     auditLog.log("executed", action, originalRequest);
                     yield new AssistantResponse("executed", action, entity,
-                        entity + " " + intent.id() + " updated: " + updated.toString());
+                        entity + " " + targetId + " updated: " + updated.toString());
                 }
                 case CREATE -> {
-                    if (intent.fields() == null || intent.fields().isEmpty()) {
-                        auditLog.log("refused", action, originalRequest);
-                        yield new AssistantResponse("refused", action, entity,
-                            "Please specify the fields for the new " + entity + ".");
-                    }
-                    Object created = createEntity(entity, intent.fields());
+                    Map<String, String> fields = intent.fields() != null ? intent.fields() : Map.of();
+                    Object created = createEntity(entity, fields);
                     auditLog.log("executed", action, originalRequest);
                     yield new AssistantResponse("executed", action, entity,
                         entity + " created: " + created.toString());
@@ -230,12 +226,12 @@ public class AssistantController {
         throw new IllegalArgumentException("Unknown entity: " + name);
     }
 
-    /** Request DTO for POST /api/assistant. */
+    /** DTO de petición para POST /api/assistant. */
     public record AssistantRequest(String request) {}
 
-    /** Response DTO for POST /api/assistant. */
+    /** DTO de respuesta para POST /api/assistant. */
     public record AssistantResponse(String outcome, String action, String entity, String response) {}
 
-    /** Status DTO for GET /api/assistant/status. */
+    /** DTO de estado para GET /api/assistant/status. */
     public record StatusResponse(boolean ollama, String model, boolean ready) {}
 }
