@@ -1,0 +1,99 @@
+package {{packageName}}.assistant;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import java.time.LocalDateTime;
+
+/**
+ * Entidad JPA generada para la cola de comandos de voz offline.
+ * Representa un comando encolado por el cliente móvil cuando no hay conexión
+ * y su resultado tras ser procesado por el asistente (patrón Outbox Queue).
+ *
+ * Estados: PENDING → DONE | FAILED.
+ * El cliente llama a POST /api/sync/process cuando recupera la conexión.
+ * Renderizado por templates/spring-backend/voice-command.hbs — no editar manualmente.
+ */
+@Entity
+@Table(name = "\"VoiceCommand\"")
+public class VoiceCommand {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /** Texto de voz tal como llegó del dispositivo. */
+    @NotBlank
+    private String text;
+
+    /** Estado del comando: PENDING | DONE | FAILED. */
+    @Column(nullable = false)
+    private String status;
+
+    /** Resultado del asistente: executed | refused | unavailable | canned. */
+    private String outcome;
+
+    /** Acción ejecutada: create | delete | update | list | count. */
+    private String action;
+
+    /** Nombre de la entidad afectada (ej. "Product", "Paciente"). */
+    private String entity;
+
+    /** Respuesta legible del asistente. */
+    @Column(length = 2048)
+    private String response;
+
+    /** Motivo del fallo cuando status=FAILED. */
+    @Column(length = 1024)
+    private String failReason;
+
+    /** Marca de tiempo de creación (inmutable). */
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    /** Marca de tiempo de procesamiento (null si aún está PENDING). */
+    private LocalDateTime processedAt;
+
+    @PrePersist
+    void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        if (this.status == null) {
+            this.status = "PENDING";
+        }
+    }
+
+    // ── Getters y Setters ──────────────────────────────────────────────────
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getText() { return text; }
+    public void setText(String text) { this.text = text; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public String getOutcome() { return outcome; }
+    public void setOutcome(String outcome) { this.outcome = outcome; }
+
+    public String getAction() { return action; }
+    public void setAction(String action) { this.action = action; }
+
+    public String getEntity() { return entity; }
+    public void setEntity(String entity) { this.entity = entity; }
+
+    public String getResponse() { return response; }
+    public void setResponse(String response) { this.response = response; }
+
+    public String getFailReason() { return failReason; }
+    public void setFailReason(String failReason) { this.failReason = failReason; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public LocalDateTime getProcessedAt() { return processedAt; }
+    public void setProcessedAt(LocalDateTime processedAt) { this.processedAt = processedAt; }
+
+    @Override
+    public String toString() {
+        return "VoiceCommand{id=" + id + ", status=" + status + ", text=" + text + "}";
+    }
+}

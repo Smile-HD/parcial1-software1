@@ -638,7 +638,7 @@ describe('zip extras + production profile in the file map (14.6b + maintainer de
 });
 
 describe('assistant emission (design D11 / D11v2)', () => {
-  it('emits 6 assistant files including OllamaProvisioner and schemas', () => {
+  it('emits 9 assistant files including OllamaProvisioner, schemas and offline sync queue', () => {
     const d = v2Diagram({
       classes: [
         v2Cls(ID2.product, 'Product', {
@@ -666,6 +666,19 @@ describe('assistant emission (design D11 / D11v2)', () => {
         fields: [{ name: 'name', javaType: 'String' }],
       },
     ]);
+
+    // Offline sync queue (patrón Outbox Queue)
+    const voiceCommand = files.find((f) => f.path === `src/main/java/${pkgPath}/assistant/VoiceCommand.java`);
+    expect(voiceCommand).toBeDefined();
+    expect(voiceCommand?.template).toBe('voice-command');
+
+    const voiceCommandRepo = files.find((f) => f.path === `src/main/java/${pkgPath}/assistant/VoiceCommandRepository.java`);
+    expect(voiceCommandRepo).toBeDefined();
+    expect(voiceCommandRepo?.template).toBe('voice-command-repository');
+
+    const syncController = files.find((f) => f.path === `src/main/java/${pkgPath}/web/SyncController.java`);
+    expect(syncController).toBeDefined();
+    expect(syncController?.template).toBe('sync-controller');
   });
 });
 

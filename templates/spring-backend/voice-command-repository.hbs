@@ -1,0 +1,15 @@
+package {{packageName}}.assistant;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+
+/**
+ * Repositorio Spring Data JPA para VoiceCommand.
+ * Provee consultas de sincronización offline (patrón Outbox Queue).
+ * Renderizado por templates/spring-backend/voice-command-repository.hbs — no editar manualmente.
+ */
+public interface VoiceCommandRepository extends JpaRepository<VoiceCommand, Long> {
+
+    /** Devuelve todos los comandos en estado dado, ordenados por fecha de creación ascendente. */
+    List<VoiceCommand> findByStatusOrderByCreatedAtAsc(String status);
+}

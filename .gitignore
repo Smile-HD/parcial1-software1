@@ -39,4 +39,15 @@ Thumbs.db
 
 # Private report documentation (user-owned, goes to Word manually)
 docs
-    
+
+# Artefactos del informe del parcial (PDFs, docx, zip de EA, scripts Python ad-hoc)
+INFORME_COMPLETO_PUDS_UML.docx
+PRIMER PARCIAL - SEMESTRE.pdf
+SW1-1P(Jhon Sahid).pdf
+ea-export.zip
+ea-export/
+scratch_test.py
+tools/build_word_informe.py
+tools/generate_all_ea_diagrams.py
+tools/xmi_builder.py
+tools/__pycache__/

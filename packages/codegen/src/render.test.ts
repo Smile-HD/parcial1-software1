@@ -242,13 +242,18 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/AuditLog.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/OllamaProvisioner.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/web/AssistantController.java`);
+    // Offline sync queue (patrón Outbox Queue)
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/VoiceCommand.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/VoiceCommandRepository.java`);
+    expect(paths).toContain(`src/main/java/${PKG_PATH}/web/SyncController.java`);
     // 8 entities × 4 files + 1 interface + Application + pom + 2 properties
     // + 3 wrapper assets + Dockerfile + compose + README = 43.
     // 43 → 40: 17 amendment (2026-09-13) removes the CRUD trio for abstract Payment.
     // 40 → 45: 18 adds 5 assistant files (AssistantEngine, IntentMatcher,
     // OllamaEngine, AuditLog, AssistantController).
     // 45 → 46: D11v2 adds OllamaProvisioner.
-    expect(paths).toHaveLength(46);
+    // 46 → 49: Offline sync queue adds VoiceCommand, VoiceCommandRepository, SyncController.
+    expect(paths).toHaveLength(49);
   });
 
   it('every generated file has non-stub content from a real template', () => {
@@ -705,6 +710,41 @@ describe('rendering entities with normalized informal names', () => {
     expect(entityFile?.content).toContain('entity.set_123code(0);');
     expect(entityFile?.content).toContain('entity.setPhoneNumber("-");');
     expect(entityFile?.content).toContain('k.contains("phonenumber")');
+  });
+});
+
+// ---------- offline sync queue (Outbox Queue pattern) ----------
+
+describe('offline sync queue templates', () => {
+  it('renders VoiceCommand.java with JPA annotations and PENDING status', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/VoiceCommand.java`);
+    expect(java).toContain(`package ${PKG}.assistant;`);
+    expect(java).toContain('@Entity');
+    expect(java).toContain('@Table(name =');
+    expect(java).toContain('VoiceCommand');
+    expect(java).toContain('private String status;');
+    expect(java).toContain('this.status = "PENDING"');
+    expect(java).toContain('private LocalDateTime createdAt;');
+    expect(java).toContain('private String failReason;');
+  });
+
+  it('renders VoiceCommandRepository.java with findByStatusOrderByCreatedAtAsc', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/assistant/VoiceCommandRepository.java`);
+    expect(java).toContain(`package ${PKG}.assistant;`);
+    expect(java).toContain('JpaRepository<VoiceCommand, Long>');
+    expect(java).toContain('findByStatusOrderByCreatedAtAsc(String status)');
+  });
+
+  it('renders SyncController.java with all sync endpoints', () => {
+    const java = fileAt(`src/main/java/${PKG_PATH}/web/SyncController.java`);
+    expect(java).toContain(`package ${PKG}.web;`);
+    expect(java).toContain('@RequestMapping("/api/sync")');
+    expect(java).toContain('PostMapping("/voice-commands")');
+    expect(java).toContain('PostMapping("/process")');
+    expect(java).toContain('GetMapping("/voice-commands")');
+    expect(java).toContain('cmd.setStatus("DONE")');
+    expect(java).toContain('cmd.setStatus("FAILED")');
+    expect(java).toContain('record ProcessResult(int processed, int failed)');
   });
 });
 

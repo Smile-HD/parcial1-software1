@@ -626,6 +626,14 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   push(`src/main/java/${packagePath}/assistant/OllamaProvisioner.java`, 'source', 'ollama-provisioner', assistantModel);
   push(`src/main/java/${packagePath}/web/AssistantController.java`, 'source', 'assistant-controller', assistantModel);
 
+  // ---- Cola de comandos de voz offline (patrón Outbox Queue) ----
+  // VoiceCommand: entidad JPA que representa un comando encolado con estado PENDING/DONE/FAILED.
+  // VoiceCommandRepository: Spring Data JPA con consulta por estado.
+  // SyncController: endpoints POST /api/sync/voice-commands, POST /api/sync/process, GET /api/sync/voice-commands.
+  push(`src/main/java/${packagePath}/assistant/VoiceCommand.java`, 'source', 'voice-command', assistantModel);
+  push(`src/main/java/${packagePath}/assistant/VoiceCommandRepository.java`, 'source', 'voice-command-repository', assistantModel);
+  push(`src/main/java/${packagePath}/web/SyncController.java`, 'source', 'sync-controller', assistantModel);
+
   return { files, warnings };
 }
 

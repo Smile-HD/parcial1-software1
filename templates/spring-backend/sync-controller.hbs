@@ -1,0 +1,130 @@
+package {{packageName}}.web;
+
+import {{packageName}}.assistant.VoiceCommand;
+import {{packageName}}.assistant.VoiceCommandRepository;
+import {{packageName}}.assistant.AssistantEngine;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.logging.Logger;
+
+/**
+ * Controlador REST generado para la cola de comandos de voz offline (patrón Outbox Queue).
+ *
+ * Flujo:
+ *   1. El cliente móvil encola texto via POST /api/sync/voice-commands mientras no hay conexión.
+ *   2. Al recuperar la conexión, llama POST /api/sync/process.
+ *   3. El backend procesa cada PENDING pasándolo por AssistantController y guarda el resultado.
+ *   4. El cliente consulta el estado con GET /api/sync/voice-commands.
+ *
+ * Renderizado por templates/spring-backend/sync-controller.hbs — no editar manualmente.
+ */
+@RestController
+@RequestMapping("/api/sync")
+public class SyncController {
+
+    private static final Logger log = Logger.getLogger(SyncController.class.getName());
+
+    private final VoiceCommandRepository repository;
+    private final AssistantController assistantController;
+
+    public SyncController(VoiceCommandRepository repository,
+                          AssistantController assistantController) {
+        this.repository = repository;
+        this.assistantController = assistantController;
+    }
+
+    /**
+     * Encola uno o más comandos de voz con estado PENDING.
+     * El móvil puede llamar este endpoint tanto online como offline (guardará en su BD local
+     * y lo enviará cuando vuelva la red).
+     * Body: { "commands": ["crea un paciente", "lista los pedidos"] }
+     */
+    @PostMapping("/voice-commands")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<VoiceCommand> enqueue(@RequestBody EnqueueRequest request) {
+        if (request.commands() == null || request.commands().isEmpty()) {
+            return List.of();
+        }
+        List<VoiceCommand> saved = request.commands().stream()
+            .filter(t -> t != null && !t.isBlank())
+            .map(text -> {
+                VoiceCommand cmd = new VoiceCommand();
+                cmd.setText(text.trim());
+                return repository.save(cmd);
+            })
+            .toList();
+        log.info("Enqueued " + saved.size() + " voice command(s).");
+        return saved;
+    }
+
+    /**
+     * Lista todos los comandos de voz (útil para que el móvil muestre el historial de estado).
+     */
+    @GetMapping("/voice-commands")
+    public List<VoiceCommand> list() {
+        return repository.findAll();
+    }
+
+    /**
+     * Consulta el estado de un comando individual.
+     */
+    @GetMapping("/voice-commands/{id}")
+    public VoiceCommand get(@PathVariable Long id) {
+        return repository.findById(id)
+            .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                "VoiceCommand " + id + " not found"));
+    }
+
+    /**
+     * Procesa todos los comandos PENDING en orden de creación.
+     * El móvil llama este endpoint cuando detecta que volvió la conexión.
+     * Es idempotente: si no hay pendientes devuelve processed=0.
+     */
+    @PostMapping("/process")
+    public ProcessResult process() {
+        List<VoiceCommand> pending = repository.findByStatusOrderByCreatedAtAsc("PENDING");
+        int processed = 0;
+        int failed = 0;
+
+        for (VoiceCommand cmd : pending) {
+            try {
+                AssistantController.AssistantResponse result =
+                    assistantController.handle(new AssistantController.AssistantRequest(cmd.getText()));
+
+                cmd.setOutcome(result.outcome());
+                cmd.setAction(result.action());
+                cmd.setEntity(result.entity());
+                cmd.setResponse(result.response());
+                cmd.setProcessedAt(LocalDateTime.now());
+
+                if ("executed".equals(result.outcome())) {
+                    cmd.setStatus("DONE");
+                    processed++;
+                } else {
+                    cmd.setStatus("FAILED");
+                    cmd.setFailReason(result.response());
+                    failed++;
+                }
+            } catch (Exception e) {
+                cmd.setStatus("FAILED");
+                cmd.setFailReason("Internal error: " + e.getMessage());
+                cmd.setProcessedAt(LocalDateTime.now());
+                failed++;
+                log.warning("Error processing VoiceCommand " + cmd.getId() + ": " + e.getMessage());
+            }
+            repository.save(cmd);
+        }
+
+        log.info("Sync process: processed=" + processed + " failed=" + failed);
+        return new ProcessResult(processed, failed);
+    }
+
+    /** DTO de entrada para POST /api/sync/voice-commands. */
+    public record EnqueueRequest(List<String> commands) {}
+
+    /** DTO de resultado para POST /api/sync/process. */
+    public record ProcessResult(int processed, int failed) {}
+}
