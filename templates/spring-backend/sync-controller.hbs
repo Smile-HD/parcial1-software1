@@ -81,15 +81,20 @@ public class SyncController {
     /**
      * Procesa todos los comandos PENDING en orden de creación.
      * El móvil llama este endpoint cuando detecta que volvió la conexión.
-     * Es idempotente: si no hay pendientes devuelve processed=0.
+     * Es idempotente y sincronizado: previene condiciones de carrera si llegan
+     * múltiples peticiones concurrentes de sincronización.
      */
     @PostMapping("/process")
-    public ProcessResult process() {
+    public synchronized ProcessResult process() {
         List<VoiceCommand> pending = repository.findByStatusOrderByCreatedAtAsc("PENDING");
         int processed = 0;
         int failed = 0;
 
         for (VoiceCommand cmd : pending) {
+            // Marcamos inmediatamente como PROCESSING para que ninguna otra llamada concurrente lo tome
+            cmd.setStatus("PROCESSING");
+            repository.save(cmd);
+
             try {
                 AssistantController.AssistantResponse result =
                     assistantController.handle(new AssistantController.AssistantRequest(cmd.getText()));

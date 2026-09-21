@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
  * Representa un comando encolado por el cliente móvil cuando no hay conexión
  * y su resultado tras ser procesado por el asistente (patrón Outbox Queue).
  *
- * Estados: PENDING → DONE | FAILED.
+ * Estados: PENDING → PROCESSING → DONE | FAILED.
  * El cliente llama a POST /api/sync/process cuando recupera la conexión.
  * Renderizado por templates/spring-backend/voice-command.hbs — no editar manualmente.
  */
@@ -25,7 +25,7 @@ public class VoiceCommand {
     @NotBlank
     private String text;
 
-    /** Estado del comando: PENDING | DONE | FAILED. */
+    /** Estado del comando: PENDING | PROCESSING | DONE | FAILED. */
     @Column(nullable = false)
     private String status;
 
