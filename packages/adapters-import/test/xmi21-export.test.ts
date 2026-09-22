@@ -593,7 +593,9 @@ describe('XMI 2.1 Exporter', () => {
 
       // Debe contener bloque connectors con etiquetas EA
       expect(xmi).toContain('<connectors>');
-      expect(xmi).toContain('ea_type="Association"');
+      expect(xmi).toContain('ea_type="Aggregation" subtype="Strong"'); // order_lines (composite)
+      expect(xmi).toContain('ea_type="Aggregation"'); // customer_orders (shared)
+      expect(xmi).toContain('ea_type="Association"'); // self-loop (none)
       expect(xmi).toContain('mt="order_lines"');
       expect(xmi).toContain('lt="parent"');
       expect(xmi).toContain('rt="child"');

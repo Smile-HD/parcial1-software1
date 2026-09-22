@@ -2475,4 +2475,76 @@ describe('applyDelta — optional association multiplicities (unit 13d fix C: co
       expect(result.value.associations[0]!.targetMultiplicity).toBe('0..*');
     }
   });
+
+  it('allows batch delete of all classes and explicit naryAssociation delete without failing (idempotent cascade prune)', () => {
+    const classA = createClass({ name: 'A' });
+    const classB = createClass({ name: 'B' });
+    const classC = createClass({ name: 'C' });
+    const naryId = uuidv4();
+    const state = createDiagram({
+      classes: [classA, classB, classC],
+      naryAssociations: [
+        {
+          id: naryId,
+          name: 'Ternary',
+          memberEnds: [
+            { classId: classA.id, multiplicity: '1' },
+            { classId: classB.id, multiplicity: '1' },
+            { classId: classC.id, multiplicity: '1' },
+          ],
+        },
+      ],
+    });
+
+    // Batch contains delete of all 3 classes AND an explicit delete of the n-ary association.
+    // Deleting class A drops the n-ary to 2 ends, which cascade-deletes it.
+    // The later explicit delete of naryAssociation must not fail with BatchError.
+    const batchDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'delete' as const,
+          classId: classA.id,
+        },
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'delete' as const,
+          classId: classB.id,
+        },
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'delete' as const,
+          classId: classC.id,
+        },
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'naryAssociation' as const,
+          op: 'delete' as const,
+          naryAssociationId: naryId,
+        },
+      ],
+    };
+
+    const result = applyDelta(state, batchDelta);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.classes).toHaveLength(0);
+      expect(result.value.naryAssociations).toHaveLength(0);
+    }
+  });
 });

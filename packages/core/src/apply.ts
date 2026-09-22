@@ -879,6 +879,21 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
     }
 
     if (!result.ok) {
+      // Si una operación 'delete' de relación o elemento falla con NotFoundError porque
+      // ya fue eliminado en cascada por un borrado anterior dentro del mismo lote (batch),
+      // se tolera como éxito idempotente.
+      const isCascadePrunedDelete =
+        delta.op === 'delete' &&
+        (result.error.kind === 'NaryAssociationNotFoundError' ||
+         result.error.kind === 'AssociationNotFoundError' ||
+         result.error.kind === 'GeneralizationNotFoundError' ||
+         result.error.kind === 'RealizationNotFoundError' ||
+         result.error.kind === 'DependencyNotFoundError');
+
+      if (isCascadePrunedDelete) {
+        continue;
+      }
+
       // Envuelve el error con el contexto del lote (batch)
       return err({ kind: 'BatchError', error: result.error, failedDeltaIndex: i });
     }

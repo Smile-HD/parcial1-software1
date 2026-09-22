@@ -435,16 +435,49 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     const srcMult = assoc.sourceMultiplicity ? ` lb="${esc(assoc.sourceMultiplicity)}"` : '';
     const tgtMult = assoc.targetMultiplicity ? ` rb="${esc(assoc.targetMultiplicity)}"` : '';
     const assocName = assoc.name ? ` mt="${esc(assoc.name)}"` : '';
+
+    const sourceIsWhole = assoc.aggregationEnd === 'source';
+    let eaType = 'Association';
+    let subtypeAttr = '';
+    let direction = 'Unspecified';
+    let srcAgg = 'none';
+    let tgtAgg = 'none';
+
+    if (assoc.aggregation === 'composite') {
+      eaType = 'Aggregation';
+      subtypeAttr = ' subtype="Strong"';
+      direction = sourceIsWhole ? 'Source -> Destination' : 'Destination -> Source';
+      if (sourceIsWhole) {
+        srcAgg = 'none';
+        tgtAgg = 'composite';
+      } else {
+        srcAgg = 'composite';
+        tgtAgg = 'none';
+      }
+    } else if (assoc.aggregation === 'shared') {
+      eaType = 'Aggregation';
+      direction = sourceIsWhole ? 'Source -> Destination' : 'Destination -> Source';
+      if (sourceIsWhole) {
+        srcAgg = 'none';
+        tgtAgg = 'shared';
+      } else {
+        srcAgg = 'shared';
+        tgtAgg = 'none';
+      }
+    }
+
     lines.push(`      <connector xmi:idref="${assoc.id}">`);
     lines.push(`        <source xmi:idref="${assoc.sourceClassId}">`);
     if (assoc.sourceRole) lines.push(`          <role name="${esc(assoc.sourceRole)}"/>`);
-    if (assoc.sourceMultiplicity) lines.push(`          <type multiplicity="${esc(assoc.sourceMultiplicity)}"/>`);
+    const srcMultAttr = assoc.sourceMultiplicity ? ` multiplicity="${esc(assoc.sourceMultiplicity)}"` : '';
+    lines.push(`          <type${srcMultAttr} aggregation="${srcAgg}"/>`);
     lines.push(`        </source>`);
     lines.push(`        <target xmi:idref="${assoc.targetClassId}">`);
     if (assoc.targetRole) lines.push(`          <role name="${esc(assoc.targetRole)}"/>`);
-    if (assoc.targetMultiplicity) lines.push(`          <type multiplicity="${esc(assoc.targetMultiplicity)}"/>`);
+    const tgtMultAttr = assoc.targetMultiplicity ? ` multiplicity="${esc(assoc.targetMultiplicity)}"` : '';
+    lines.push(`          <type${tgtMultAttr} aggregation="${tgtAgg}"/>`);
     lines.push(`        </target>`);
-    lines.push(`        <properties ea_type="Association" direction="Unspecified"${assoc.name ? ` name="${esc(assoc.name)}"` : ''}/>`);
+    lines.push(`        <properties ea_type="${eaType}"${subtypeAttr} direction="${direction}"${assoc.name ? ` name="${esc(assoc.name)}"` : ''}/>`);
     lines.push(`        <labels${assocName}${srcRole}${tgtRole}${srcMult}${tgtMult}/>`);
     lines.push(`      </connector>`);
   }
