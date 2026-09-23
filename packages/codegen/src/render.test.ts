@@ -760,12 +760,13 @@ describe('offline sync queue templates', () => {
       expect.objectContaining({ key: 'baseUrl', value: 'http://localhost:8080' }),
     );
 
-    // Entity folders
+    // Entity folders (7 non-abstract entities in golden diagram: Customer, Order, Product, OrderLine, Item, CreditCardPayment, ShippingAddress)
     const itemNames = parsed.item.map((it: { name: string }) => it.name);
     expect(itemNames).toContain('Customer (CRUD)');
     expect(itemNames).toContain('Order (CRUD)');
     expect(itemNames).toContain('Product (CRUD)');
-    expect(itemNames).toContain('Voice Assistant & Sync');
+    expect(itemNames).not.toContain('Voice Assistant & Sync');
+    expect(parsed.item).toHaveLength(7);
 
     // CRUD requests in Customer folder
     const customerFolder = parsed.item.find((it: { name: string }) => it.name === 'Customer (CRUD)');
@@ -787,11 +788,6 @@ describe('offline sync queue templates', () => {
       );
       expect(hasTestEvent).toBe(true);
     }
-
-    // Voice assistant folder has sync & assistant endpoints
-    const assistantFolder = parsed.item.find((it: { name: string }) => it.name === 'Voice Assistant & Sync');
-    expect(assistantFolder).toBeDefined();
-    expect(assistantFolder.item.length).toBeGreaterThanOrEqual(5);
   });
 });
 
