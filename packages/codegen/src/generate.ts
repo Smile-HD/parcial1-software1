@@ -604,13 +604,36 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   const assistantEntities = [...entities.entries()]
     .filter(([_, e]) => !e.isAbstract)
     .map(([name]) => name);
+  // Función auxiliar para recolectar recursivamente todos los campos (propios y heredados de superclases)
+  const collectAllFields = (entityName: string): Array<{ name: string; javaType: string }> => {
+    const visited = new Set<string>();
+    const allFields: Array<{ name: string; javaType: string }> = [];
+    const fieldNames = new Set<string>();
+
+    let currentName: string | null = entityName;
+    while (currentName && !visited.has(currentName)) {
+      visited.add(currentName);
+      const currentEntity = entities.get(currentName);
+      if (!currentEntity) break;
+
+      for (const field of currentEntity.fields) {
+        if (!fieldNames.has(field.name)) {
+          fieldNames.add(field.name);
+          allFields.push({ name: field.name, javaType: field.javaType });
+        }
+      }
+      currentName = currentEntity.extendsClass;
+    }
+    return allFields;
+  };
+
   // D11v2: esquemas de campos por entidad para que las plantillas puedan generar
   // applyFields() por entidad y el prompt de Ollama incluya la estructura de campos.
   const entitySchemas = [...entities.entries()]
     .filter(([_, e]) => !e.isAbstract)
-    .map(([name, e]) => ({
+    .map(([name]) => ({
       name,
-      fields: e.fields.map((f) => ({ name: f.name, javaType: f.javaType })),
+      fields: collectAllFields(name),
     }));
   const assistantModel = {
     packageName: basePackage,
@@ -637,10 +660,10 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   // ---- Pruebas de endpoints: Postman Collection v2.1 ----
   const postmanEntities = [...entities.entries()]
     .filter(([_, e]) => !e.isAbstract)
-    .map(([name, e]) => ({
+    .map(([name]) => ({
       name,
       route: toRoute(name),
-      fields: e.fields.map((f) => ({ name: f.name, javaType: f.javaType })),
+      fields: collectAllFields(name),
     }));
   const postmanCollection = buildPostmanCollection({
     appName: 'Generated Spring Boot API',

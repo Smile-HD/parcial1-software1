@@ -788,6 +788,15 @@ describe('offline sync queue templates', () => {
       );
       expect(hasTestEvent).toBe(true);
     }
+
+    // Subclasses inherit superclass fields in Postman request body (Product extends Item in golden diagram)
+    const productFolder = parsed.item.find((it: { name: string }) => it.name === 'Product (CRUD)');
+    expect(productFolder).toBeDefined();
+    const createProduct = productFolder.item.find((r: { name: string }) => r.name.includes('Create'));
+    expect(createProduct).toBeDefined();
+    const createBody = JSON.parse(createProduct.request.body.raw);
+    expect(createBody).toHaveProperty('label'); // inherited from Item
+    expect(createBody).toHaveProperty('price'); // declared on Product
   });
 });
 
