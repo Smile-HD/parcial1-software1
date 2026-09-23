@@ -177,7 +177,8 @@ describe('backend-only output (codegen:R1, 14.4)', () => {
         file.path === '.mvn/wrapper/maven-wrapper.properties' ||
         file.path === 'Dockerfile' ||
         file.path === 'docker-compose.yml' ||
-        file.path === 'README.md';
+        file.path === 'README.md' ||
+        file.path === 'postman_collection.json';
       expect(isBackend).toBe(true);
       expect(['source', 'resource', 'build']).toContain(file.kind);
       expect(file.path).not.toMatch(FRONTEND);

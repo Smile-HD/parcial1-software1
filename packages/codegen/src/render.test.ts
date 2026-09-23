@@ -246,6 +246,8 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/VoiceCommand.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/assistant/VoiceCommandRepository.java`);
     expect(paths).toContain(`src/main/java/${PKG_PATH}/web/SyncController.java`);
+    // Postman collection v2.1
+    expect(paths).toContain('postman_collection.json');
     // 8 entities × 4 files + 1 interface + Application + pom + 2 properties
     // + 3 wrapper assets + Dockerfile + compose + README = 43.
     // 43 → 40: 17 amendment (2026-09-13) removes the CRUD trio for abstract Payment.
@@ -253,7 +255,8 @@ describe('golden reference diagram (codegen:R5 fixture)', () => {
     // OllamaEngine, AuditLog, AssistantController).
     // 45 → 46: D11v2 adds OllamaProvisioner.
     // 46 → 49: Offline sync queue adds VoiceCommand, VoiceCommandRepository, SyncController.
-    expect(paths).toHaveLength(49);
+    // 49 → 50: Postman collection adds postman_collection.json.
+    expect(paths).toHaveLength(50);
   });
 
   it('every generated file has non-stub content from a real template', () => {
@@ -746,5 +749,50 @@ describe('offline sync queue templates', () => {
     expect(java).toContain('cmd.setStatus("FAILED")');
     expect(java).toContain('record ProcessResult(int processed, int failed)');
   });
+
+  it('renders postman_collection.json with valid Postman v2.1 schema, variables and tests', () => {
+    const raw = fileAt('postman_collection.json');
+    expect(raw).toBeDefined();
+    const parsed = JSON.parse(raw);
+    expect(parsed.info).toBeDefined();
+    expect(parsed.info.schema).toBe('https://schema.getpostman.com/json/collection/v2.1.0/collection.json');
+    expect(parsed.variable).toContainEqual(
+      expect.objectContaining({ key: 'baseUrl', value: 'http://localhost:8080' }),
+    );
+
+    // Entity folders
+    const itemNames = parsed.item.map((it: { name: string }) => it.name);
+    expect(itemNames).toContain('Customer (CRUD)');
+    expect(itemNames).toContain('Order (CRUD)');
+    expect(itemNames).toContain('Product (CRUD)');
+    expect(itemNames).toContain('Voice Assistant & Sync');
+
+    // CRUD requests in Customer folder
+    const customerFolder = parsed.item.find((it: { name: string }) => it.name === 'Customer (CRUD)');
+    expect(customerFolder).toBeDefined();
+    expect(customerFolder.item).toHaveLength(5);
+    const reqNames = customerFolder.item.map((r: { name: string }) => r.name);
+    expect(reqNames).toContain('1. List All Customer');
+    expect(reqNames).toContain('2. Create Customer');
+    expect(reqNames).toContain('3. Get Customer by ID');
+    expect(reqNames).toContain('4. Update Customer');
+    expect(reqNames).toContain('5. Delete Customer');
+
+    // Each request has automated pm.test scripts (test event may be at any position — prerequest may come first)
+    for (const req of customerFolder.item) {
+      expect(req.event).toBeDefined();
+      const hasTestEvent = req.event.some(
+        (e: { listen: string; script: { exec: string[] } }) =>
+          e.listen === 'test' && e.script.exec.some((line: string) => line.includes('pm.test')),
+      );
+      expect(hasTestEvent).toBe(true);
+    }
+
+    // Voice assistant folder has sync & assistant endpoints
+    const assistantFolder = parsed.item.find((it: { name: string }) => it.name === 'Voice Assistant & Sync');
+    expect(assistantFolder).toBeDefined();
+    expect(assistantFolder.item.length).toBeGreaterThanOrEqual(5);
+  });
 });
+
 

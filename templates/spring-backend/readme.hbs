@@ -45,3 +45,14 @@ for it:
 - src/main/java — entities, repositories, services (thin 3+1 layer), controllers
 - src/main/resources — application.properties (H2 default) + application-prod.properties (PostgreSQL)
 - pom.xml + Maven wrapper — ./mvnw works without a local Maven install
+- postman_collection.json — colección de pruebas automáticas para todos los endpoints
+
+## Pruebas de Endpoints con Postman
+
+El proyecto incluye el archivo `postman_collection.json` en la raíz.
+Para ejecutar las pruebas automáticas:
+1. Abrir Postman e importar `postman_collection.json`.
+2. Verificar que la variable `baseUrl` apunte a `http://localhost:8080`.
+3. Hacer clic derecho en la colección y seleccionar **Run collection**.
+4. Postman ejecutará todos los endpoints (CRUDs por entidad, Asistente y Sincronización Offline) y validará los códigos de respuesta con tests automáticos integrados.
+

@@ -64,7 +64,7 @@ function plural(word: string): string {
 }
 
 /** Nombre de clase de entidad → segmento de ruta REST: ShippingAddress → shipping-addresses. */
-function route(className: string): string {
+export function route(className: string): string {
   return snake(plural(camel(className)));
 }
 
@@ -85,6 +85,7 @@ function registerHelpers(hb: typeof Handlebars): void {
   hb.registerHelper('snake', (name: string) => snake(String(name ?? '')));
   hb.registerHelper('plural', (name: string) => plural(String(name ?? '')));
   hb.registerHelper('route', (name: string) => route(String(name ?? '')));
+  hb.registerHelper('json', (val: unknown) => JSON.stringify(val, null, 2));
   hb.registerHelper('typeImports', (fields: EntityFieldModel[] | undefined, methods: unknown) => {
     const imports = new Set<string>();
     for (const field of fields ?? []) {
