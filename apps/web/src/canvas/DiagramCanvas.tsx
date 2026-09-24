@@ -881,6 +881,32 @@ export function computeNextZoom(currentZoom: number, direction: 'in' | 'out'): n
   return Math.max(Number((currentZoom / 1.25).toFixed(2)), 0.2);
 }
 
+/**
+ * unidad 13f — StarUML style dynamic handle allocation: picks optimal perimeter sides
+ * based on relative positions of source and target to avoid wrapping around nodes.
+ */
+export function getOptimalHandles(
+  sourcePos: { x: number; y: number },
+  targetPos: { x: number; y: number },
+  isSelf = false,
+): { sourceHandle: string | undefined; targetHandle: string | undefined } {
+  if (isSelf) {
+    return { sourceHandle: undefined, targetHandle: 'target-top' };
+  }
+  const dx = targetPos.x - sourcePos.x;
+  const dy = targetPos.y - sourcePos.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { sourceHandle: undefined, targetHandle: undefined } // Right -> Left
+      : { sourceHandle: 'left-source', targetHandle: 'right-target' }; // Left -> Right
+  } else {
+    return dy >= 0
+      ? { sourceHandle: 'source-bottom', targetHandle: 'target-top' } // Bottom -> Top
+      : { sourceHandle: 'top-source', targetHandle: 'bottom-target' }; // Top -> Bottom
+  }
+}
+
 export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   // unidad 13e.10 — accesor reactivo: cada cadena JSX a continuación se re-renderiza en vivo
   // cuando cambia el alternador de idioma (`t` a nivel de módulo atiende los controladores).
@@ -913,7 +939,6 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   // Último punto donde se hizo clic en el lienzo (en coordenadas de flujo de React Flow)
   const lastClickedPointRef = useRef<{ x: number; y: number } | null>(null);
   const [currentZoom, setCurrentZoom] = useState<number>(1);
-  const [zoomIndicator, setZoomIndicator] = useState<{ x: number; y: number; id: number } | null>(null);
 
   const recordClickPoint = useCallback((clientX: number, clientY: number) => {
     if (!rfRef.current) return;
@@ -934,7 +959,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         target?.closest('.diagram-zoom-controls') ||
         target?.closest('.palette') ||
         target?.closest('.diagram-canvas__edge-editor') ||
-        target?.closest('.diagram-canvas__nary-editor')
+        target?.closest('.diagram-canvas__nary-editor') ||
+        target?.closest('.staruml-mult-picker')
       ) {
         return;
       }
@@ -972,7 +998,6 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     const nextZoom = computeNextZoom(current, 'in');
     rfRef.current?.setCenter?.(target.x, target.y, { zoom: nextZoom, duration: 250 });
     setCurrentZoom(nextZoom);
-    setZoomIndicator({ x: target.x, y: target.y, id: Date.now() });
   }, [getZoomTarget, currentZoom]);
 
   const handleZoomOut = useCallback(() => {
@@ -981,7 +1006,6 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     const nextZoom = computeNextZoom(current, 'out');
     rfRef.current?.setCenter?.(target.x, target.y, { zoom: nextZoom, duration: 250 });
     setCurrentZoom(nextZoom);
-    setZoomIndicator({ x: target.x, y: target.y, id: Date.now() });
   }, [getZoomTarget, currentZoom]);
 
   const handleZoomReset = useCallback(() => {
@@ -1617,40 +1641,85 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
 
   const edges = useMemo<Edge[]>(
     () => [
-      ...diagram.associations.map((assoc) => ({
-        id: assoc.id,
-        source: assoc.sourceClassId,
-        target: assoc.targetClassId,
-        type: 'association' as const,
-        data: { association: assoc },
-      })),
+      ...diagram.associations.map((assoc) => {
+        const sNode = diagram.classes.find((c) => c.id === assoc.sourceClassId);
+        const tNode = diagram.classes.find((c) => c.id === assoc.targetClassId);
+        const handles = sNode && tNode
+          ? getOptimalHandles(sNode.position, tNode.position, assoc.sourceClassId === assoc.targetClassId)
+          : { sourceHandle: undefined, targetHandle: undefined };
+
+        return {
+          id: assoc.id,
+          source: assoc.sourceClassId,
+          target: assoc.targetClassId,
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          type: 'association' as const,
+          data: {
+            association: assoc,
+            onUpdateMultiplicity: (end: 'source' | 'target', value: string) => {
+              handleUpdateMultiplicity(doc, diagram.id, assoc.id, end, value);
+            },
+          },
+        };
+      }),
       // Unidad 11.3 — aristas de generalización: origen = subClase, destino = superClase
       // para que el marcador de triángulo hueco se renderice en el extremo de la superclase.
-      ...diagram.generalizations.map((gen) => ({
-        id: gen.id,
-        source: gen.subClassId,
-        target: gen.superClassId,
-        type: 'generalization' as const,
-        data: { generalization: gen },
-      })),
+      ...diagram.generalizations.map((gen) => {
+        const sNode = diagram.classes.find((c) => c.id === gen.subClassId);
+        const tNode = diagram.classes.find((c) => c.id === gen.superClassId);
+        const handles = sNode && tNode
+          ? getOptimalHandles(sNode.position, tNode.position, gen.subClassId === gen.superClassId)
+          : { sourceHandle: undefined, targetHandle: undefined };
+
+        return {
+          id: gen.id,
+          source: gen.subClassId,
+          target: gen.superClassId,
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          type: 'generalization' as const,
+          data: { generalization: gen },
+        };
+      }),
       // Unidad 12.3 — aristas de realización: origen = clase cliente, destino = interfaz
       // proveedora, para que la línea discontinua + triángulo hueco se renderice en el extremo de la interfaz.
-      ...(diagram.realizations ?? []).map((real) => ({
-        id: real.id,
-        source: real.clientClassId,
-        target: real.supplierInterfaceId,
-        type: 'realization' as const,
-        data: { realization: real },
-      })),
+      ...(diagram.realizations ?? []).map((real) => {
+        const sNode = diagram.classes.find((c) => c.id === real.clientClassId);
+        const tNode = diagram.classes.find((c) => c.id === real.supplierInterfaceId);
+        const handles = sNode && tNode
+          ? getOptimalHandles(sNode.position, tNode.position, real.clientClassId === real.supplierInterfaceId)
+          : { sourceHandle: undefined, targetHandle: undefined };
+
+        return {
+          id: real.id,
+          source: real.clientClassId,
+          target: real.supplierInterfaceId,
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          type: 'realization' as const,
+          data: { realization: real },
+        };
+      }),
       // Unidad 12.3 (12b) — aristas de dependencia: origen = clase cliente, destino =
       // proveedor, para que la línea discontinua + flecha abierta se renderice en el extremo del proveedor.
-      ...(diagram.dependencies ?? []).map((dep) => ({
-        id: dep.id,
-        source: dep.clientClassId,
-        target: dep.supplierClassId,
-        type: 'dependency' as const,
-        data: { dependency: dep },
-      })),
+      ...(diagram.dependencies ?? []).map((dep) => {
+        const sNode = diagram.classes.find((c) => c.id === dep.clientClassId);
+        const tNode = diagram.classes.find((c) => c.id === dep.supplierClassId);
+        const handles = sNode && tNode
+          ? getOptimalHandles(sNode.position, tNode.position, dep.clientClassId === dep.supplierClassId)
+          : { sourceHandle: undefined, targetHandle: undefined };
+
+        return {
+          id: dep.id,
+          source: dep.clientClassId,
+          target: dep.supplierClassId,
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          type: 'dependency' as const,
+          data: { dependency: dep },
+        };
+      }),
       // Unidad 13.2 — una arista simple por extremo miembro n-ario: diamante → clase,
       // etiquetada con la multiplicidad de dicho extremo (y rol cuando esté presente).
       ...(diagram.naryAssociations ?? []).flatMap((nary) =>
@@ -1663,7 +1732,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         })),
       ),
     ],
-    [diagram],
+    [diagram, doc],
   );
 
   // unidad 13c — la arista seleccionada resuelta a partir de la proyección en vivo. Cuando la
@@ -2369,17 +2438,6 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                 </span>
               </div>
             </div>
-            {zoomIndicator && (
-              <div
-                key={zoomIndicator.id}
-                className="diagram-zoom-indicator"
-                data-testid="diagram-zoom-indicator"
-                style={{
-                  transform: `translate(${zoomIndicator.x}px, ${zoomIndicator.y}px)`,
-                }}
-                aria-hidden="true"
-              />
-            )}
           </ViewportPortal>
         </ReactFlow>
       </EdgeCrossingProvider>

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildYDocFromDiagram, projectYDocToDiagram, type Diagram } from '@app/core';
 
-import { computeNextZoom, DiagramCanvas } from './DiagramCanvas';
+import { computeNextZoom, DiagramCanvas, getOptimalHandles } from './DiagramCanvas';
 import { getBoxIntersection } from './AssociationEdge';
 
 function makeFixture(): Diagram {
@@ -213,6 +213,77 @@ describe('Enterprise Architect diagrammer convenience features', () => {
       const zoomOutBtn = screen.getByTestId('zoom-out-button');
       fireEvent.click(zoomOutBtn);
       expect(screen.getByTestId('zoom-level-indicator').textContent).toBe('100%');
+    });
+  });
+
+  describe('StarUML dynamic connection and multiplicity comfort', () => {
+    it('computes optimal sides based on relative position between classes', () => {
+      // Target to the right
+      expect(getOptimalHandles({ x: 0, y: 0 }, { x: 300, y: 0 })).toEqual({
+        sourceHandle: undefined,
+        targetHandle: undefined,
+      });
+
+      // Target to the left
+      expect(getOptimalHandles({ x: 300, y: 0 }, { x: 0, y: 0 })).toEqual({
+        sourceHandle: 'left-source',
+        targetHandle: 'right-target',
+      });
+
+      // Target below
+      expect(getOptimalHandles({ x: 0, y: 0 }, { x: 0, y: 300 })).toEqual({
+        sourceHandle: 'source-bottom',
+        targetHandle: 'target-top',
+      });
+
+      // Target above
+      expect(getOptimalHandles({ x: 0, y: 300 }, { x: 0, y: 0 })).toEqual({
+        sourceHandle: 'top-source',
+        targetHandle: 'bottom-target',
+      });
+    });
+
+    it('renders StarUML inline multiplicity badge on association edges', async () => {
+      const fixture = makeFixture();
+      const assocId = crypto.randomUUID();
+      fixture.associations.push({
+        id: assocId,
+        diagramId: fixture.id,
+        sourceClassId: fixture.classes[0]!.id,
+        targetClassId: fixture.classes[1]!.id,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '*',
+        directed: false,
+      });
+      const doc = buildYDocFromDiagram(fixture);
+      render(<DiagramCanvas doc={doc} />);
+
+      const sourceBadge = await waitFor(() => {
+        const el = screen.getByTestId(`staruml-mult-source-${assocId}`);
+        expect(el).not.toBeNull();
+        return el;
+      });
+      expect(sourceBadge.textContent).toBe('1');
+
+      const targetBadge = screen.getByTestId(`staruml-mult-target-${assocId}`);
+      expect(targetBadge).not.toBeNull();
+      expect(targetBadge.textContent).toBe('*');
+
+      // Clicking source badge opens StarUML inline picker without opening the edge modal
+      fireEvent.click(sourceBadge);
+      const picker = await waitFor(() => {
+        const p = screen.getByTestId('staruml-mult-picker');
+        expect(p).not.toBeNull();
+        return p;
+      });
+
+      // Click preset '0..*' in the picker
+      const presetBtn = picker.querySelector('button.staruml-mult-picker__preset:nth-child(4)')!;
+      expect(presetBtn.textContent).toBe('0..*');
+      fireEvent.click(presetBtn);
+
+      const projected = projectYDocToDiagram(doc);
+      expect(projected.associations[0]?.sourceMultiplicity).toBe('0..*');
     });
   });
 });

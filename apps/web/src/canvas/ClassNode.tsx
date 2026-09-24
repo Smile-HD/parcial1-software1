@@ -758,30 +758,55 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
           renderiza cuando no hay herramienta armada, por lo que el arrastre del nodo y la edición
           dentro del nodo se comportan exactamente como antes. */}
       {data.connectArmed === true && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="connect-body"
-          data-testid="node-connect-overlay"
-          className="uml-class__connect-overlay"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: '100%',
-            height: '100%',
-            minWidth: 0,
-            minHeight: 0,
-            transform: 'none',
-            borderRadius: 0,
-            border: 'none',
-            background: 'transparent',
-            boxShadow: 'none',
-            zIndex: 5,
-          }}
-        />
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="connect-body"
+            data-testid="node-connect-overlay"
+            className="uml-class__connect-overlay"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              minWidth: 0,
+              minHeight: 0,
+              transform: 'none',
+              borderRadius: 0,
+              border: 'none',
+              background: 'transparent',
+              boxShadow: 'none',
+              zIndex: 5,
+            }}
+          />
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="connect-body-target"
+            data-testid="node-connect-target-overlay"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              minWidth: 0,
+              minHeight: 0,
+              transform: 'none',
+              borderRadius: 0,
+              border: 'none',
+              background: 'transparent',
+              boxShadow: 'none',
+              zIndex: 4,
+            }}
+          />
+        </>
       )}
     </div>
   );

@@ -12,7 +12,8 @@
  *    leídas del almacén de React Flow (EdgeProps de v12 no las incluye), con un valor
  *    por defecto antes de la medición.
  */
-import { type EdgeProps, useStore, BaseEdge, Position } from '@xyflow/react';
+import { useState } from 'react';
+import { type EdgeProps, useStore, BaseEdge, Position, EdgeLabelRenderer } from '@xyflow/react';
 
 import type { Association } from '@app/core';
 
@@ -21,6 +22,7 @@ import { useOrthogonalPathWithJumps } from './EdgeCrossingContext';
 
 interface AssociationEdgeData {
   association: Association;
+  onUpdateMultiplicity?: (end: 'source' | 'target', value: string) => void;
 }
 
 export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
@@ -41,6 +43,9 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
   // Los selectores primitivos mantienen useStore estable (sin cambios de identidad de objetos).
   const sourceWidth = useStore((s) => s.nodeLookup.get(source)?.measured?.width ?? 0);
   const sourceHeight = useStore((s) => s.nodeLookup.get(source)?.measured?.height ?? 0);
+
+  const [activePicker, setActivePicker] = useState<'source' | 'target' | null>(null);
+  const [customDraft, setCustomDraft] = useState('');
 
   const association = data?.association;
   const assocClassId = association?.associationClassId;
@@ -357,6 +362,113 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
         >
           {targetRole}
         </text>
+      )}
+
+      {/* unidad 13f — StarUML style inline multiplicity editor right on the edge (no modal needed) */}
+      {data?.onUpdateMultiplicity && (
+        <EdgeLabelRenderer>
+          {/* Source Multiplicity Badge */}
+          <div
+            className="nodrag nopan staruml-mult-badge"
+            data-testid={`staruml-mult-source-${id}`}
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${srcX}px, ${sourceRole ? srcY - 6 : srcY}px)`,
+              pointerEvents: 'all',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActivePicker((prev) => (prev === 'source' ? null : 'source'));
+              setCustomDraft(sourceMult ?? '');
+            }}
+            title="Click to change multiplicity (StarUML)"
+          >
+            {sourceMult ?? <span className="staruml-mult-badge__placeholder">+</span>}
+          </div>
+
+          {/* Target Multiplicity Badge */}
+          <div
+            className="nodrag nopan staruml-mult-badge"
+            data-testid={`staruml-mult-target-${id}`}
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${tgtX}px, ${targetRole ? tgtY - 6 : tgtY}px)`,
+              pointerEvents: 'all',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActivePicker((prev) => (prev === 'target' ? null : 'target'));
+              setCustomDraft(targetMult ?? '');
+            }}
+            title="Click to change multiplicity (StarUML)"
+          >
+            {targetMult ?? <span className="staruml-mult-badge__placeholder">+</span>}
+          </div>
+
+          {/* StarUML Quick-Picker Popover */}
+          {activePicker !== null && (
+            <div
+              className="nodrag nopan staruml-mult-picker"
+              data-testid="staruml-mult-picker"
+              style={{
+                position: 'absolute',
+                transform: `translate(-50%, -100%) translate(${
+                  activePicker === 'source' ? srcX : tgtX
+                }px, ${(activePicker === 'source' ? (sourceRole ? srcY - 6 : srcY) : (targetRole ? tgtY - 6 : tgtY)) - 10}px)`,
+                pointerEvents: 'all',
+                zIndex: 100,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="staruml-mult-picker__presets">
+                {['1', '0..1', '*', '0..*', '1..*'].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className="staruml-mult-picker__preset"
+                    onClick={() => {
+                      data.onUpdateMultiplicity?.(activePicker, val);
+                      setActivePicker(null);
+                    }}
+                  >
+                    {val}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="staruml-mult-picker__preset staruml-mult-picker__preset--clear"
+                  title="Clear multiplicity"
+                  onClick={() => {
+                    data.onUpdateMultiplicity?.(activePicker, '');
+                    setActivePicker(null);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <form
+                className="staruml-mult-picker__custom"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (customDraft.trim()) {
+                    data.onUpdateMultiplicity?.(activePicker, customDraft.trim());
+                  }
+                  setActivePicker(null);
+                }}
+              >
+                <input
+                  type="text"
+                  className="staruml-mult-picker__input"
+                  value={customDraft}
+                  onChange={(e) => setCustomDraft(e.target.value)}
+                  placeholder="Custom…"
+                  autoFocus
+                />
+                <button type="submit" className="staruml-mult-picker__submit">✓</button>
+              </form>
+            </div>
+          )}
+        </EdgeLabelRenderer>
       )}
     </>
   );
