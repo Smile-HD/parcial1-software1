@@ -484,6 +484,7 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         name: delta.name,
         sourceRole: delta.sourceRole,
         targetRole: delta.targetRole,
+        associationClassId: delta.associationClassId,
       });
       return ok({ ...diagram, associations: [...diagram.associations, newAssociation] });
     }
@@ -498,7 +499,9 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         delta.aggregationEnd === undefined &&
         delta.name === undefined &&
         delta.sourceRole === undefined &&
-        delta.targetRole === undefined
+        delta.targetRole === undefined &&
+        delta.associationClassId === undefined &&
+        delta.newAssociationClassId === undefined
       ) {
         return err({ kind: 'InvalidOperationError', reason: 'Update requires at least one new multiplicity or meta field' });
       }
@@ -516,6 +519,8 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         ...(delta.name !== undefined ? { name: delta.name || undefined } : {}),
         ...(delta.sourceRole !== undefined ? { sourceRole: delta.sourceRole || undefined } : {}),
         ...(delta.targetRole !== undefined ? { targetRole: delta.targetRole || undefined } : {}),
+        ...(delta.associationClassId !== undefined ? { associationClassId: delta.associationClassId || undefined } : {}),
+        ...(delta.newAssociationClassId !== undefined ? { associationClassId: delta.newAssociationClassId ?? undefined } : {}),
       };
       return ok({ ...diagram, associations: updatedAssociations });
     }

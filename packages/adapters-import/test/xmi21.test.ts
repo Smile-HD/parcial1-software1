@@ -262,6 +262,7 @@ describe('XMI 2.1 real EA 6.5 export #2 (interfaces, realizations, operations, a
     expect(asClassAssoc).toBeDefined();
     expect(asClassAssoc!.aggregation).toBe('none');
     expect(asClassAssoc!.name).toBe('Class5');
+    expect(asClassAssoc!.associationClassId).toBe(class5!.id);
   });
 
   it('skips the dangling memberEnd-less uml:Association and the uml:TemplateBinding child without leaking IR entries (xmi:R2)', () => {

@@ -1183,11 +1183,68 @@ function attachRelationship(
   const targetEntity = entities.get(target.javaName);
   if (!sourceEntity || !targetEntity) return;
 
-  // 14c: la composición se propaga en cascada únicamente desde el lado CONTENEDOR (diamante).
-  // La agregación compartida ('shared') y las asociaciones simples ('none') se mantienen simples.
   const isComposite = assoc.aggregation === 'composite';
   const sourceIsContainer = isComposite && assoc.aggregationEnd === 'source';
   const targetIsContainer = isComposite && assoc.aggregationEnd === 'target';
+
+  // Soporte para Clase de Asociación: si la asociación está vinculada a una clase de asociación,
+  // la entidad intermedia posee dos @ManyToOne (hacia source y target), y los extremos poseen @OneToMany hacia ella.
+  if (assoc.associationClassId) {
+    const assocClassInfo = classInfo.get(assoc.associationClassId);
+    if (assocClassInfo && assocClassInfo.isEntity) {
+      const assocEntity = entities.get(assocClassInfo.javaName);
+      if (assocEntity) {
+        assocEntity.relationships.push({
+          associationId: `${assoc.id}-src`,
+          targetEntity: source.javaName,
+          kind: 'ManyToOne',
+          owningSide: 'target',
+          thisSideIsOwning: true,
+          sourceMultiplicity: null,
+          targetMultiplicity: '1',
+          cascade: false,
+          orphanRemoval: false,
+        });
+        assocEntity.relationships.push({
+          associationId: `${assoc.id}-tgt`,
+          targetEntity: target.javaName,
+          kind: 'ManyToOne',
+          owningSide: 'target',
+          thisSideIsOwning: true,
+          sourceMultiplicity: null,
+          targetMultiplicity: '1',
+          cascade: false,
+          orphanRemoval: false,
+        });
+
+        sourceEntity.relationships.push({
+          associationId: `${assoc.id}-src`,
+          targetEntity: assocClassInfo.javaName,
+          kind: 'OneToMany',
+          owningSide: 'target',
+          thisSideIsOwning: false,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          cascade: sourceIsContainer,
+          orphanRemoval: sourceIsContainer,
+        });
+
+        targetEntity.relationships.push({
+          associationId: `${assoc.id}-tgt`,
+          targetEntity: assocClassInfo.javaName,
+          kind: 'OneToMany',
+          owningSide: 'target',
+          thisSideIsOwning: false,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          cascade: targetIsContainer,
+          orphanRemoval: targetIsContainer,
+        });
+
+        return;
+      }
+    }
+  }
 
   sourceEntity.relationships.push({
     associationId: assoc.id,

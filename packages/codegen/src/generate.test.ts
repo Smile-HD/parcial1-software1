@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { AssociationSchema, AttributeSchema, ClassSchema, DiagramSchema, type Diagram } from '@app/core';
 import { describe, expect, it } from 'vitest';
 
@@ -715,6 +716,44 @@ describe('redundant FK attribute suppression (Hibernate DuplicateMappingExceptio
     expect(user.fields.find((f) => f.name === 'name')).toBeDefined();
     expect(user.relationships.some((r) => r.targetEntity === 'Location')).toBe(true);
     expect(result.warnings.some((w) => w.code === 'duplicate-fk-column-suppressed')).toBe(true);
+  });
+
+  it('maps an association class into an entity with two ManyToOne relationships and OneToMany on endpoints', () => {
+    const studentId = randomUUID();
+    const courseId = randomUUID();
+    const enrollmentId = randomUUID();
+    const assocId = randomUUID();
+
+    const d = diagram(
+      [
+        cls(studentId, 'Student', [attr(randomUUID(), 'name', 'String')]),
+        cls(courseId, 'Course', [attr(randomUUID(), 'title', 'String')]),
+        cls(enrollmentId, 'Enrollment', [attr(randomUUID(), 'grade', 'int')]),
+      ],
+      [
+        {
+          id: assocId,
+          sourceClassId: studentId,
+          targetClassId: courseId,
+          sourceMultiplicity: '0..*',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'none',
+          associationClassId: enrollmentId,
+        },
+      ],
+    );
+
+    const result = generate(d, { outputRoot: ROOT });
+    const enrollment = entityOf(result.files, 'Enrollment');
+    expect(enrollment.fields.find((f) => f.name === 'grade')).toBeDefined();
+    expect(enrollment.relationships).toHaveLength(2);
+    expect(enrollment.relationships.some((r) => r.targetEntity === 'Student' && r.kind === 'ManyToOne')).toBe(true);
+    expect(enrollment.relationships.some((r) => r.targetEntity === 'Course' && r.kind === 'ManyToOne')).toBe(true);
+
+    const student = entityOf(result.files, 'Student');
+    expect(student.relationships.some((r) => r.targetEntity === 'Enrollment' && r.kind === 'OneToMany')).toBe(true);
+    expect(student.relationships.some((r) => r.targetEntity === 'Course')).toBe(false);
   });
 });
 

@@ -2483,7 +2483,7 @@ describe('unit 13c — aggregation/composition palette tools create preset assoc
   const classifiersOf = (diagram: Diagram) =>
     diagram.classes.map((c) => ({ id: c.id, kind: c.kind ?? 'class' }));
 
-  it('Aggregation tool: association with aggregation=shared and aggregationEnd=source', () => {
+  it('Aggregation tool: association with aggregation=shared and aggregationEnd=target', () => {
     const { diagram, doc, aId, bId } = kindFixture();
     const result = handleConnectWithTool(
       doc, diagram.id, 'aggregation', { source: aId, target: bId }, classifiersOf(diagram),
@@ -2491,7 +2491,7 @@ describe('unit 13c — aggregation/composition palette tools create preset assoc
     expect(result.ok).toBe(true);
     const assoc = projectYDocToDiagram(doc).associations[0]!;
     expect(assoc.aggregation).toBe('shared');
-    expect(assoc.aggregationEnd).toBe('source');
+    expect(assoc.aggregationEnd).toBe('target');
     expect(assoc.sourceClassId).toBe(aId);
     expect(assoc.targetClassId).toBe(bId);
     expect(assoc.directed).toBe(false);
@@ -2532,7 +2532,7 @@ it('Aggregation tool allows self-aggregation (valid UML — e.g., TreeNode compo
     expect(assoc.sourceClassId).toBe(aId);
     expect(assoc.targetClassId).toBe(aId);
     expect(assoc.aggregation).toBe('shared');
-    expect(assoc.aggregationEnd).toBe('source');
+    expect(assoc.aggregationEnd).toBe('target');
   });
 
   it('the aggregation kind survives later unrelated deltas (bridge carries it)', () => {

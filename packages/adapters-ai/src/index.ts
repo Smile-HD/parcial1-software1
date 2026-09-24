@@ -282,6 +282,91 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
+    // 6c. Asociación con CLASE DE ASOCIACIÓN:
+    // "association class Enrollment between Student and Course" / "clase de asociacion Matricula entre Alumno y Curso"
+    const assocClassPattern = /\b(?:association\s+class|clase\s+de\s+asociaci[óo]n)\s+([A-Za-z_]\w*)\s+(?:between|entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (assocClassPattern) {
+      const assocClassName = assocClassPattern[1]!;
+      const srcName = assocClassPattern[2]!;
+      const tgtName = assocClassPattern[3]!;
+      const sourceClassId = classIdByName(currentIr, srcName);
+      const targetClassId = classIdByName(currentIr, tgtName);
+      if (sourceClassId === null) return refused(`Unknown class "${srcName}"`);
+      if (targetClassId === null) return refused(`Unknown class "${tgtName}"`);
+
+      let assocClassId = classIdByName(currentIr, assocClassName);
+      let createClassDelta: ClassDelta | undefined;
+      if (assocClassId === null) {
+        assocClassId = crypto.randomUUID();
+        createClassDelta = {
+          kind: 'class',
+          op: 'create',
+          ...deltaBase(currentIr),
+          classId: assocClassId,
+          name: assocClassName,
+          position: nextPosition(currentIr),
+        };
+      }
+
+      const assocDelta: AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        ...deltaBase(currentIr),
+        associationId: crypto.randomUUID(),
+        sourceClassId,
+        targetClassId,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '1',
+        directed: false,
+        associationClassId: assocClassId,
+      };
+
+      if (createClassDelta) {
+        return {
+          kind: 'delta',
+          value: {
+            kind: 'batch',
+            ...deltaBase(currentIr),
+            deltas: [createClassDelta, assocDelta],
+          },
+        };
+      }
+      return { kind: 'delta', value: assocDelta };
+    }
+
+    // 6d. Vincular clase existente a asociación como clase de asociación:
+    // "link class Grade to association between Student and Course"
+    const linkAssocClassPattern = /\b(?:link|connect|conecta|conectá|asocia|asociá)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+(?:to\s+(?:association\s+between|asociaci[óo]n\s+entre)|a\s+(?:la\s+)?asociaci[óo]n\s+entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    if (linkAssocClassPattern) {
+      const className = linkAssocClassPattern[1]!;
+      const srcName = linkAssocClassPattern[2]!;
+      const tgtName = linkAssocClassPattern[3]!;
+      const classId = classIdByName(currentIr, className);
+      const srcId = classIdByName(currentIr, srcName);
+      const tgtId = classIdByName(currentIr, tgtName);
+      if (classId === null) return refused(`Unknown class "${className}"`);
+      if (srcId === null) return refused(`Unknown class "${srcName}"`);
+      if (tgtId === null) return refused(`Unknown class "${tgtName}"`);
+
+      const existingAssoc = currentIr.associations.find(
+        (a) =>
+          (a.sourceClassId === srcId && a.targetClassId === tgtId) ||
+          (a.sourceClassId === tgtId && a.targetClassId === srcId),
+      );
+      if (!existingAssoc) {
+        return refused(`No association found between "${srcName}" and "${tgtName}".`);
+      }
+
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'updateMultiplicity',
+        ...deltaBase(currentIr),
+        associationId: existingAssoc.id,
+        newAssociationClassId: classId,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
     // 7. asociación nombrada con roles: "association X Y named Z role A role B"
     // Debe verificarse ANTES del patrón genérico de asociación
     const namedAssociation = /\b(?:association|link|asocia(?:ci[óo]n)?)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:(?:with|con|y|and)\s+)?([A-Za-z_]\w*)\s+(?:named|called|llama(?:da)?)\s+([A-Za-z_]\w*)(?:(?:\s+(?:role|rol)\s+([A-Za-z_]\w*))?(?:\s+(?:role|rol)\s+([A-Za-z_]\w*))?)?/i.exec(utterance);
@@ -595,8 +680,8 @@ export class OpenAiLlm implements LlmPort {
       'ADD METHOD: {"kind":"member","op":"addMethod", ...base, "classId":"<existing class uuid or placeholder>","memberId":"<new uuid>","name":"<methodName>","returnType":"<type>","parameters":[] [, "visibility":"+"|"-"|"#"|"~"] [, "isStatic":true]}',
       'EDIT METHOD: {"kind":"member","op":"editMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>","name":"<newName>","returnType":"<newReturnType>","parameters":[] [, visibility/isStatic]}',
       'DELETE METHOD: {"kind":"member","op":"deleteMethod", ...base, "classId":"<existing class uuid>","memberId":"<existing method uuid>"}',
-'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
-       'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*" [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"]}',
+'ASSOCIATION CREATE: {"kind":"association","op":"create", ...base, "associationId":"<new uuid>","sourceClassId":"<existing or placeholder>","targetClassId":"<existing or placeholder>","sourceMultiplicity":"1","targetMultiplicity":"1","directed":false [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"] [, "associationClassId":"<existing class uuid or placeholder>"]}',
+       'ASSOCIATION UPDATE MULTIPLICITY: {"kind":"association","op":"updateMultiplicity", ...base, "associationId":"<existing association uuid>","newSourceMultiplicity":"1"|"0..1"|"1..*"|"0..*","newTargetMultiplicity":"1"|"0..1"|"1..*"|"0..*" [, "aggregation":"none"|"shared"|"composite"] [, "aggregationEnd":"source"|"target"] [, "name":"<assocName>"] [, "sourceRole":"<role>"] [, "targetRole":"<role>"] [, "newAssociationClassId":"<existing class uuid or placeholder>"]}',
        'ASSOCIATION DELETE: {"kind":"association","op":"delete", ...base, "associationId":"<existing association uuid>"}',
         'GENERALIZATION CREATE: {"kind":"generalization","op":"create", ...base, "generalizationId":"<new uuid>","subClassId":"<existing class uuid — the SUBCLASS>","superClassId":"<existing class uuid — the SUPERCLASS>"}',
         'GENERALIZATION DELETE: {"kind":"generalization","op":"delete", ...base, "generalizationId":"<existing generalization uuid from the IR>"}',

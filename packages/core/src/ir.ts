@@ -119,6 +119,7 @@ export const AssociationSchema = z.object({
   name: z.string().optional(),
   sourceRole: z.string().optional(),
   targetRole: z.string().optional(),
+  associationClassId: z.string().uuid().optional(),
 });
 export type Association = z.infer<typeof AssociationSchema>;
 

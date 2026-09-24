@@ -106,6 +106,7 @@ export function buildYDocFromDiagram(diagram: Diagram): Y.Doc {
     if (assoc.name !== undefined) yAssoc.set('name', assoc.name);
     if (assoc.sourceRole !== undefined) yAssoc.set('sourceRole', assoc.sourceRole);
     if (assoc.targetRole !== undefined) yAssoc.set('targetRole', assoc.targetRole);
+    if (assoc.associationClassId !== undefined) yAssoc.set('associationClassId', assoc.associationClassId);
     yAssociations.set(assoc.id, yAssoc);
   }
 
@@ -266,6 +267,8 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     const sourceMultiplicity = yAssoc.get('sourceMultiplicity') as Association['sourceMultiplicity'];
     const targetMultiplicity = yAssoc.get('targetMultiplicity') as Association['targetMultiplicity'];
 
+    const associationClassId = yAssoc.get('associationClassId') as string | undefined;
+
     associations.push(AssociationSchema.parse({
       id: yAssoc.get('id') as string,
       sourceClassId: yAssoc.get('sourceClassId') as string,
@@ -278,6 +281,7 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
       ...(name !== undefined ? { name } : {}),
       ...(sourceRole !== undefined ? { sourceRole } : {}),
       ...(targetRole !== undefined ? { targetRole } : {}),
+      ...(associationClassId !== undefined ? { associationClassId } : {}),
     }));
   });
 

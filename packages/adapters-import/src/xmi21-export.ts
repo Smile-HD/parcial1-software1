@@ -448,23 +448,27 @@ export function exportDiagramToXmi(diagram: Diagram): string {
       subtypeAttr = ' subtype="Strong"';
       direction = sourceIsWhole ? 'Source -> Destination' : 'Destination -> Source';
       if (sourceIsWhole) {
-        srcAgg = 'none';
-        tgtAgg = 'composite';
-      } else {
         srcAgg = 'composite';
         tgtAgg = 'none';
+      } else {
+        srcAgg = 'none';
+        tgtAgg = 'composite';
       }
     } else if (assoc.aggregation === 'shared') {
       eaType = 'Aggregation';
       direction = sourceIsWhole ? 'Source -> Destination' : 'Destination -> Source';
       if (sourceIsWhole) {
-        srcAgg = 'none';
-        tgtAgg = 'shared';
-      } else {
         srcAgg = 'shared';
         tgtAgg = 'none';
+      } else {
+        srcAgg = 'none';
+        tgtAgg = 'shared';
       }
     }
+
+    const assocClassExt = assoc.associationClassId
+      ? `\n        <extendedProperties virtualInheritance="0" associationclass="${esc(assoc.associationClassId)}"/>`
+      : '';
 
     lines.push(`      <connector xmi:idref="${assoc.id}">`);
     lines.push(`        <source xmi:idref="${assoc.sourceClassId}">`);
@@ -478,7 +482,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
     lines.push(`          <type${tgtMultAttr} aggregation="${tgtAgg}"/>`);
     lines.push(`        </target>`);
     lines.push(`        <properties ea_type="${eaType}"${subtypeAttr} direction="${direction}"${assoc.name ? ` name="${esc(assoc.name)}"` : ''}/>`);
-    lines.push(`        <labels${assocName}${srcRole}${tgtRole}${srcMult}${tgtMult}/>`);
+    lines.push(`        <labels${assocName}${srcRole}${tgtRole}${srcMult}${tgtMult}/>${assocClassExt}`);
     lines.push(`      </connector>`);
   }
   for (const gen of diagram.generalizations) {

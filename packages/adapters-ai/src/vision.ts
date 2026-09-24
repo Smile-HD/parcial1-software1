@@ -379,6 +379,12 @@ export function normalizeBatchPayload(raw: unknown): unknown {
         const tm = cleanMultiplicity(d.targetMultiplicity);
         if (tm) cleanAssoc.targetMultiplicity = tm;
 
+        const rawAssocClass = d.associationClassId ?? d.associationClass ?? d.association_class;
+        const assocClass = resolveId(rawAssocClass);
+        if (assocClass) {
+          cleanAssoc.associationClassId = assocClass;
+        }
+
         if (typeof d.name === 'string' && d.name.trim()) cleanAssoc.name = d.name.trim();
         if (typeof d.sourceRole === 'string' && d.sourceRole.trim()) cleanAssoc.sourceRole = d.sourceRole.trim();
         if (typeof d.targetRole === 'string' && d.targetRole.trim()) cleanAssoc.targetRole = d.targetRole.trim();
@@ -579,6 +585,11 @@ const SYSTEM_PROMPT = [
   '   - CENTRAL FLOATING DIAMOND (4 vertices, floating independently in the middle with 3+ lines to different classes):',
   '     * This is a Ternary or N-ary association (`kind: "naryAssociation"`).',
   '     * DO NOT create a class for the central diamond. Emit a delta with kind: "naryAssociation" and "memberEnds".',
+  '   - ASSOCIATION CLASS (dashed line from a class box to an association line):',
+  '     * A class connected by a dashed line to the midpoint/body of an association line represents an Association Class.',
+  '     * Transcribe the class box as a normal class delta (`kind: "class"`).',
+  '     * Include "associationClassId": "<classId>" in the corresponding association delta (`kind: "association"`).',
+  '     * Do NOT create a dependency or realization delta for that dashed link.',
   '5. Relationship Texts, Names & Roles:',
   '   - Extract labels or text along/above lines into "name" (e.g. "facturas", "productos", "registra", "subordinados", "manages").',
   '   - Extract role names placed at ends into "sourceRole" and "targetRole" (e.g. "jefe", "subordinados", "cliente", "compras").',
@@ -596,8 +607,8 @@ const SYSTEM_PROMPT = [
   '    { "kind": "member", "op": "addAttribute", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "attrName", "type": "String", "visibility": "+" },',
   '    // For every method:',
   '    { "kind": "member", "op": "addMethod", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "methodName", "returnType": "void", "parameters": [{ "name": "param1", "type": "String" }], "visibility": "+" },',
-  '    // For standard associations:',
-  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true, "aggregation": "none" },',
+  '    // For standard associations (optionally with associationClassId if an association class is attached):',
+  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true, "aggregation": "none" [, "associationClassId": "<assocClassId>"] },',
   '    // For aggregation (hollow diamond at container):',
   '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<containerClassId>", "targetClassId": "<partClassId>", "aggregation": "shared", "aggregationEnd": "source", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" },',
   '    // For composition (solid diamond at container):',

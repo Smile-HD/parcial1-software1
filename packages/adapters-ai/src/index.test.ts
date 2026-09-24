@@ -1209,4 +1209,91 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
       expect(result.reason).toContain('No valid UML entities');
     }
   });
+
+  describe('association class interpretation', () => {
+    function makeTwoClassDiagram(): Diagram {
+      const base = makeDiagram();
+      const orderId = crypto.randomUUID();
+      return {
+        ...base,
+        classes: [
+          ...base.classes,
+          {
+            id: orderId,
+            diagramId: base.id,
+            name: 'Order',
+            position: { x: 100, y: 100 },
+            attributes: [],
+            methods: [],
+            isAbstract: false,
+          },
+        ],
+      };
+    }
+
+    it('creates an association class linking two classes', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeTwoClassDiagram(); // contains Customer and Order
+      const result = await llm.interpret('association class Detail between Customer and Order', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const parsed = DeltaSchema.safeParse(result.value);
+        expect(parsed.success).toBe(true);
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as { deltas: any[] };
+        expect(batch.deltas).toHaveLength(2);
+        expect(batch.deltas[0].kind).toBe('class');
+        expect(batch.deltas[0].name).toBe('Detail');
+        expect(batch.deltas[1].kind).toBe('association');
+        expect(batch.deltas[1].associationClassId).toBe(batch.deltas[0].classId);
+      }
+    });
+
+    it('links an existing class as an association class to an existing association', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeTwoClassDiagram();
+      // add a third class "Receipt" and an association between Customer and Order
+      const receiptId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagramWithAssoc: Diagram = {
+        ...diagram,
+        classes: [
+          ...diagram.classes,
+          {
+            id: receiptId,
+            diagramId: diagram.id,
+            name: 'Receipt',
+            position: { x: 200, y: 200 },
+            attributes: [],
+            methods: [],
+            isAbstract: false,
+          },
+        ],
+        associations: [
+          {
+            id: assocId,
+            diagramId: diagram.id,
+            sourceClassId: diagram.classes[0]!.id,
+            targetClassId: diagram.classes[1]!.id,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '*',
+            directed: false,
+            aggregation: 'none',
+          },
+        ],
+      };
+
+      const result = await llm.interpret('link class Receipt to association between Customer and Order', {}, diagramWithAssoc);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('association');
+        const assocDelta = result.value as any;
+        expect(assocDelta.op).toBe('updateMultiplicity');
+        expect(assocDelta.associationId).toBe(assocId);
+        expect(assocDelta.newAssociationClassId).toBe(receiptId);
+      }
+    });
+  });
 });

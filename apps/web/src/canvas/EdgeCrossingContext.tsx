@@ -121,6 +121,7 @@ export function useOrthogonalPathWithJumps(
 ): [path: string, labelX: number, labelY: number, offsetX: number, offsetY: number] {
   const [rawPath, labelX, labelY, offsetX, offsetY] = getSmoothStepPath(props);
   const context = useContext(EdgeCrossingCtx);
+  const [, forceUpdate] = useState(0);
 
   // Parsea segmentos ortogonales de la ruta actual
   const { horizontals, verticals } = useMemo(
@@ -136,9 +137,13 @@ export function useOrthogonalPathWithJumps(
   // Registra inmediatamente durante el render para que aristas posteriores la conozcan
   context.registerEdge(id, horizontals, verticals);
 
-  // Efecto para desregistrar la arista al desmontarse
+  // Efecto para suscribirse a cambios de otras aristas y desregistrar al desmontar
   useEffect(() => {
+    const unsubscribe = context.subscribe(() => {
+      forceUpdate((tick) => tick + 1);
+    });
     return () => {
+      unsubscribe();
       context.unregisterEdge(id);
     };
   }, [context, id]);

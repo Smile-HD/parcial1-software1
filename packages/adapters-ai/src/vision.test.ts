@@ -662,5 +662,42 @@ describe('OpenAiVision', () => {
     const assocs = normalized.deltas.filter((d) => d.kind === 'association');
     expect(assocs).toHaveLength(0);
   });
+
+  it('normalizes associationClassId linking to an intermediate association class', () => {
+    const raw = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'c1', name: 'Estudiante' },
+        { kind: 'class', op: 'create', classId: 'c2', name: 'Curso' },
+        { kind: 'class', op: 'create', classId: 'c3', name: 'Inscripcion' },
+        {
+          kind: 'association',
+          source: 'Estudiante',
+          target: 'Curso',
+          associationClass: 'Inscripcion',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '*',
+        },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(raw) as {
+      deltas: { kind: string; name?: string; classId?: string; sourceClassId?: string; targetClassId?: string; associationClassId?: string }[];
+    };
+
+    const classes = normalized.deltas.filter((d) => d.kind === 'class');
+    const estId = classes.find((c) => c.name === 'Estudiante')?.classId;
+    const curId = classes.find((c) => c.name === 'Curso')?.classId;
+    const inscId = classes.find((c) => c.name === 'Inscripcion')?.classId;
+
+    const assoc = normalized.deltas.find((d) => d.kind === 'association');
+    expect(assoc).toBeDefined();
+    expect(assoc?.sourceClassId).toBe(estId);
+    expect(assoc?.targetClassId).toBe(curId);
+    expect(assoc?.associationClassId).toBe(inscId);
+
+    const parsed = BatchDeltaSchema.safeParse(normalized);
+    expect(parsed.success).toBe(true);
+  });
 });
 

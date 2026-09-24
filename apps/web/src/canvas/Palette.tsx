@@ -100,15 +100,15 @@ function AssociationGlyph() {
 }
 
 /**
- * unidad 13c — glifos de agregación/composición: el diamante se ubica en el extremo
- * ORIGEN (izquierdo), reflejando el aggregationEnd='source' predeterminado de la
- * asociación creada. Hueco = agregación compartida, lleno = composición.
+ * Glifos de agregación/composición: el diamante se ubica en el extremo
+ * DESTINO (derecho), reflejando el aggregationEnd='target' predeterminado de la
+ * asociación creada al arrastrar de A hacia B. Hueco = agregación compartida, lleno = composición.
  */
 function AggregationGlyph() {
   return (
     <svg width="40" height="22" viewBox="0 0 44 22" aria-hidden="true">
-      <line x1="14" y1="11" x2="42" y2="11" stroke={INK} strokeWidth="2" />
-      <path d="M 2 11 L 9 4 L 16 11 L 9 18 Z" fill="#fff" stroke={INK} strokeWidth="2" />
+      <line x1="2" y1="11" x2="30" y2="11" stroke={INK} strokeWidth="2" />
+      <path d="M 30 11 L 37 4 L 44 11 L 37 18 Z" fill="#fff" stroke={INK} strokeWidth="2" />
     </svg>
   );
 }
@@ -116,8 +116,8 @@ function AggregationGlyph() {
 function CompositionGlyph() {
   return (
     <svg width="40" height="22" viewBox="0 0 44 22" aria-hidden="true">
-      <line x1="14" y1="11" x2="42" y2="11" stroke={INK} strokeWidth="2" />
-      <path d="M 2 11 L 9 4 L 16 11 L 9 18 Z" fill={INK} stroke={INK} strokeWidth="2" />
+      <line x1="2" y1="11" x2="30" y2="11" stroke={INK} strokeWidth="2" />
+      <path d="M 30 11 L 37 4 L 44 11 L 37 18 Z" fill={INK} stroke={INK} strokeWidth="2" />
     </svg>
   );
 }

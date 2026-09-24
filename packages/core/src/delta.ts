@@ -85,9 +85,11 @@ export const AssociationDeltaSchema = DeltaBase.extend({
   name: z.string().optional(),
   sourceRole: z.string().optional(),
   targetRole: z.string().optional(),
+  associationClassId: z.string().uuid().optional(),
   // Para updateMultiplicity (null = restablecer a no especificado)
   newSourceMultiplicity: MultiplicitySchema.nullable().optional(),
   newTargetMultiplicity: MultiplicitySchema.nullable().optional(),
+  newAssociationClassId: z.string().uuid().nullable().optional(),
 }).strict();
 export type AssociationDelta = z.infer<typeof AssociationDeltaSchema>;
 

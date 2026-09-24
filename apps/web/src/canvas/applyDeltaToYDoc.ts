@@ -190,6 +190,7 @@ function buildYAssociation(assoc: Association): Y.Map<unknown> {
   if (assoc.name !== undefined) yAssoc.set('name', assoc.name);
   if (assoc.sourceRole !== undefined) yAssoc.set('sourceRole', assoc.sourceRole);
   if (assoc.targetRole !== undefined) yAssoc.set('targetRole', assoc.targetRole);
+  if (assoc.associationClassId !== undefined) yAssoc.set('associationClassId', assoc.associationClassId);
   return yAssoc;
 }
 

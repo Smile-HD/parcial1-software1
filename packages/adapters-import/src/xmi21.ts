@@ -428,6 +428,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     targetRole?: string;
     sourceMultiplicity?: string;
     targetMultiplicity?: string;
+    associationclass?: string;
   }
   const eaConnectorMap = new Map<string, EaConnector>();
   const connectorNodes: any[] = [];
@@ -444,6 +445,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
     const rt = labels?.['@_rt'] || conn['target']?.['role']?.['@_name'] || undefined;
     const lb = labels?.['@_lb'] || conn['source']?.['type']?.['@_multiplicity'] || undefined;
     const rb = labels?.['@_rb'] || conn['target']?.['type']?.['@_multiplicity'] || undefined;
+    const associationclass = conn['extendedProperties']?.['@_associationclass'] || undefined;
     eaConnectorMap.set(connId, {
       name,
       labels: { mt: labels?.['@_mt'], lt, rt, lb, rb },
@@ -451,6 +453,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       targetRole: rt,
       sourceMultiplicity: lb,
       targetMultiplicity: rb,
+      associationclass,
     });
   }
 
@@ -656,21 +659,31 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
 
     let source: string;
     let target: string;
+    let sourceEnd = firstEnd;
+    let targetEnd = lastEnd;
     const aggregationEnd: 'source' = 'source';
     if (diamondEnd && diamondEnd.type && typedEnds.length === 2) {
       const whole = diamondEnd.type;
       const part = typedEnds.find(e => e.type !== whole)?.type ?? whole; // autocomposición recurre a la misma clase
       source = whole;
       target = part;
+      if (diamondEnd === lastEnd) {
+        sourceEnd = lastEnd;
+        targetEnd = firstEnd;
+      }
     } else {
       source = firstEnd.type;
       target = lastEnd.type;
     }
 
-    const sourceMultiplicity = multiplicityOf(firstEnd) ?? eaConn?.sourceMultiplicity;
-    const targetMultiplicity = multiplicityOf(lastEnd) ?? eaConn?.targetMultiplicity;
-    const sourceRole = firstEnd.name ?? eaConn?.sourceRole;
-    const targetRole = lastEnd.name ?? eaConn?.targetRole;
+    const sourceMultiplicity = multiplicityOf(sourceEnd) ?? (sourceEnd === firstEnd ? eaConn?.sourceMultiplicity : eaConn?.targetMultiplicity);
+    const targetMultiplicity = multiplicityOf(targetEnd) ?? (targetEnd === lastEnd ? eaConn?.targetMultiplicity : eaConn?.sourceMultiplicity);
+    const sourceRole = sourceEnd.name ?? (sourceEnd === firstEnd ? eaConn?.sourceRole : eaConn?.targetRole);
+    const targetRole = targetEnd.name ?? (targetEnd === lastEnd ? eaConn?.targetRole : eaConn?.sourceRole);
+
+    const rawAssocType = assoc['@_xmi:type'] || assoc['@_xsi:type'] || assoc['@_type'] || '';
+    const isAssocClass = rawAssocType === 'uml:AssociationClass' || rawAssocType === 'AssociationClass';
+    const associationClassId = eaConn?.associationclass ?? (isAssocClass ? id : undefined);
 
     model.associations.push({
       id,
@@ -683,6 +696,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       ...(targetRole ? { targetRole } : {}),
       ...(sourceMultiplicity !== undefined ? { sourceMultiplicity } : {}),
       ...(targetMultiplicity !== undefined ? { targetMultiplicity } : {}),
+      ...(associationClassId ? { associationClassId } : {}),
     });
   }
 
@@ -864,6 +878,7 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
       ...(a.targetMultiplicity !== undefined ? { targetMultiplicity: a.targetMultiplicity } : {}),
       aggregation: a.aggregation,
       aggregationEnd: a.aggregationEnd,
+      ...(a.associationClassId && classIdMap.get(a.associationClassId) ? { associationClassId: classIdMap.get(a.associationClassId) } : {}),
       directed: false,
     } as AssociationDelta);
   }

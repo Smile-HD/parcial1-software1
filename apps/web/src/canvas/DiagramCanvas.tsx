@@ -149,10 +149,10 @@ export function handleCreateAssociation(
       ? {}
       : { sourceMultiplicity: '1', targetMultiplicity: '1' }),
     directed: link.directed,
-    // unidad 13c — las herramientas de Agregación/Composición de la paleta preestablecen el tipo;
-    // el diamante se ubica en el extremo origen por defecto (aggregationEnd='source').
+    // Herramientas de Agregación/Composición: el diamante se ubica en el extremo destino
+    // por defecto (aggregationEnd='target') para que al arrastrar de A a B el rombo apunte a B.
     ...(presetAggregation
-      ? { aggregation: link.aggregation, aggregationEnd: 'source' as const }
+      ? { aggregation: link.aggregation, aggregationEnd: 'target' as const }
       : {}),
   };
   return applyDeltaToYDoc(doc, delta);
@@ -221,7 +221,14 @@ export function handleUpdateAssociationMeta(
   doc: Y.Doc,
   diagramId: string,
   associationId: string,
-  updates: { aggregation?: 'none' | 'shared' | 'composite'; aggregationEnd?: 'source' | 'target'; name?: string; sourceRole?: string; targetRole?: string },
+  updates: {
+    aggregation?: 'none' | 'shared' | 'composite';
+    aggregationEnd?: 'source' | 'target';
+    name?: string;
+    sourceRole?: string;
+    targetRole?: string;
+    associationClassId?: string | null;
+  },
 ): void {
   // Validar agregación si se proporciona
   if (updates.aggregation !== undefined && !['none', 'shared', 'composite'].includes(updates.aggregation)) {
@@ -243,6 +250,7 @@ export function handleUpdateAssociationMeta(
     ...(updates.name !== undefined ? { name: updates.name || undefined } : {}),
     ...(updates.sourceRole !== undefined ? { sourceRole: updates.sourceRole || undefined } : {}),
     ...(updates.targetRole !== undefined ? { targetRole: updates.targetRole || undefined } : {}),
+    ...(updates.associationClassId !== undefined ? { newAssociationClassId: updates.associationClassId || undefined } : {}),
   };
   applyDeltaToYDoc(doc, delta);
 }
@@ -1946,6 +1954,29 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
                   </button>
                 </div>
               )}
+              <div className="diagram-canvas__field">
+                <label htmlFor="edge-assoc-class">
+                  {tr('editor.associationClass')}
+                </label>
+                <select
+                  id="edge-assoc-class"
+                  data-testid="edge-assoc-class-select"
+                  aria-label={tr('editor.associationClass')}
+                  value={selectedEdgeData.edge.associationClassId ?? ''}
+                  onChange={(event) =>
+                    handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, {
+                      associationClassId: event.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">{tr('editor.noAssociationClass')}</option>
+                  {diagram.classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </>
           )}
           <button
