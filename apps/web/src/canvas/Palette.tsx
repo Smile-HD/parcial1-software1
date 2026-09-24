@@ -49,6 +49,7 @@ export type PaletteNodeKind = 'class' | 'interface';
  */
 export type PaletteEdgeTool =
   | 'association'
+  | 'associationClass'
   | 'aggregation'
   | 'composition'
   | 'generalization'
@@ -162,6 +163,16 @@ function NaryGlyph() {
   );
 }
 
+function AssociationClassGlyph() {
+  return (
+    <svg width="40" height="22" viewBox="0 0 44 22" aria-hidden="true">
+      <line x1="2" y1="17" x2="42" y2="17" stroke={INK} strokeWidth="1.5" />
+      <line x1="22" y1="17" x2="22" y2="11" stroke={INK} strokeWidth="1.5" strokeDasharray="2 2" />
+      <rect x="14" y="2" width="16" height="9" fill="#fff" stroke={INK} strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 const EDGE_TOOLS: ReadonlyArray<{
   tool: PaletteEdgeTool;
   testId: string;
@@ -169,6 +180,7 @@ const EDGE_TOOLS: ReadonlyArray<{
   glyph: ReactElement;
 }> = [
   { tool: 'association', testId: 'palette-association', labelKey: 'tool.association', glyph: <AssociationGlyph /> },
+  { tool: 'associationClass', testId: 'palette-association-class', labelKey: 'tool.associationClass', glyph: <AssociationClassGlyph /> },
   { tool: 'aggregation', testId: 'palette-aggregation', labelKey: 'tool.aggregation', glyph: <AggregationGlyph /> },
   { tool: 'composition', testId: 'palette-composition', labelKey: 'tool.composition', glyph: <CompositionGlyph /> },
   { tool: 'generalization', testId: 'palette-generalization', labelKey: 'tool.generalization', glyph: <GeneralizationGlyph /> },

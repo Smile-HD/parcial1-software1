@@ -718,11 +718,40 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
       </div>
       </div>
 
+      {/* Default handles (retained for backward compatibility and test stability) */}
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
-      {/* Comodidad estilo EA: handles superior e inferior para modelado y conexiones verticales */}
       <Handle type="target" position={Position.Top} id="target-top" />
       <Handle type="source" position={Position.Bottom} id="source-bottom" />
+
+      {/* Enterprise Architect multi-point docking handles along all table borders */}
+      {/* Left border docking points (25%, 50%, 75%) */}
+      <Handle type="source" position={Position.Left} id="left-source" style={{ top: '50%' }} />
+      <Handle type="target" position={Position.Left} id="left-top-target" style={{ top: '25%' }} />
+      <Handle type="source" position={Position.Left} id="left-top-source" style={{ top: '25%' }} />
+      <Handle type="target" position={Position.Left} id="left-bottom-target" style={{ top: '75%' }} />
+      <Handle type="source" position={Position.Left} id="left-bottom-source" style={{ top: '75%' }} />
+
+      {/* Right border docking points (25%, 50%, 75%) */}
+      <Handle type="target" position={Position.Right} id="right-target" style={{ top: '50%' }} />
+      <Handle type="source" position={Position.Right} id="right-top-source" style={{ top: '25%' }} />
+      <Handle type="target" position={Position.Right} id="right-top-target" style={{ top: '25%' }} />
+      <Handle type="source" position={Position.Right} id="right-bottom-source" style={{ top: '75%' }} />
+      <Handle type="target" position={Position.Right} id="right-bottom-target" style={{ top: '75%' }} />
+
+      {/* Top border docking points (25%, 50%, 75%) */}
+      <Handle type="source" position={Position.Top} id="top-source" style={{ left: '50%' }} />
+      <Handle type="target" position={Position.Top} id="top-left-target" style={{ left: '25%' }} />
+      <Handle type="source" position={Position.Top} id="top-left-source" style={{ left: '25%' }} />
+      <Handle type="target" position={Position.Top} id="top-right-target" style={{ left: '75%' }} />
+      <Handle type="source" position={Position.Top} id="top-right-source" style={{ left: '75%' }} />
+
+      {/* Bottom border docking points (25%, 50%, 75%) */}
+      <Handle type="target" position={Position.Bottom} id="bottom-target" style={{ left: '50%' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom-left-source" style={{ left: '25%' }} />
+      <Handle type="target" position={Position.Bottom} id="bottom-left-target" style={{ left: '25%' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom-right-source" style={{ left: '75%' }} />
+      <Handle type="target" position={Position.Bottom} id="bottom-right-target" style={{ left: '75%' }} />
       {/* unidad 13c — arrastre para conectar en todo el nodo: mientras una herramienta de borde está armada,
           este handle de origen transparente de nodo completo hace que todo el cuerpo sea un
           inicio de conexión válido (y, en modo flexible, un final válido). NO se

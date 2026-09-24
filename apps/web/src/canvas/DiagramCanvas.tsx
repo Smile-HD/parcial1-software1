@@ -59,6 +59,7 @@ const EDGE_TYPE_KEYS: Record<EditorEdgeType, TKey> = {
  * (quickLinker.ts se mantiene puro — el mapeo reside en el sitio de renderizado). */
 const CONNECTOR_TOOL_KEYS: Record<QuickConnectorType, TKey> = {
   association: 'tool.association',
+  associationClass: 'tool.associationClass',
   aggregation: 'tool.aggregation',
   composition: 'tool.composition',
   generalization: 'tool.generalization',
@@ -771,6 +772,38 @@ export function handleConnectWithTool(
       });
       return engineGuardResult(result, t('tool.association'));
     }
+    case 'associationClass': {
+      const live = projectYDocToDiagram(doc);
+      const sNode = live.classes.find((c) => c.id === source);
+      const tNode = live.classes.find((c) => c.id === target);
+      const posX = sNode && tNode ? Math.round((sNode.position.x + tNode.position.x) / 2) : 200;
+      const posY = sNode && tNode ? Math.round((sNode.position.y + tNode.position.y) / 2) - 100 : 150;
+
+      const assocClassId = crypto.randomUUID();
+      const sName = sNode?.name ?? 'Source';
+      const tName = tNode?.name ?? 'Target';
+      const assocClassName = `${sName}${tName}`;
+
+      const classDelta: ClassDelta = {
+        kind: 'class',
+        op: 'create',
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp: new Date().toISOString(),
+        classId: assocClassId,
+        name: assocClassName,
+        position: { x: posX, y: posY },
+      };
+      applyDeltaToYDoc(doc, classDelta);
+
+      const result = handleCreateAssociation(doc, diagramId, {
+        sourceClassId: source,
+        targetClassId: target,
+        directed: false,
+        associationClassId: assocClassId,
+      });
+      return engineGuardResult(result, t('tool.associationClass'));
+    }
     // unidad 13c — Agregación/Composición reutilizan la ruta de asociación con el
     // tipo de diamante preestablecido (shared = hueco, composite = lleno).
     case 'aggregation':
@@ -1013,19 +1046,46 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
    */
   const onConnect = useCallback(
     (connection: Connection): void => {
+      const activeTool = edgeTool ?? 'association';
       const result = handleConnectWithTool(
         doc,
         diagram.id,
-        edgeTool,
+        activeTool,
         { source: connection.source ?? null, target: connection.target ?? null },
         diagram.classes.map((cls) => ({ id: cls.id, kind: cls.kind ?? ('class' as const) })),
       );
       setEdgeMessage(result.ok ? null : (result.message ?? null));
-      if (result.ok) {
+      if (result.ok && edgeTool !== null) {
         setEdgeTool(null);
       }
     },
     [doc, diagram, edgeTool],
+  );
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection): void => {
+      if (!newConnection.source || !newConnection.target) return;
+      const assoc = diagram.associations.find((a) => a.id === oldEdge.id);
+      if (assoc) {
+        if (newConnection.source !== assoc.sourceClassId || newConnection.target !== assoc.targetClassId) {
+          handleDeleteAssociation(doc, diagram.id, assoc.id);
+          handleCreateAssociation(doc, diagram.id, {
+            sourceClassId: newConnection.source,
+            targetClassId: newConnection.target,
+            directed: assoc.directed,
+            aggregation: assoc.aggregation,
+            aggregationEnd: assoc.aggregationEnd,
+            sourceMultiplicity: assoc.sourceMultiplicity,
+            targetMultiplicity: assoc.targetMultiplicity,
+            name: assoc.name,
+            sourceRole: assoc.sourceRole,
+            targetRole: assoc.targetRole,
+            associationClassId: assoc.associationClassId,
+          });
+        }
+      }
+    },
+    [doc, diagram],
   );
 
   /**
@@ -2147,15 +2207,14 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          // unidad 13b — las conexiones solo se pueden iniciar mientras una herramienta de
-          // arista esté armada; el modo suelto permite iniciar el arrastre desde cualquier conector (el delta
-          // se enfoca en la dirección del nodo, no en la identidad del conector).
-          nodesConnectable={edgeTool !== null}
+          nodesConnectable={true}
+          edgesReconnectable={true}
           connectionMode="loose"
           // unidad 13c — radio de ajuste indulgente alrededor de los conectores; combinado con las
           // superposiciones de conexión en todo el nodo permite arrastrar para conectar desde el cuerpo.
           connectionRadius={40}
           onConnect={onConnect}
+          onReconnect={onReconnect}
           onEdgesChange={() => {}}
           onDrop={onDrop}
           onDragOver={onDragOver}

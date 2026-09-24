@@ -25,6 +25,7 @@ export type QuickConnectorType = PaletteEdgeTool;
 /** Etiquetas de visualización para el menú de conectores (misma redacción que las herramientas de la paleta). */
 export const CONNECTOR_LABELS: Record<QuickConnectorType, string> = {
   association: 'Association',
+  associationClass: 'Association Class',
   aggregation: 'Aggregation',
   composition: 'Composition',
   generalization: 'Generalization',

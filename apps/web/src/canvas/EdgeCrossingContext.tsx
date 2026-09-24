@@ -71,10 +71,12 @@ export function EdgeCrossingProvider({ children }: { children: ReactNode }) {
       segmentsMap.current.set(id, { horizontals, verticals });
 
       if (!isSame) {
-        // Notificar a los observadores para recalcular arcos si hubo cambio
-        for (const listener of listeners.current) {
-          listener();
-        }
+        // Notificar asincrónicamente para recalcular arcos sin provocar setState durante render
+        queueMicrotask(() => {
+          for (const listener of listeners.current) {
+            listener();
+          }
+        });
       }
     },
     [],
@@ -82,9 +84,11 @@ export function EdgeCrossingProvider({ children }: { children: ReactNode }) {
 
   const unregisterEdge = useCallback((id: string) => {
     if (segmentsMap.current.delete(id)) {
-      for (const listener of listeners.current) {
-        listener();
-      }
+      queueMicrotask(() => {
+        for (const listener of listeners.current) {
+          listener();
+        }
+      });
     }
   }, []);
 
@@ -119,7 +123,10 @@ export function useOrthogonalPathWithJumps(
   id: string,
   props: EdgeProps,
 ): [path: string, labelX: number, labelY: number, offsetX: number, offsetY: number] {
-  const [rawPath, labelX, labelY, offsetX, offsetY] = getSmoothStepPath(props);
+  const [rawPath, labelX, labelY, offsetX, offsetY] = getSmoothStepPath({
+    ...props,
+    borderRadius: 12,
+  });
   const context = useContext(EdgeCrossingCtx);
   const [, forceUpdate] = useState(0);
 

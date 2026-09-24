@@ -831,12 +831,23 @@
   color: var(--ea-select);
 }
 
-/* Handles: EA shows no big connector dots — keep them tiny and neutral. */
+/* Handles: EA shows clean connector dots that illuminate on hover */
 .react-flow__handle {
   width: 7px;
   height: 7px;
   background: #64748b;
   border: 1px solid #fff;
+  border-radius: 50%;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.uml-class:hover .react-flow__handle,
+.react-flow__handle:hover,
+.react-flow__handle.connecting {
+  opacity: 0.95;
+  background: #2563eb;
+  transform: scale(1.35);
 }
 
 /* ── edges: EA ink + selection highlight (paths are orthogonal since 13e) ── */
