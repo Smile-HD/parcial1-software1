@@ -1740,4 +1740,86 @@ body {
   border: 1px solid #cbd5e1;
 }
 
+/* ── Zoom Controls & Indicator (Zoom at last clicked point) ── */
+.diagram-zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+  padding: 3px;
+  font-family: var(--ea-font, system-ui, sans-serif);
+}
+
+.diagram-zoom-controls__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.diagram-zoom-controls__button:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #e2e8f0;
+}
+
+.diagram-zoom-controls__button:active {
+  background: #e2e8f0;
+  transform: scale(0.95);
+}
+
+.diagram-zoom-controls__button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.diagram-zoom-controls__level {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  min-width: 38px;
+  text-align: center;
+  user-select: none;
+}
+
+.diagram-zoom-indicator {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  border-radius: 50%;
+  border: 2px solid #2563eb;
+  background: rgba(37, 99, 235, 0.2);
+  pointer-events: none;
+  animation: diagramZoomPing 0.7s cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+@keyframes diagramZoomPing {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
 

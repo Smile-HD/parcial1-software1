@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildYDocFromDiagram, projectYDocToDiagram, type Diagram } from '@app/core';
 
-import { DiagramCanvas } from './DiagramCanvas';
+import { computeNextZoom, DiagramCanvas } from './DiagramCanvas';
 import { getBoxIntersection } from './AssociationEdge';
 
 function makeFixture(): Diagram {
@@ -171,5 +171,48 @@ describe('Enterprise Architect diagrammer convenience features', () => {
 
     const projected = projectYDocToDiagram(doc);
     expect(projected.associations[0]?.associationClassId).toBe(enrollmentId);
+  });
+
+  describe('zoom controls focused on last clicked point', () => {
+    it('computes next zoom levels correctly for zoom in and out', () => {
+      expect(computeNextZoom(1, 'in')).toBe(1.25);
+      expect(computeNextZoom(1.25, 'in')).toBe(1.56);
+      expect(computeNextZoom(4, 'in')).toBe(4); // capped at 4
+      expect(computeNextZoom(1, 'out')).toBe(0.8);
+      expect(computeNextZoom(0.2, 'out')).toBe(0.2); // floored at 0.2
+    });
+
+    it('renders zoom in, zoom out, reset buttons and zoom percentage level', () => {
+      const doc = buildYDocFromDiagram(makeFixture());
+      render(<DiagramCanvas doc={doc} />);
+
+      expect(screen.getByTestId('diagram-zoom-controls')).not.toBeNull();
+      expect(screen.getByTestId('zoom-in-button')).not.toBeNull();
+      expect(screen.getByTestId('zoom-out-button')).not.toBeNull();
+      expect(screen.getByTestId('zoom-reset-button')).not.toBeNull();
+      expect(screen.getByTestId('zoom-level-indicator').textContent).toContain('%');
+    });
+
+    it('clicking zoom in and zoom out updates zoom state', () => {
+      const doc = buildYDocFromDiagram(makeFixture());
+      const { container } = render(<DiagramCanvas doc={doc} />);
+
+      // Simulate a click on the canvas to set the focal point
+      const canvasEl = container.querySelector('.diagram-canvas')!;
+      fireEvent.click(canvasEl, { clientX: 250, clientY: 180 });
+
+      // Click Zoom In
+      const zoomInBtn = screen.getByTestId('zoom-in-button');
+      fireEvent.click(zoomInBtn);
+
+      // Level updates to 125%
+      const level = screen.getByTestId('zoom-level-indicator');
+      expect(level.textContent).toBe('125%');
+
+      // Click Zoom Out
+      const zoomOutBtn = screen.getByTestId('zoom-out-button');
+      fireEvent.click(zoomOutBtn);
+      expect(screen.getByTestId('zoom-level-indicator').textContent).toBe('100%');
+    });
   });
 });

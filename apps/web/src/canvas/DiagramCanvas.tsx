@@ -874,6 +874,13 @@ type QuickLinkerMenuState =
       dropPosition: { x: number; y: number };
     };
 
+export function computeNextZoom(currentZoom: number, direction: 'in' | 'out'): number {
+  if (direction === 'in') {
+    return Math.min(Number((currentZoom * 1.25).toFixed(2)), 4);
+  }
+  return Math.max(Number((currentZoom / 1.25).toFixed(2)), 0.2);
+}
+
 export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   // unidad 13e.10 — accesor reactivo: cada cadena JSX a continuación se re-renderiza en vivo
   // cuando cambia el alternador de idioma (`t` a nivel de módulo atiende los controladores).
@@ -903,6 +910,85 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [edgeMessage, setEdgeMessage] = useState<string | null>(null);
   // Instancia de React Flow (vía onInit) — provee screenToFlowPosition para soltados.
   const rfRef = useRef<ReactFlowInstance | null>(null);
+  // Último punto donde se hizo clic en el lienzo (en coordenadas de flujo de React Flow)
+  const lastClickedPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [currentZoom, setCurrentZoom] = useState<number>(1);
+  const [zoomIndicator, setZoomIndicator] = useState<{ x: number; y: number; id: number } | null>(null);
+
+  const recordClickPoint = useCallback((clientX: number, clientY: number) => {
+    if (!rfRef.current) return;
+    try {
+      const flowPos = rfRef.current.screenToFlowPosition({ x: clientX, y: clientY });
+      if (Number.isFinite(flowPos.x) && Number.isFinite(flowPos.y)) {
+        lastClickedPointRef.current = flowPos;
+      }
+    } catch {
+      // Ignorar si el viewport aún no está listo
+    }
+  }, []);
+
+  const handleCanvasClickCapture = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest('.diagram-zoom-controls') ||
+        target?.closest('.palette') ||
+        target?.closest('.diagram-canvas__edge-editor') ||
+        target?.closest('.diagram-canvas__nary-editor')
+      ) {
+        return;
+      }
+      recordClickPoint(e.clientX, e.clientY);
+    },
+    [recordClickPoint],
+  );
+
+  const getZoomTarget = useCallback((): { x: number; y: number } => {
+    if (lastClickedPointRef.current) {
+      return lastClickedPointRef.current;
+    }
+    if (rfRef.current) {
+      try {
+        const flowCenter = rfRef.current.screenToFlowPosition({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        });
+        if (Number.isFinite(flowCenter.x) && Number.isFinite(flowCenter.y)) {
+          return flowCenter;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    if (diagram.classes.length > 0) {
+      return { x: diagram.classes[0].position.x + 80, y: diagram.classes[0].position.y + 60 };
+    }
+    return { x: 400, y: 300 };
+  }, [diagram.classes]);
+
+  const handleZoomIn = useCallback(() => {
+    const target = getZoomTarget();
+    const current = rfRef.current?.getZoom?.() ?? currentZoom;
+    const nextZoom = computeNextZoom(current, 'in');
+    rfRef.current?.setCenter?.(target.x, target.y, { zoom: nextZoom, duration: 250 });
+    setCurrentZoom(nextZoom);
+    setZoomIndicator({ x: target.x, y: target.y, id: Date.now() });
+  }, [getZoomTarget, currentZoom]);
+
+  const handleZoomOut = useCallback(() => {
+    const target = getZoomTarget();
+    const current = rfRef.current?.getZoom?.() ?? currentZoom;
+    const nextZoom = computeNextZoom(current, 'out');
+    rfRef.current?.setCenter?.(target.x, target.y, { zoom: nextZoom, duration: 250 });
+    setCurrentZoom(nextZoom);
+    setZoomIndicator({ x: target.x, y: target.y, id: Date.now() });
+  }, [getZoomTarget, currentZoom]);
+
+  const handleZoomReset = useCallback(() => {
+    rfRef.current?.fitView?.({ duration: 250, padding: 0.2 });
+    setCurrentZoom(1);
+  }, []);
+
   // unidad 13d — Quick Linker: extremos de arrastre en vivo (coords de pantalla, para la
   // banda elástica) y el menú abierto cuando finaliza el arrastre.
   const [quickLinkDrag, setQuickLinkDrag] = useState<{
@@ -1835,7 +1921,11 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   }, [doc, diagram, selectedClassId, selectedEdge, selectedNaryId]);
 
   return (
-    <div className="diagram-canvas" style={{ width: '100%', height: '100%' }}>
+    <div
+      className="diagram-canvas"
+      style={{ width: '100%', height: '100%' }}
+      onClickCapture={handleCanvasClickCapture}
+    >
       {/* unidad 13b — riel de creación izquierdo: arrastrar nodos, armar herramientas de aristas, n-ario.
           unidad 13e.11 — el lienzo posee el estado de colapso (alternador de encabezado). */}
       <Palette
@@ -2221,59 +2311,164 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           onInit={(instance) => {
             rfRef.current = instance;
           }}
+          onMove={(_event, viewport) => {
+            setCurrentZoom(viewport.zoom);
+          }}
           onNodesChange={onNodesChange}
-        onNodeClick={(_event, node) => handleNodeClick(node)}
-        // unidad 13c — hacer clic en cualquier tipo de arista de editor abre el editor
-        // ÚNICO unificado; las aristas de miembros n-arios conservan su propio flujo de diamante.
-        onEdgeClick={(_event, edge) => {
-          if (isEditorEdgeType(edge.type)) {
-            setSelectedEdge({ id: edge.id, type: edge.type });
-            // Los editores son exclusivos: abrir el editor de aristas cierra el
-            // editor de diamante n-ario (unidad 13d corrección A).
+          onNodeClick={(_event, node) => {
+            recordClickPoint(_event.clientX, _event.clientY);
+            handleNodeClick(node);
+          }}
+          // unidad 13c — hacer clic en cualquier tipo de arista de editor abre el editor
+          // ÚNICO unificado; las aristas de miembros n-arios conservan su propio flujo de diamante.
+          onEdgeClick={(_event, edge) => {
+            recordClickPoint(_event.clientX, _event.clientY);
+            if (isEditorEdgeType(edge.type)) {
+              setSelectedEdge({ id: edge.id, type: edge.type });
+              // Los editores son exclusivos: abrir el editor de aristas cierra el
+              // editor de diamante n-ario (unidad 13d corrección A).
+              setSelectedNaryId(null);
+            }
+          }}
+          // unidad 13d corrección D — hacer clic en el lienzo vacío deselecciona: limpia la
+          // clase seleccionada, cierra los editores de arista/n-ario, y desarma cualquier
+          // herramienta de arista armada (el equivalente con clic a Escape).
+          onPaneClick={(event) => {
+            if (event) recordClickPoint(event.clientX, event.clientY);
+            setSelectedClassId(null);
+            setSelectedEdge(null);
             setSelectedNaryId(null);
-          }
-        }}
-        // unidad 13d corrección D — hacer clic en el lienzo vacío deselecciona: limpia la
-        // clase seleccionada, cierra los editores de arista/n-ario, y desarma cualquier
-        // herramienta de arista armada (el equivalente con clic a Escape).
-        onPaneClick={() => {
-          setSelectedClassId(null);
-          setSelectedEdge(null);
-          setSelectedNaryId(null);
-          setEdgeTool(null);
-          setEdgeMessage(null);
-        }}
-        onNodeDrag={onNodeDrag}
-        onNodeDragStop={onNodeDragStop}
-        snapToGrid={true}
-        snapGrid={[20, 20]}
-        fitView
-      >
-        {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos nítidos detrás de los elementos. */}
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="#94a3b8" />
-        {/* Límite visual del lienzo: hoja de diagrama con bordes definidos y sombreado exterior */}
-        <ViewportPortal>
-          <div
-            className="diagram-canvas-boundary"
-            data-testid="diagram-canvas-boundary"
-            style={{
-              transform: `translate(${canvasBoundary.left}px, ${canvasBoundary.top}px)`,
-              width: `${canvasBoundary.width}px`,
-              height: `${canvasBoundary.height}px`,
-            }}
-          >
-            <div className="diagram-canvas-boundary__header">
-              <span className="diagram-canvas-boundary__title">
-                {diagram.name || tr('canvas.pageBoundary')}
-              </span>
-              <span className="diagram-canvas-boundary__dimensions">
-                {canvasBoundary.width} × {canvasBoundary.height} px
-              </span>
+            setEdgeTool(null);
+            setEdgeMessage(null);
+          }}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
+          snapToGrid={true}
+          snapGrid={[20, 20]}
+          fitView
+        >
+          {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos nítidos detrás de los elementos. */}
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="#94a3b8" />
+          {/* Límite visual del lienzo: hoja de diagrama con bordes definidos y sombreado exterior */}
+          <ViewportPortal>
+            <div
+              className="diagram-canvas-boundary"
+              data-testid="diagram-canvas-boundary"
+              style={{
+                transform: `translate(${canvasBoundary.left}px, ${canvasBoundary.top}px)`,
+                width: `${canvasBoundary.width}px`,
+                height: `${canvasBoundary.height}px`,
+              }}
+            >
+              <div className="diagram-canvas-boundary__header">
+                <span className="diagram-canvas-boundary__title">
+                  {diagram.name || tr('canvas.pageBoundary')}
+                </span>
+                <span className="diagram-canvas-boundary__dimensions">
+                  {canvasBoundary.width} × {canvasBoundary.height} px
+                </span>
+              </div>
             </div>
-          </div>
-        </ViewportPortal>
-      </ReactFlow>
+            {zoomIndicator && (
+              <div
+                key={zoomIndicator.id}
+                className="diagram-zoom-indicator"
+                data-testid="diagram-zoom-indicator"
+                style={{
+                  transform: `translate(${zoomIndicator.x}px, ${zoomIndicator.y}px)`,
+                }}
+                aria-hidden="true"
+              />
+            )}
+          </ViewportPortal>
+        </ReactFlow>
       </EdgeCrossingProvider>
+      {/* Zoom Controls: Botones para hacer zoom y quitar zoom enfocados en el último punto clicado */}
+      <div
+        className="diagram-zoom-controls"
+        data-testid="diagram-zoom-controls"
+        role="toolbar"
+        aria-label={tr('canvas.zoomControls')}
+      >
+        <button
+          type="button"
+          className="diagram-zoom-controls__button diagram-zoom-controls__button--in"
+          data-testid="zoom-in-button"
+          aria-label={tr('canvas.zoomIn')}
+          title={tr('canvas.zoomIn')}
+          onClick={handleZoomIn}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="diagram-zoom-controls__button diagram-zoom-controls__button--out"
+          data-testid="zoom-out-button"
+          aria-label={tr('canvas.zoomOut')}
+          title={tr('canvas.zoomOut')}
+          onClick={handleZoomOut}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+        </button>
+        <span
+          className="diagram-zoom-controls__level"
+          data-testid="zoom-level-indicator"
+          title={tr('canvas.zoomLevel')}
+        >
+          {Math.round(currentZoom * 100)}%
+        </span>
+        <button
+          type="button"
+          className="diagram-zoom-controls__button diagram-zoom-controls__button--reset"
+          data-testid="zoom-reset-button"
+          aria-label={tr('canvas.zoomReset')}
+          title={tr('canvas.zoomReset')}
+          onClick={handleZoomReset}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+          </svg>
+        </button>
+      </div>
       {/* unidad 13d — banda elástica de Quick Linker: una delgada línea discontinua desde la
           flecha de la esquina hasta el cursor en vivo mientras corre el arrastre de enlace rápido. */}
       {quickLinkDrag !== null && (

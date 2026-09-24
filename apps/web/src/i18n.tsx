@@ -160,6 +160,11 @@ const EN = {
   'canvas.selectTarget': 'Select target class',
   'canvas.edgeToolHint': '{tool} tool armed — drag from a source node to a target node. Press Esc to cancel.',
   'canvas.pageBoundary': 'Diagram Page',
+  'canvas.zoomControls': 'Zoom controls',
+  'canvas.zoomIn': 'Zoom in (last click)',
+  'canvas.zoomOut': 'Zoom out (last click)',
+  'canvas.zoomReset': 'Fit view',
+  'canvas.zoomLevel': 'Current zoom level',
 
   // Panel de selección N-aria.
   'nary.panelTitle': 'N-ary association — {n} of 3+ classes selected',
@@ -407,6 +412,11 @@ const ES: Record<TKey, string> = {
   'canvas.selectTarget': 'Seleccione la clase de destino',
   'canvas.edgeToolHint': 'Herramienta {tool} activa — arrastre desde un nodo de origen hasta un nodo de destino. Pulse Esc para cancelar.',
   'canvas.pageBoundary': 'Hoja del Diagrama',
+  'canvas.zoomControls': 'Controles de zoom',
+  'canvas.zoomIn': 'Acercar (último clic)',
+  'canvas.zoomOut': 'Alejar (último clic)',
+  'canvas.zoomReset': 'Ajustar vista',
+  'canvas.zoomLevel': 'Nivel de zoom actual',
 
   'nary.panelTitle': 'Asociación n-aria — {n} de 3 o más clases seleccionadas',
   'nary.multiplicityFor': 'Multiplicidad de {name}',
