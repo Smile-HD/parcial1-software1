@@ -749,6 +749,63 @@ export function normalizeBatchPayload(raw: unknown): unknown {
     }
   }
 
+  // Detección y enlace heurístico de clases de asociación:
+  // Caso 1: Si el modelo transcribió la línea punteada como una dependencia entre la clase intermedia y uno de los extremos
+  for (let i = dependencyDeltas.length - 1; i >= 0; i--) {
+    const dep = dependencyDeltas[i];
+    const client = dep.clientClassId as string;
+    const supplier = dep.supplierClassId as string;
+    for (const assoc of associationDeltas) {
+      if (assoc.associationClassId) continue;
+      const src = assoc.sourceClassId as string;
+      const tgt = assoc.targetClassId as string;
+      if (client !== src && client !== tgt && (supplier === src || supplier === tgt)) {
+        assoc.associationClassId = client;
+        dependencyDeltas.splice(i, 1);
+        break;
+      } else if (supplier !== src && supplier !== tgt && (client === src || client === tgt)) {
+        assoc.associationClassId = supplier;
+        dependencyDeltas.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  // Caso 2: Si el modelo omitió los puntos tenues bajo el reflejo y la clase intermedia quedó huérfana
+  const connectedClasses = new Set<string>();
+  for (const a of associationDeltas) {
+    if (a.sourceClassId) connectedClasses.add(a.sourceClassId as string);
+    if (a.targetClassId) connectedClasses.add(a.targetClassId as string);
+    if (a.associationClassId) connectedClasses.add(a.associationClassId as string);
+  }
+  for (const g of generalizationDeltas) {
+    if (g.subClassId) connectedClasses.add(g.subClassId as string);
+    if (g.superClassId) connectedClasses.add(g.superClassId as string);
+  }
+  for (const r of realizationDeltas) {
+    if (r.clientClassId) connectedClasses.add(r.clientClassId as string);
+    if (r.supplierInterfaceId) connectedClasses.add(r.supplierInterfaceId as string);
+  }
+  for (const n of naryAssociationDeltas) {
+    for (const end of (n.memberEnds as { classId: string }[] || [])) {
+      connectedClasses.add(end.classId);
+    }
+  }
+
+  const assocClassRegex = /^(?:detalle|item|linea|inscrip|matricul|asignaci|asociaci)/i;
+  for (const cls of normalizedClassDeltas) {
+    const cid = cls.classId as string;
+    if (connectedClasses.has(cid)) continue;
+    const name = String(cls.name ?? '').trim();
+    if (assocClassRegex.test(name)) {
+      const targetAssoc = associationDeltas.find((a) => !a.associationClassId);
+      if (targetAssoc) {
+        targetAssoc.associationClassId = cid;
+        connectedClasses.add(cid);
+      }
+    }
+  }
+
   // Orden topológico estricto para applyBatchDelta:
   // 1. Clases (para que existan en workingDiagram)
   // 2. Miembros (atributos y métodos que pertenecen a las clases)
@@ -919,7 +976,7 @@ export class OpenAiVision implements VisionPort {
             type: 'text',
             text: 'Extract all UML classes, members, and relationships from this diagram image.',
           },
-          { type: 'image_url', image_url: { url: dataUrl } },
+          { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
         ],
       },
     ];
