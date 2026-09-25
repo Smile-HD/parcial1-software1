@@ -112,6 +112,13 @@ export interface AssociationLink {
    * valor predeterminado de la IR), de modo que cada llamador existente permanece idéntico byte a byte.
    */
   aggregation?: 'none' | 'shared' | 'composite';
+  aggregationEnd?: 'source' | 'target';
+  sourceMultiplicity?: string;
+  targetMultiplicity?: string;
+  name?: string;
+  sourceRole?: string;
+  targetRole?: string;
+  associationClassId?: string;
 }
 
 /**
@@ -147,14 +154,21 @@ export function handleCreateAssociation(
     sourceClassId: link.sourceClassId,
     targetClassId: link.targetClassId,
     ...(presetAggregation
-      ? {}
-      : { sourceMultiplicity: '1', targetMultiplicity: '1' }),
+      ? (link.sourceMultiplicity ? { sourceMultiplicity: link.sourceMultiplicity } : {})
+      : { sourceMultiplicity: link.sourceMultiplicity ?? '1' }),
+    ...(presetAggregation
+      ? (link.targetMultiplicity ? { targetMultiplicity: link.targetMultiplicity } : {})
+      : { targetMultiplicity: link.targetMultiplicity ?? '1' }),
     directed: link.directed,
     // Herramientas de Agregación/Composición: el diamante se ubica en el extremo destino
     // por defecto (aggregationEnd='target') para que al arrastrar de A a B el rombo apunte a B.
     ...(presetAggregation
-      ? { aggregation: link.aggregation, aggregationEnd: 'target' as const }
-      : {}),
+      ? { aggregation: link.aggregation, aggregationEnd: link.aggregationEnd ?? 'target' }
+      : (link.aggregation ? { aggregation: link.aggregation, aggregationEnd: link.aggregationEnd } : {})),
+    ...(link.name ? { name: link.name } : {}),
+    ...(link.sourceRole ? { sourceRole: link.sourceRole } : {}),
+    ...(link.targetRole ? { targetRole: link.targetRole } : {}),
+    ...(link.associationClassId ? { associationClassId: link.associationClassId } : {}),
   };
   return applyDeltaToYDoc(doc, delta);
 }
@@ -251,7 +265,9 @@ export function handleUpdateAssociationMeta(
     ...(updates.name !== undefined ? { name: updates.name || undefined } : {}),
     ...(updates.sourceRole !== undefined ? { sourceRole: updates.sourceRole || undefined } : {}),
     ...(updates.targetRole !== undefined ? { targetRole: updates.targetRole || undefined } : {}),
-    ...(updates.associationClassId !== undefined ? { newAssociationClassId: updates.associationClassId || undefined } : {}),
+    ...(updates.associationClassId !== undefined
+      ? { newAssociationClassId: updates.associationClassId ? updates.associationClassId : null }
+      : {}),
   };
   applyDeltaToYDoc(doc, delta);
 }

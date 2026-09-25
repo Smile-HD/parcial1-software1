@@ -831,23 +831,25 @@
   color: var(--ea-select);
 }
 
-/* Handles: EA shows clean connector dots that illuminate on hover */
+/* Handles: invisible so no balls surround the class box, while preserving ReactFlow docking & hit-testing */
 .react-flow__handle {
-  width: 7px;
-  height: 7px;
-  background: #64748b;
-  border: 1px solid #fff;
-  border-radius: 50%;
-  opacity: 0.35;
-  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+  width: 8px;
+  height: 8px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0;
+  opacity: 0 !important;
+  box-shadow: none !important;
 }
 
 .uml-class:hover .react-flow__handle,
 .react-flow__handle:hover,
 .react-flow__handle.connecting {
-  opacity: 0.95;
-  background: #2563eb;
-  transform: scale(1.35);
+  opacity: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 /* ── edges: EA ink + selection highlight (paths are orthogonal since 13e) ── */
@@ -1824,8 +1826,7 @@ body {
   background: #ffffff;
   border-color: #2563eb;
   color: #2563eb;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
-  transform: translate(-50%, -50%) scale(1.15) !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 
 .staruml-mult-badge__placeholder {

@@ -171,6 +171,11 @@ describe('Enterprise Architect diagrammer convenience features', () => {
 
     const projected = projectYDocToDiagram(doc);
     expect(projected.associations[0]?.associationClassId).toBe(enrollmentId);
+
+    // Deselect association class (set back to none / "")
+    fireEvent.change(assocClassSelect, { target: { value: '' } });
+    const projectedAfterClear = projectYDocToDiagram(doc);
+    expect(projectedAfterClear.associations[0]?.associationClassId).toBeUndefined();
   });
 
   describe('zoom controls focused on last clicked point', () => {

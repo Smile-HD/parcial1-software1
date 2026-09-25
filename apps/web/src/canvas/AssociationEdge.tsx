@@ -376,6 +376,8 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
               transform: `translate(-50%, -50%) translate(${srcX}px, ${sourceRole ? srcY - 6 : srcY}px)`,
               pointerEvents: 'all',
             }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setActivePicker((prev) => (prev === 'source' ? null : 'source'));
@@ -395,6 +397,8 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
               transform: `translate(-50%, -50%) translate(${tgtX}px, ${targetRole ? tgtY - 6 : tgtY}px)`,
               pointerEvents: 'all',
             }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setActivePicker((prev) => (prev === 'target' ? null : 'target'));
@@ -418,6 +422,8 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
                 pointerEvents: 'all',
                 zIndex: 100,
               }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="staruml-mult-picker__presets">

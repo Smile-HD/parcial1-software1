@@ -510,7 +510,7 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         return err({ kind: 'AssociationNotFoundError', associationId: delta.associationId });
       }
       const updatedAssociations = [...diagram.associations];
-      updatedAssociations[assocIndex] = {
+      const updatedAssoc = {
         ...updatedAssociations[assocIndex],
         ...(delta.newSourceMultiplicity !== undefined ? { sourceMultiplicity: delta.newSourceMultiplicity ?? undefined } : {}),
         ...(delta.newTargetMultiplicity !== undefined ? { targetMultiplicity: delta.newTargetMultiplicity ?? undefined } : {}),
@@ -522,6 +522,10 @@ function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta): Apply
         ...(delta.associationClassId !== undefined ? { associationClassId: delta.associationClassId || undefined } : {}),
         ...(delta.newAssociationClassId !== undefined ? { associationClassId: delta.newAssociationClassId ?? undefined } : {}),
       };
+      if (delta.newAssociationClassId === null || delta.associationClassId === null) {
+        delete updatedAssoc.associationClassId;
+      }
+      updatedAssociations[assocIndex] = updatedAssoc;
       return ok({ ...diagram, associations: updatedAssociations });
     }
 
