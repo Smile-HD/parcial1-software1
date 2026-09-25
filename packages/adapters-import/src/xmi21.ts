@@ -460,16 +460,18 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   // ---- Paso 2: construir clases (características + generalizaciones hijas) y un
   // índice global de propiedades (los `ownedEnd` propiedad de la asociación y los
   // `ownedAttribute` reflejados en la clase son las MISMAS Propiedades UML, direccionables por xmi:id).
-  type EndProp = { type: string | undefined; aggregation: string | undefined; lower: string | undefined; upper: string | undefined; name: string | undefined };
+  type EndProp = { id?: string; type: string | undefined; aggregation: string | undefined; lower: string | undefined; upper: string | undefined; name: string | undefined };
   const propertyIndex = new Map<string, EndProp>();
   const memberEndRefs = new Set<string>();
-  const readProp = (el: any): EndProp => {
+  const readProp = (el: any, propId?: string): EndProp => {
     const rawType = el?.['type']?.['@_xmi:idref'] ??
       el?.['type']?.['@_idref'] ??
       el?.['type']?.['@_href']?.replace(/^#/, '') ??
       el?.['@_type'] ??
       (typeof el?.['type'] === 'string' ? el['type'] : undefined);
+    const id = propId || el?.['@_xmi:id'] || el?.['@_id'];
     return {
+      id,
       type: rawType,
       aggregation: el?.['@_aggregation'] ?? el?.['aggregation'],
       lower: el?.['lowerValue']?.['@_value'] ?? el?.['lowerValue']?.['@_body'] ?? el?.['@_lower'],
@@ -481,7 +483,7 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
   for (const assoc of associationNodes) {
     for (const end of toArray(assoc['ownedEnd'])) {
       const endId = end['@_xmi:id'] || end['@_id'];
-      if (endId) propertyIndex.set(endId, readProp(end));
+      if (endId) propertyIndex.set(endId, readProp(end, endId));
     }
     for (const me of toArray(assoc['memberEnd'])) {
       const ref = me?.['@_xmi:idref'] || me?.['@_idref'] || me?.['@_href']?.replace(/^#/, '');
@@ -672,14 +674,25 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
         targetEnd = firstEnd;
       }
     } else {
-      source = firstEnd.type;
-      target = lastEnd.type;
+      const srcEnd = typedEnds.find(e => e.id?.endsWith('_src'));
+      const dstEnd = typedEnds.find(e => e.id?.endsWith('_dst') || e.id?.endsWith('_tgt'));
+      if (srcEnd && dstEnd && srcEnd.type && dstEnd.type) {
+        source = srcEnd.type;
+        target = dstEnd.type;
+        sourceEnd = srcEnd;
+        targetEnd = dstEnd;
+      } else {
+        source = firstEnd.type;
+        target = lastEnd.type;
+      }
     }
 
-    const sourceMultiplicity = multiplicityOf(sourceEnd) ?? (sourceEnd === firstEnd ? eaConn?.sourceMultiplicity : eaConn?.targetMultiplicity);
-    const targetMultiplicity = multiplicityOf(targetEnd) ?? (targetEnd === lastEnd ? eaConn?.targetMultiplicity : eaConn?.sourceMultiplicity);
-    const sourceRole = sourceEnd.name ?? (sourceEnd === firstEnd ? eaConn?.sourceRole : eaConn?.targetRole);
-    const targetRole = targetEnd.name ?? (targetEnd === lastEnd ? eaConn?.targetRole : eaConn?.sourceRole);
+    const isSourceSrc = Boolean(sourceEnd.id?.endsWith('_src') || sourceEnd === firstEnd);
+    const isTargetDst = Boolean(targetEnd.id?.endsWith('_dst') || targetEnd.id?.endsWith('_tgt') || targetEnd === lastEnd);
+    const sourceMultiplicity = multiplicityOf(sourceEnd) ?? (isSourceSrc ? eaConn?.sourceMultiplicity : eaConn?.targetMultiplicity);
+    const targetMultiplicity = multiplicityOf(targetEnd) ?? (isTargetDst ? eaConn?.targetMultiplicity : eaConn?.sourceMultiplicity);
+    const sourceRole = sourceEnd.name ?? (isSourceSrc ? eaConn?.sourceRole : eaConn?.targetRole);
+    const targetRole = targetEnd.name ?? (isTargetDst ? eaConn?.targetRole : eaConn?.sourceRole);
 
     const rawAssocType = assoc['@_xmi:type'] || assoc['@_xsi:type'] || assoc['@_type'] || '';
     const isAssocClass = rawAssocType === 'uml:AssociationClass' || rawAssocType === 'AssociationClass';

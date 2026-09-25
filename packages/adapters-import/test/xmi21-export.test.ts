@@ -930,5 +930,141 @@ describe('XMI 2.1 Exporter', () => {
       expect(parsed.naryAssociations[0].memberEnds).toHaveLength(3);
     });
   });
+
+  describe('Exportación de Clases de Asociación y Multiplicidades a Enterprise Architect', () => {
+    it('exporta clases de asociación con uml:AssociationClass, conID en EA y extremos de conector consistentes', () => {
+      const classAId = randomUUID();
+      const classBId = randomUUID();
+      const assocClassId = randomUUID();
+      const assocId = randomUUID();
+
+      const diagram = DiagramSchema.parse({
+        id: randomUUID(),
+        name: 'AssocClass Test',
+        classes: [
+          { id: classAId, name: 'Estudiante', kind: 'class', isAbstract: false, position: { x: 100, y: 100 }, attributes: [], methods: [] },
+          { id: classBId, name: 'Curso', kind: 'class', isAbstract: false, position: { x: 400, y: 100 }, attributes: [], methods: [] },
+          {
+            id: assocClassId,
+            name: 'Inscripcion',
+            kind: 'class',
+            isAbstract: false,
+            position: { x: 250, y: 250 },
+            attributes: [{ id: randomUUID(), name: 'fecha', type: 'string', visibility: '+', isStatic: false, isDerived: false, multiplicity: '1' }],
+            methods: [],
+          },
+        ],
+        associations: [
+          {
+            id: assocId,
+            sourceClassId: classAId,
+            targetClassId: classBId,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1..*',
+            sourceRole: 'estudiante',
+            targetRole: 'cursos',
+            directed: false,
+            aggregation: 'none',
+            associationClassId: assocClassId,
+          },
+        ],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      });
+
+      const xmi = exportDiagramToXmi(diagram);
+
+      // 1. Debe exportar el packagedElement de la clase de asociación como uml:AssociationClass
+      expect(xmi).toContain(`<packagedElement xmi:type="uml:AssociationClass" xmi:id="${assocClassId}" name="Inscripcion"`);
+      // 2. Debe contener los memberEnds en orden EA (dst primero, src segundo) dentro del AssociationClass
+      expect(xmi).toContain(`<memberEnd xmi:idref="${assocId}_dst"/>`);
+      expect(xmi).toContain(`<memberEnd xmi:idref="${assocId}_src"/>`);
+      // 3. No debe duplicar un packagedElement de uml:Association independiente
+      expect(xmi).not.toContain(`<packagedElement xmi:type="uml:Association" xmi:id="${assocId}"`);
+
+      // 4. En <elements> de EA debe tener nType="17" y conID
+      expect(xmi).toContain(`sType="Class" nType="17"`);
+      expect(xmi).toContain(`conID="${assocId}"`);
+
+      // 5. En <connectors> debe tener subtype="Class" y associationclass
+      expect(xmi).toContain(`subtype="Class"`);
+      expect(xmi).toContain(`associationclass="${assocClassId}"`);
+
+      // 6. Multiplicidades de extremos: origen en source (1) y destino en target (1..*)
+      expect(xmi).toContain(`<source xmi:idref="${classAId}">`);
+      expect(xmi).toContain(`multiplicity="1"`);
+      expect(xmi).toContain(`<target xmi:idref="${classBId}">`);
+      expect(xmi).toContain(`multiplicity="1..*"`);
+      expect(xmi).toContain(`lb="1"`);
+      expect(xmi).toContain(`rb="1..*"`);
+
+      // 7. Round-trip completo al importador
+      const parsed = parseXmiDocument(xmi);
+      expect(parsed.classes.some(c => c.id === assocClassId)).toBe(true);
+      const parsedAssoc = parsed.associations.find(a => a.id === assocId || a.associationClassId === assocClassId);
+      expect(parsedAssoc).toBeDefined();
+      expect(parsedAssoc?.source).toBe(classAId);
+      expect(parsedAssoc?.target).toBe(classBId);
+      expect(parsedAssoc?.sourceMultiplicity).toBe('1');
+      expect(parsedAssoc?.targetMultiplicity).toBe('1..*');
+    });
+
+    it('preserva el orden correcto de multiplicidades para asociaciones binarias normales', () => {
+      const classAId = randomUUID();
+      const classBId = randomUUID();
+      const assocId = randomUUID();
+
+      const diagram = DiagramSchema.parse({
+        id: randomUUID(),
+        name: 'Multiplicity Test',
+        classes: [
+          { id: classAId, name: 'ClaseA', kind: 'class', isAbstract: false, position: { x: 100, y: 100 }, attributes: [], methods: [] },
+          { id: classBId, name: 'ClaseB', kind: 'class', isAbstract: false, position: { x: 300, y: 100 }, attributes: [], methods: [] },
+        ],
+        associations: [
+          {
+            id: assocId,
+            sourceClassId: classAId,
+            targetClassId: classBId,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1..*',
+            directed: false,
+            aggregation: 'none',
+          },
+        ],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+        naryAssociations: [],
+      });
+
+      const xmi = exportDiagramToXmi(diagram);
+
+      // En el packagedElement: memberEnd dst primero, luego src (convención nativa de EA)
+      const dstIdx = xmi.indexOf(`memberEnd xmi:idref="${assocId}_dst"`);
+      const srcIdx = xmi.indexOf(`memberEnd xmi:idref="${assocId}_src"`);
+      expect(dstIdx).toBeGreaterThan(-1);
+      expect(srcIdx).toBeGreaterThan(-1);
+      expect(dstIdx).toBeLessThan(srcIdx);
+
+      // En <connectors>: source tiene ClaseA y 1, target tiene ClaseB y 1..*
+      expect(xmi).toContain(`<source xmi:idref="${classAId}">`);
+      expect(xmi).toContain(`multiplicity="1"`);
+      expect(xmi).toContain(`<target xmi:idref="${classBId}">`);
+      expect(xmi).toContain(`multiplicity="1..*"`);
+      expect(xmi).toContain(`lb="1"`);
+      expect(xmi).toContain(`rb="1..*"`);
+
+      // Round-trip al importador
+      const parsed = parseXmiDocument(xmi);
+      const parsedAssoc = parsed.associations[0];
+      expect(parsedAssoc.source).toBe(classAId);
+      expect(parsedAssoc.target).toBe(classBId);
+      expect(parsedAssoc.sourceMultiplicity).toBe('1');
+      expect(parsedAssoc.targetMultiplicity).toBe('1..*');
+    });
+  });
 });
 

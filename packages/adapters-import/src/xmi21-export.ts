@@ -216,11 +216,45 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   // ── Construir mapas de id para referencias cruzadas ─────────────────────────
   const classIdSet = new Set(diagram.classes.map(c => c.id));
   const ifaceIds = new Set(diagram.classes.filter(c => c.kind === 'interface').map(c => c.id));
+  const assocClassToAssocMap = new Map<string, Diagram['associations'][number]>();
+  for (const assoc of diagram.associations) {
+    if (assoc.associationClassId && diagram.classes.some(c => c.id === assoc.associationClassId)) {
+      assocClassToAssocMap.set(assoc.associationClassId, assoc);
+    }
+  }
+  const assocWithAssocClassIds = new Set([...assocClassToAssocMap.values()].map(a => a.id));
 
   // ── Clases e Interfaces ──────────────────────────────────────────────────
   for (const cls of diagram.classes) {
-    const xmiType = cls.kind === 'interface' ? 'uml:Interface' : 'uml:Class';
+    const isAssocClass = assocClassToAssocMap.has(cls.id);
+    const assocClassAssoc = isAssocClass ? assocClassToAssocMap.get(cls.id) : undefined;
+    const xmiType = isAssocClass
+      ? 'uml:AssociationClass'
+      : (cls.kind === 'interface' ? 'uml:Interface' : 'uml:Class');
     lines.push(`      <packagedElement xmi:type="${xmiType}" xmi:id="${cls.id}" name="${esc(cls.name)}"${boolAttr('isAbstract', cls.isAbstract)}>`);
+
+    // Si es AssociationClass, incluye sus extremos de asociación dentro de la definición
+    if (assocClassAssoc) {
+      lines.push(`      <memberEnd xmi:idref="${assocClassAssoc.id}_dst"/>`);
+      lines.push(`      <memberEnd xmi:idref="${assocClassAssoc.id}_src"/>`);
+
+      const sourceIsWhole = assocClassAssoc.aggregationEnd === 'source';
+      const srcAgg = (assocClassAssoc.aggregation !== 'none' && sourceIsWhole) ? ` aggregation="${esc(assocClassAssoc.aggregation)}"` : '';
+      lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assocClassAssoc.id}_src"${srcAgg}${assocClassAssoc.sourceRole ? ` name="${esc(assocClassAssoc.sourceRole)}"` : ''} association="${cls.id}" isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
+      lines.push(`        <type xmi:idref="${assocClassAssoc.sourceClassId}"/>`);
+      if (assocClassAssoc.sourceMultiplicity) {
+        lines.push(`        ${multiplicityXml(assocClassAssoc.sourceMultiplicity)}`);
+      }
+      lines.push(`      </ownedEnd>`);
+
+      const tgtAgg = (assocClassAssoc.aggregation !== 'none' && !sourceIsWhole) ? ` aggregation="${esc(assocClassAssoc.aggregation)}"` : '';
+      lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assocClassAssoc.id}_dst"${tgtAgg}${assocClassAssoc.targetRole ? ` name="${esc(assocClassAssoc.targetRole)}"` : ''} association="${cls.id}" isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
+      lines.push(`        <type xmi:idref="${assocClassAssoc.targetClassId}"/>`);
+      if (assocClassAssoc.targetMultiplicity) {
+        lines.push(`        ${multiplicityXml(assocClassAssoc.targetMultiplicity)}`);
+      }
+      lines.push(`      </ownedEnd>`);
+    }
 
     // ownedAttribute (características de la clase — NO extremos de asociación)
     for (const attr of cls.attributes) {
@@ -279,14 +313,18 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
   // ── Asociaciones (binarias) ───────────────────────────────────────────────
   for (const assoc of diagram.associations) {
+    if (assocWithAssocClassIds.has(assoc.id)) {
+      // Ya emitido como uml:AssociationClass arriba
+      continue;
+    }
     const sourceIsWhole = assoc.aggregationEnd === 'source';
     const diamondEnd = sourceIsWhole ? assoc.sourceClassId : assoc.targetClassId;
 
     lines.push(`    <packagedElement xmi:type="uml:Association" xmi:id="${assoc.id}" name="${assoc.name ? esc(assoc.name) : ''}">`);
 
-    // Referencias memberEnd (dos extremos)
+    // Referencias memberEnd (dos extremos en orden EA: dst primero, src segundo)
+    lines.push(`      <memberEnd xmi:idref="${assoc.id}_dst"/>`);
     lines.push(`      <memberEnd xmi:idref="${assoc.id}_src"/>`);
-    lines.push(`      <memberEnd xmi:idref="${assoc.id}_tgt"/>`);
 
     // Extremo origen (ownedEnd)
     const srcAgg = (assoc.aggregation !== 'none' && sourceIsWhole) ? ` aggregation="${esc(assoc.aggregation)}"` : '';
@@ -299,7 +337,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
     // Extremo destino (ownedEnd)
     const tgtAgg = (assoc.aggregation !== 'none' && !sourceIsWhole) ? ` aggregation="${esc(assoc.aggregation)}"` : '';
-    lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_tgt"${tgtAgg}${assoc.targetRole ? ` name="${esc(assoc.targetRole)}"` : ''} isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
+    lines.push(`      <ownedEnd xmi:type="uml:Property" xmi:id="${assoc.id}_dst"${tgtAgg}${assoc.targetRole ? ` name="${esc(assoc.targetRole)}"` : ''} isStatic="false" isReadOnly="false" isDerived="false" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
     lines.push(`        <type xmi:idref="${assoc.targetClassId}"/>`);
     if (assoc.targetMultiplicity) {
       lines.push(`        ${multiplicityXml(assoc.targetMultiplicity)}`);
@@ -359,12 +397,21 @@ export function exportDiagramToXmi(diagram: Diagram): string {
   lines.push(`      </element>`);
   for (let i = 0; i < diagram.classes.length; i++) {
     const cls = diagram.classes[i];
+    const isAssocClass = assocClassToAssocMap.has(cls.id);
+    const assoc = isAssocClass ? assocClassToAssocMap.get(cls.id) : undefined;
+    const nType = isAssocClass ? '17' : '0';
     const sType = cls.kind === 'interface' ? 'Interface' : 'Class';
     const xmiType = cls.kind === 'interface' ? 'uml:Interface' : 'uml:Class';
     lines.push(`      <element xmi:idref="${cls.id}" xmi:type="${xmiType}" name="${esc(cls.name)}" scope="public">`);
     lines.push(`        <model package="${packageId}" tpos="0" ea_localid="${i + 2}" ea_eleType="element"/>`);
-    lines.push(`        <properties isSpecification="false" sType="${sType}" nType="0" scope="public"/>`);
+    lines.push(`        <properties isSpecification="false" sType="${sType}" nType="${nType}" scope="public"/>`);
     lines.push(`        <project author="UMLDesignTool" version="1.0"/>`);
+    if (isAssocClass && assoc) {
+      lines.push(`        <extendedProperties tagged="0" package_name="${esc(diagram.name)}" conID="${assoc.id}"/>`);
+      lines.push(`        <links>`);
+      lines.push(`          <Association xmi:id="${assoc.id}" start="${assoc.sourceClassId}" end="${assoc.targetClassId}"/>`);
+      lines.push(`        </links>`);
+    }
 
     if (cls.attributes.length > 0) {
       lines.push(`        <attributes>`);
@@ -438,7 +485,7 @@ export function exportDiagramToXmi(diagram: Diagram): string {
 
     const sourceIsWhole = assoc.aggregationEnd === 'source';
     let eaType = 'Association';
-    let subtypeAttr = '';
+    let subtypeAttr = assoc.associationClassId ? ' subtype="Class"' : '';
     let direction = 'Unspecified';
     let srcAgg = 'none';
     let tgtAgg = 'none';
