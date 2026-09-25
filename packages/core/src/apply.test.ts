@@ -2547,4 +2547,126 @@ describe('applyDelta — optional association multiplicities (unit 13d fix C: co
       expect(result.value.naryAssociations).toHaveLength(0);
     }
   });
+
+  it('batch delete all classes succeeds with associations, association classes, members and redundant deletes', () => {
+    const classA = createClass({ name: 'Order', attributes: [{ id: uuidv4(), name: 'id', type: 'string', visibility: '+', isStatic: false, isDerived: false }] });
+    const classB = createClass({ name: 'Product' });
+    const classC = createClass({ name: 'OrderItem' }); // Association class
+    const assocId = uuidv4();
+    const state = createDiagram({
+      classes: [classA, classB, classC],
+      associations: [
+        {
+          id: assocId,
+          sourceClassId: classA.id,
+          targetClassId: classB.id,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'composite',
+          aggregationEnd: 'source',
+          associationClassId: classC.id,
+        },
+      ],
+    });
+
+    // Simulates an LLM deleting all classes and redundantly trying to delete members or cascade-pruned associations
+    const batchDelta = {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'delete' as const,
+          classId: classA.id,
+        },
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'delete' as const,
+          classId: classB.id,
+        },
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'delete' as const,
+          classId: classC.id,
+        },
+        // Redundant / cascade-pruned delete of association:
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'association' as const,
+          op: 'delete' as const,
+          associationId: assocId,
+        },
+        // Redundant delete of member from already-deleted classA:
+        {
+          id: uuidv4(),
+          diagramId: state.id,
+          timestamp: new Date().toISOString(),
+          kind: 'member' as const,
+          op: 'deleteAttribute' as const,
+          classId: classA.id,
+          memberId: classA.attributes[0].id,
+        },
+      ],
+    };
+
+    const result = applyDelta(state, batchDelta);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.classes).toHaveLength(0);
+      expect(result.value.associations).toHaveLength(0);
+    }
+  });
+
+  it('deleting an association class clears associationClassId from the association', () => {
+    const classA = createClass({ name: 'Order' });
+    const classB = createClass({ name: 'Product' });
+    const classC = createClass({ name: 'OrderItem' });
+    const assocId = uuidv4();
+    const state = createDiagram({
+      classes: [classA, classB, classC],
+      associations: [
+        {
+          id: assocId,
+          sourceClassId: classA.id,
+          targetClassId: classB.id,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'shared',
+          aggregationEnd: 'source',
+          associationClassId: classC.id,
+        },
+      ],
+    });
+
+    const result = applyDelta(state, {
+      id: uuidv4(),
+      diagramId: state.id,
+      timestamp: new Date().toISOString(),
+      kind: 'class',
+      op: 'delete',
+      classId: classC.id,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.classes).toHaveLength(2);
+      expect(result.value.associations).toHaveLength(1);
+      expect(result.value.associations[0].associationClassId).toBeUndefined();
+    }
+  });
 });

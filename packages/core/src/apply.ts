@@ -115,9 +115,16 @@ function isDuplicateMemberName(
 function cascadeDeleteAssociations(diagram: Diagram, classId: string): Diagram {
   return {
     ...diagram,
-    associations: diagram.associations.filter(
-      a => a.sourceClassId !== classId && a.targetClassId !== classId
-    ),
+    associations: diagram.associations
+      .filter(a => a.sourceClassId !== classId && a.targetClassId !== classId)
+      .map(a => {
+        if (a.associationClassId === classId) {
+          const copy = { ...a };
+          delete copy.associationClassId;
+          return copy;
+        }
+        return a;
+      }),
   };
 }
 
@@ -891,15 +898,18 @@ function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<
       // Si una operación 'delete' de relación o elemento falla con NotFoundError porque
       // ya fue eliminado en cascada por un borrado anterior dentro del mismo lote (batch),
       // se tolera como éxito idempotente.
-      const isCascadePrunedDelete =
-        delta.op === 'delete' &&
-        (result.error.kind === 'NaryAssociationNotFoundError' ||
-         result.error.kind === 'AssociationNotFoundError' ||
-         result.error.kind === 'GeneralizationNotFoundError' ||
-         result.error.kind === 'RealizationNotFoundError' ||
-         result.error.kind === 'DependencyNotFoundError');
+      const isDeleteOp =
+        delta.op === 'delete' || delta.op === 'deleteAttribute' || delta.op === 'deleteMethod';
+      const isNotFoundError =
+        result.error.kind === 'NaryAssociationNotFoundError' ||
+        result.error.kind === 'AssociationNotFoundError' ||
+        result.error.kind === 'GeneralizationNotFoundError' ||
+        result.error.kind === 'RealizationNotFoundError' ||
+        result.error.kind === 'DependencyNotFoundError' ||
+        result.error.kind === 'ClassNotFoundError' ||
+        result.error.kind === 'MemberNotFoundError';
 
-      if (isCascadePrunedDelete) {
+      if (isDeleteOp && isNotFoundError) {
         continue;
       }
 

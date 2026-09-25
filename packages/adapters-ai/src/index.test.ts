@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DeltaSchema, deltaJsonSchema, type Diagram } from '@app/core';
 
 import { FakeLlm, OpenAiLlm } from './index.js';
+import { repairModelIdentifiers } from './repair.js';
 
 function makeDiagram(): Diagram {
   const customerId = crypto.randomUUID();
@@ -85,6 +86,56 @@ describe('FakeLlm', () => {
 
     const unknown = await llm.interpret('rename class Ghost to Phantom', schema, diagram);
     expect(unknown.kind).toBe('refused');
+  });
+
+  it('delete all classes / borra todas las clases emits batch with delete for each class', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagram();
+
+    const deleted = await llm.interpret('borra todas las clases', schema, diagram);
+    expect(deleted.kind).toBe('delta');
+    if (deleted.kind === 'delta') {
+      const val = deleted.value as { kind: string; deltas?: { kind: string; op: string; classId: string }[] };
+      expect(val.kind).toBe('batch');
+      expect(val.deltas).toHaveLength(1);
+      expect(val.deltas?.[0].kind).toBe('class');
+      expect(val.deltas?.[0].op).toBe('delete');
+      expect(val.deltas?.[0].classId).toBe(diagram.classes[0].id);
+    }
+
+    const deletedEn = await llm.interpret('delete all classes', schema, diagram);
+    expect(deletedEn.kind).toBe('delta');
+  });
+
+  it('repairModelIdentifiers normalizes hallucinated composition/aggregation kinds and IDs', () => {
+    const rawDelta = {
+      kind: 'composition',
+      op: 'create',
+      compositionId: 'COMP_1',
+      sourceClassId: 'SRC_1',
+      targetClassId: 'TGT_1',
+    };
+    const repaired = repairModelIdentifiers(rawDelta) as any;
+    expect(repaired.kind).toBe('association');
+    expect(repaired.aggregation).toBe('composite');
+    expect(repaired.associationId).toBeDefined();
+
+    const rawBatch = {
+      kind: 'batch',
+      deltas: [
+        {
+          kind: 'aggregation',
+          op: 'create',
+          aggregationId: 'AGG_1',
+          sourceClassId: 'SRC_1',
+          targetClassId: 'TGT_1',
+        },
+      ],
+    };
+    const repairedBatch = repairModelIdentifiers(rawBatch) as any;
+    expect(repairedBatch.deltas[0].kind).toBe('association');
+    expect(repairedBatch.deltas[0].aggregation).toBe('shared');
+    expect(repairedBatch.deltas[0].associationId).toBeDefined();
   });
 
   describe('flexible intent with standard defaults vs garbage refusal', () => {

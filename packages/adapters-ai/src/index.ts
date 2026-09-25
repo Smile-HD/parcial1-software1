@@ -208,6 +208,25 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
+    // 2b. eliminar todas las clases
+    const deleteAll = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:all\s+classes|todas\s+las\s+clases|all\s+the\s+classes|todas\s+las\s+tablas)\b/i.exec(utterance);
+    if (deleteAll) {
+      if (currentIr.classes.length === 0) {
+        return refused('No classes to delete');
+      }
+      const batch: BatchDelta = {
+        kind: 'batch',
+        ...deltaBase(currentIr),
+        deltas: currentIr.classes.map((cls) => ({
+          kind: 'class',
+          op: 'delete',
+          ...deltaBase(currentIr),
+          classId: cls.id,
+        })),
+      };
+      return { kind: 'delta', value: batch };
+    }
+
     // 3. eliminar clase
     const deleteClass = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:class|clase)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (deleteClass) {
@@ -733,6 +752,8 @@ export class OpenAiLlm implements LlmPort {
       '     {"kind":"class","op":"create", ...base, "classId":"NEW_CLASS_1","name":"A","position":{"x":0,"y":0}},',
       '     {"kind":"member","op":"addAttribute", ...base, "classId":"NEW_CLASS_1","memberId":"NEW_ATTR_1","name":"x","type":"int"}',
       '   ]}',
+      '- Example: "borra todas las clases" / "delete all classes" → emit a "kind":"batch" containing a "kind":"class","op":"delete" for EACH class in currentIr.classes. The engine automatically cascades member and association deletions.',
+      '- NEVER emit "kind":"composition" or "kind":"aggregation". In UML and our schema, compositions and aggregations are ALWAYS "kind":"association" with "aggregation":"composite" (for composition) or "aggregation":"shared" (for aggregation).',
       '',
       'AGGREGATION END GUIDANCE:',
       '- The `aggregationEnd` field ("source" or "target") explicitly declares which END of the association owns the aggregation diamond (UML 2.5.1).',

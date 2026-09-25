@@ -8,6 +8,8 @@ export const REPAIRABLE_ID_FIELDS = new Set([
   'classId',
   'memberId',
   'associationId',
+  'compositionId',
+  'aggregationId',
   'generalizationId',
   'realizationId',
   'dependencyId',
@@ -28,6 +30,8 @@ export const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d
 
 /**
  * Recorre en profundidad una estructura producida por el modelo y regenera IDs/timestamps malformados.
+ * También normaliza alucinaciones comunes de tipos de relación (ej: kind: "composition" o "aggregation"
+ * a kind: "association" con aggregation: "composite" | "shared").
  * Cada ocurrencia de la MISMA cadena de ID inválida se mapea al MISMO UUID generado
  * (memoizado), de modo que los placeholders del modelo como "NEW_CLASS_1" se mantengan
  * coherentes a lo largo de los elementos de un lote.
@@ -39,8 +43,32 @@ export function repairModelIdentifiers(value: unknown, memo: Map<string, string>
   if (typeof value !== 'object' || value === null) {
     return value;
   }
+  const raw = { ...(value as Record<string, unknown>) };
+
+  // Normalización de alucinaciones de tipo de delta composition / aggregation
+  if (raw.kind === 'composition') {
+    raw.kind = 'association';
+    if (!raw.aggregation) raw.aggregation = 'composite';
+  } else if (raw.kind === 'aggregation') {
+    raw.kind = 'association';
+    if (!raw.aggregation) raw.aggregation = 'shared';
+  }
+
+  if (raw.aggregation === 'composition') {
+    raw.aggregation = 'composite';
+  } else if (raw.aggregation === 'aggregation') {
+    raw.aggregation = 'shared';
+  }
+
+  if (raw.compositionId && !raw.associationId) {
+    raw.associationId = raw.compositionId;
+  }
+  if (raw.aggregationId && !raw.associationId) {
+    raw.associationId = raw.aggregationId;
+  }
+
   const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, val] of Object.entries(raw)) {
     if (typeof val === 'string' && REPAIRABLE_ID_FIELDS.has(key) && !UUID_RE.test(val)) {
       const existing = memo.get(val);
       out[key] = existing ?? crypto.randomUUID();
