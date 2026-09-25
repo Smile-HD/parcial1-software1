@@ -146,7 +146,7 @@ const EN = {
   'palette.naryAria': 'N-ary association tool (pick 3 or more classes)',
   'palette.dragClassTitle': 'Drag onto the canvas to create a class',
   'palette.dragInterfaceTitle': 'Drag onto the canvas to create an interface',
-  'palette.armToolTitle': 'Click, then drag between two nodes to create a {label}',
+  'palette.armToolTitle': 'Click, then drag between two classes to create a {label}',
   'palette.naryTitle': 'Click, then pick at least three classes',
 
   // Barra de herramientas del lienzo.
@@ -158,7 +158,7 @@ const EN = {
   'canvas.cancelNary': 'Cancel n-ary',
   'canvas.directed': 'Directed',
   'canvas.selectTarget': 'Select target class',
-  'canvas.edgeToolHint': '{tool} tool armed — drag from a source node to a target node. Press Esc to cancel.',
+  'canvas.edgeToolHint': '{tool} tool armed — drag from a source class to a target class. Press Esc to cancel.',
   'canvas.pageBoundary': 'Diagram Page',
   'canvas.zoomControls': 'Zoom controls',
   'canvas.zoomIn': 'Zoom in (last click)',
@@ -399,7 +399,7 @@ const ES: Record<TKey, string> = {
   'palette.naryAria': 'herramienta de asociación n-aria (seleccionar 3 o más clases)',
   'palette.dragClassTitle': 'Arrastre sobre el lienzo para crear una clase',
   'palette.dragInterfaceTitle': 'Arrastre sobre el lienzo para crear una interfaz',
-  'palette.armToolTitle': 'Haga clic y arrastre entre dos nodos para crear una {label}',
+  'palette.armToolTitle': 'Haga clic y arrastre entre dos clases para crear una {label}',
   'palette.naryTitle': 'Haga clic y luego seleccione al menos tres clases',
 
   'canvas.addClass': 'Agregar clase',
@@ -410,7 +410,7 @@ const ES: Record<TKey, string> = {
   'canvas.cancelNary': 'Cancelar n-aria',
   'canvas.directed': 'Dirigida',
   'canvas.selectTarget': 'Seleccione la clase de destino',
-  'canvas.edgeToolHint': 'Herramienta {tool} activa — arrastre desde un nodo de origen hasta un nodo de destino. Pulse Esc para cancelar.',
+  'canvas.edgeToolHint': 'Herramienta {tool} activa — arrastre desde una clase de origen hasta una clase de destino. Pulse Esc para cancelar.',
   'canvas.pageBoundary': 'Hoja del Diagrama',
   'canvas.zoomControls': 'Controles de zoom',
   'canvas.zoomIn': 'Acercar (último clic)',

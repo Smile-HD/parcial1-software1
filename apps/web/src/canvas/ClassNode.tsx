@@ -788,6 +788,7 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
             position={Position.Left}
             id="connect-body-target"
             data-testid="node-connect-target-overlay"
+            className="uml-class__connect-target-overlay"
             style={{
               position: 'absolute',
               top: 0,

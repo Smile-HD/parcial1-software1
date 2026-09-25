@@ -907,7 +907,7 @@ export function getOptimalHandles(
   isSelf = false,
 ): { sourceHandle: string | undefined; targetHandle: string | undefined } {
   if (isSelf) {
-    return { sourceHandle: undefined, targetHandle: 'target-top' };
+    return { sourceHandle: undefined, targetHandle: undefined };
   }
   const dx = targetPos.x - sourcePos.x;
   const dy = targetPos.y - sourcePos.y;
@@ -1188,6 +1188,9 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     [doc, diagram, edgeTool],
   );
 
+  const isValidConnection = useCallback((connection: Edge | Connection): boolean => {
+    return Boolean(connection.source && connection.target);
+  }, []);
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection): void => {
       if (!newConnection.source || !newConnection.target) return;
@@ -1658,8 +1661,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const edges = useMemo<Edge[]>(
     () => [
       ...diagram.associations.map((assoc) => {
-        const sNode = diagram.classes.find((c) => c.id === assoc.sourceClassId);
-        const tNode = diagram.classes.find((c) => c.id === assoc.targetClassId);
+        const sNode = displayNodes.find((c) => c.id === assoc.sourceClassId) ?? diagram.classes.find((c) => c.id === assoc.sourceClassId);
+        const tNode = displayNodes.find((c) => c.id === assoc.targetClassId) ?? diagram.classes.find((c) => c.id === assoc.targetClassId);
         const handles = sNode && tNode
           ? getOptimalHandles(sNode.position, tNode.position, assoc.sourceClassId === assoc.targetClassId)
           : { sourceHandle: undefined, targetHandle: undefined };
@@ -1682,8 +1685,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       // Unidad 11.3 — aristas de generalización: origen = subClase, destino = superClase
       // para que el marcador de triángulo hueco se renderice en el extremo de la superclase.
       ...diagram.generalizations.map((gen) => {
-        const sNode = diagram.classes.find((c) => c.id === gen.subClassId);
-        const tNode = diagram.classes.find((c) => c.id === gen.superClassId);
+        const sNode = displayNodes.find((c) => c.id === gen.subClassId) ?? diagram.classes.find((c) => c.id === gen.subClassId);
+        const tNode = displayNodes.find((c) => c.id === gen.superClassId) ?? diagram.classes.find((c) => c.id === gen.superClassId);
         const handles = sNode && tNode
           ? getOptimalHandles(sNode.position, tNode.position, gen.subClassId === gen.superClassId)
           : { sourceHandle: undefined, targetHandle: undefined };
@@ -1701,8 +1704,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       // Unidad 12.3 — aristas de realización: origen = clase cliente, destino = interfaz
       // proveedora, para que la línea discontinua + triángulo hueco se renderice en el extremo de la interfaz.
       ...(diagram.realizations ?? []).map((real) => {
-        const sNode = diagram.classes.find((c) => c.id === real.clientClassId);
-        const tNode = diagram.classes.find((c) => c.id === real.supplierInterfaceId);
+        const sNode = displayNodes.find((c) => c.id === real.clientClassId) ?? diagram.classes.find((c) => c.id === real.clientClassId);
+        const tNode = displayNodes.find((c) => c.id === real.supplierInterfaceId) ?? diagram.classes.find((c) => c.id === real.supplierInterfaceId);
         const handles = sNode && tNode
           ? getOptimalHandles(sNode.position, tNode.position, real.clientClassId === real.supplierInterfaceId)
           : { sourceHandle: undefined, targetHandle: undefined };
@@ -1720,8 +1723,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       // Unidad 12.3 (12b) — aristas de dependencia: origen = clase cliente, destino =
       // proveedor, para que la línea discontinua + flecha abierta se renderice en el extremo del proveedor.
       ...(diagram.dependencies ?? []).map((dep) => {
-        const sNode = diagram.classes.find((c) => c.id === dep.clientClassId);
-        const tNode = diagram.classes.find((c) => c.id === dep.supplierClassId);
+        const sNode = displayNodes.find((c) => c.id === dep.clientClassId) ?? diagram.classes.find((c) => c.id === dep.clientClassId);
+        const tNode = displayNodes.find((c) => c.id === dep.supplierClassId) ?? diagram.classes.find((c) => c.id === dep.supplierClassId);
         const handles = sNode && tNode
           ? getOptimalHandles(sNode.position, tNode.position, dep.clientClassId === dep.supplierClassId)
           : { sourceHandle: undefined, targetHandle: undefined };
@@ -1748,7 +1751,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         })),
       ),
     ],
-    [diagram, doc],
+    [diagram, displayNodes, doc],
   );
 
   // unidad 13c — la arista seleccionada resuelta a partir de la proyección en vivo. Cuando la
@@ -2388,6 +2391,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           // unidad 13c — radio de ajuste indulgente alrededor de los conectores; combinado con las
           // superposiciones de conexión en todo el nodo permite arrastrar para conectar desde el cuerpo.
           connectionRadius={40}
+          isValidConnection={isValidConnection}
           onConnect={onConnect}
           onReconnect={onReconnect}
           onEdgesChange={() => {}}

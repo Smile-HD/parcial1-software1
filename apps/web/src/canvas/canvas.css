@@ -852,6 +852,13 @@
   box-shadow: none !important;
 }
 
+/* While dragging a connection, target overlay rises above source overlay so the entire class body can receive the drop (enabling self-associations by dropping on the same class) */
+.react-flow.connecting .uml-class__connect-target-overlay,
+.react-flow--connecting .uml-class__connect-target-overlay {
+  z-index: 10 !important;
+  pointer-events: all !important;
+}
+
 /* ── edges: EA ink + selection highlight (paths are orthogonal since 13e) ── */
 
 .react-flow__edge.selected .react-flow__edge-path {

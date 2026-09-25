@@ -81,8 +81,9 @@ export function getSelfLoopGeometry(input: SelfLoopInput): SelfLoopGeometry {
 
   // Los conectores están en el centro vertical del nodo: su punto medio es el
   // centro X del nodo, y el borde superior está a media altura por encima del conector más alto.
+  // Si uno de los extremos ya está en el borde superior (Math.abs(sy - ty) > 20), el borde superior es Math.min(sy, ty).
   const centerX = (sx + tx) / 2;
-  const topY = Math.min(sy, ty) - h / 2;
+  const topY = Math.abs(sy - ty) > 20 ? Math.min(sy, ty) : Math.min(sy, ty) - h / 2;
   const exitX = centerX - SELF_LOOP_HALF_SPAN;
   const enterX = centerX + SELF_LOOP_HALF_SPAN;
   const apexY = topY - SELF_LOOP_LIFT;
