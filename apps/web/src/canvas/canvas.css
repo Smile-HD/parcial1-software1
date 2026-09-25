@@ -831,7 +831,7 @@
   color: var(--ea-select);
 }
 
-/* Handles: invisible so no balls surround the class box, while preserving ReactFlow docking & hit-testing */
+/* Handles: invisible by default so no balls surround the class box */
 .react-flow__handle {
   width: 8px;
   height: 8px;
@@ -842,14 +842,26 @@
   box-shadow: none !important;
 }
 
-.uml-class:hover .react-flow__handle,
-.react-flow__handle:hover,
-.react-flow__handle.connecting {
-  opacity: 0 !important;
-  background: transparent !important;
-  border: none !important;
-  transform: none !important;
-  box-shadow: none !important;
+/* While connecting or reconnecting an association, reveal clean docking ports along table borders */
+.react-flow.connecting .react-flow__handle:not(.uml-class__connect-overlay):not(.uml-class__connect-target-overlay),
+.react-flow--connecting .react-flow__handle:not(.uml-class__connect-overlay):not(.uml-class__connect-target-overlay) {
+  width: 10px !important;
+  height: 10px !important;
+  opacity: 0.75 !important;
+  background: #3b82f6 !important;
+  border: 2px solid #ffffff !important;
+  border-radius: 50% !important;
+  cursor: crosshair !important;
+  box-shadow: 0 0 4px rgba(37, 99, 235, 0.4) !important;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.react-flow.connecting .react-flow__handle:hover,
+.react-flow--connecting .react-flow__handle:hover {
+  opacity: 1 !important;
+  background: #1d4ed8 !important;
+  transform: scale(1.4) !important;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.8) !important;
 }
 
 /* While dragging a connection, target overlay rises above source overlay so the entire class body can receive the drop (enabling self-associations by dropping on the same class) */
@@ -857,6 +869,26 @@
 .react-flow--connecting .uml-class__connect-target-overlay {
   z-index: 10 !important;
   pointer-events: all !important;
+}
+
+/* Edge reconnect grab handles: visible when edge is selected or hovered */
+.react-flow__edgeupdater {
+  cursor: grab;
+  fill: #3b82f6 !important;
+  fill-opacity: 0;
+  stroke: transparent !important;
+  transition: all 0.15s ease;
+}
+
+.react-flow__edge.selected .react-flow__edgeupdater,
+.react-flow__edge:hover .react-flow__edgeupdater,
+.react-flow__edgeupdater:hover {
+  fill: #2563eb !important;
+  fill-opacity: 0.95 !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.5px !important;
+  cursor: grab !important;
+  filter: drop-shadow(0 2px 5px rgba(37, 99, 235, 0.5));
 }
 
 /* ── edges: EA ink + selection highlight (paths are orthogonal since 13e) ── */

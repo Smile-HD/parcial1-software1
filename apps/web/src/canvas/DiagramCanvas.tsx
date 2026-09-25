@@ -935,6 +935,10 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [paletteCollapsed, setPaletteCollapsed] = useState(false);
   // unidad 13c — UN solo editor para cada tipo de arista: el id + tipo de la arista seleccionada.
   const [selectedEdge, setSelectedEdge] = useState<{ id: string; type: EditorEdgeType } | null>(null);
+  // Posiciones de conexión personalizadas por arista (permite mover libremente los extremos por la tabla)
+  const [edgeHandles, setEdgeHandles] = useState<
+    Record<string, { sourceHandle?: string; targetHandle?: string }>
+  >({});
   // unidad 13d corrección A — el propio editor del diamante n-ario: el id n-ario seleccionado.
   // Resuelto a partir de la proyección en vivo, de modo que eliminar el n-ario cierra el panel.
   const [selectedNaryId, setSelectedNaryId] = useState<string | null>(null);
@@ -1213,6 +1217,13 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           });
         }
       }
+      setEdgeHandles((prev) => ({
+        ...prev,
+        [oldEdge.id]: {
+          sourceHandle: newConnection.sourceHandle ?? prev[oldEdge.id]?.sourceHandle,
+          targetHandle: newConnection.targetHandle ?? prev[oldEdge.id]?.targetHandle,
+        },
+      }));
     },
     [doc, diagram],
   );
@@ -1663,9 +1674,16 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       ...diagram.associations.map((assoc) => {
         const sNode = displayNodes.find((c) => c.id === assoc.sourceClassId) ?? diagram.classes.find((c) => c.id === assoc.sourceClassId);
         const tNode = displayNodes.find((c) => c.id === assoc.targetClassId) ?? diagram.classes.find((c) => c.id === assoc.targetClassId);
-        const handles = sNode && tNode
-          ? getOptimalHandles(sNode.position, tNode.position, assoc.sourceClassId === assoc.targetClassId)
-          : { sourceHandle: undefined, targetHandle: undefined };
+        const custom = edgeHandles[assoc.id];
+        const handles =
+          custom?.sourceHandle !== undefined || custom?.targetHandle !== undefined
+            ? {
+                sourceHandle: custom.sourceHandle,
+                targetHandle: custom.targetHandle,
+              }
+            : sNode && tNode
+              ? getOptimalHandles(sNode.position, tNode.position, assoc.sourceClassId === assoc.targetClassId)
+              : { sourceHandle: undefined, targetHandle: undefined };
 
         return {
           id: assoc.id,
@@ -1674,6 +1692,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           sourceHandle: handles.sourceHandle,
           targetHandle: handles.targetHandle,
           type: 'association' as const,
+          reconnectable: true,
           data: {
             association: assoc,
             onUpdateMultiplicity: (end: 'source' | 'target', value: string) => {
@@ -1687,9 +1706,16 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       ...diagram.generalizations.map((gen) => {
         const sNode = displayNodes.find((c) => c.id === gen.subClassId) ?? diagram.classes.find((c) => c.id === gen.subClassId);
         const tNode = displayNodes.find((c) => c.id === gen.superClassId) ?? diagram.classes.find((c) => c.id === gen.superClassId);
-        const handles = sNode && tNode
-          ? getOptimalHandles(sNode.position, tNode.position, gen.subClassId === gen.superClassId)
-          : { sourceHandle: undefined, targetHandle: undefined };
+        const custom = edgeHandles[gen.id];
+        const handles =
+          custom?.sourceHandle !== undefined || custom?.targetHandle !== undefined
+            ? {
+                sourceHandle: custom.sourceHandle,
+                targetHandle: custom.targetHandle,
+              }
+            : sNode && tNode
+              ? getOptimalHandles(sNode.position, tNode.position, gen.subClassId === gen.superClassId)
+              : { sourceHandle: undefined, targetHandle: undefined };
 
         return {
           id: gen.id,
@@ -1698,6 +1724,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           sourceHandle: handles.sourceHandle,
           targetHandle: handles.targetHandle,
           type: 'generalization' as const,
+          reconnectable: true,
           data: { generalization: gen },
         };
       }),
@@ -1706,9 +1733,16 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       ...(diagram.realizations ?? []).map((real) => {
         const sNode = displayNodes.find((c) => c.id === real.clientClassId) ?? diagram.classes.find((c) => c.id === real.clientClassId);
         const tNode = displayNodes.find((c) => c.id === real.supplierInterfaceId) ?? diagram.classes.find((c) => c.id === real.supplierInterfaceId);
-        const handles = sNode && tNode
-          ? getOptimalHandles(sNode.position, tNode.position, real.clientClassId === real.supplierInterfaceId)
-          : { sourceHandle: undefined, targetHandle: undefined };
+        const custom = edgeHandles[real.id];
+        const handles =
+          custom?.sourceHandle !== undefined || custom?.targetHandle !== undefined
+            ? {
+                sourceHandle: custom.sourceHandle,
+                targetHandle: custom.targetHandle,
+              }
+            : sNode && tNode
+              ? getOptimalHandles(sNode.position, tNode.position, real.clientClassId === real.supplierInterfaceId)
+              : { sourceHandle: undefined, targetHandle: undefined };
 
         return {
           id: real.id,
@@ -1717,6 +1751,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           sourceHandle: handles.sourceHandle,
           targetHandle: handles.targetHandle,
           type: 'realization' as const,
+          reconnectable: true,
           data: { realization: real },
         };
       }),
@@ -1725,9 +1760,16 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
       ...(diagram.dependencies ?? []).map((dep) => {
         const sNode = displayNodes.find((c) => c.id === dep.clientClassId) ?? diagram.classes.find((c) => c.id === dep.clientClassId);
         const tNode = displayNodes.find((c) => c.id === dep.supplierClassId) ?? diagram.classes.find((c) => c.id === dep.supplierClassId);
-        const handles = sNode && tNode
-          ? getOptimalHandles(sNode.position, tNode.position, dep.clientClassId === dep.supplierClassId)
-          : { sourceHandle: undefined, targetHandle: undefined };
+        const custom = edgeHandles[dep.id];
+        const handles =
+          custom?.sourceHandle !== undefined || custom?.targetHandle !== undefined
+            ? {
+                sourceHandle: custom.sourceHandle,
+                targetHandle: custom.targetHandle,
+              }
+            : sNode && tNode
+              ? getOptimalHandles(sNode.position, tNode.position, dep.clientClassId === dep.supplierClassId)
+              : { sourceHandle: undefined, targetHandle: undefined };
 
         return {
           id: dep.id,
@@ -1736,6 +1778,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           sourceHandle: handles.sourceHandle,
           targetHandle: handles.targetHandle,
           type: 'dependency' as const,
+          reconnectable: true,
           data: { dependency: dep },
         };
       }),
@@ -1751,7 +1794,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
         })),
       ),
     ],
-    [diagram, displayNodes, doc],
+    [diagram, displayNodes, doc, edgeHandles],
   );
 
   // unidad 13c — la arista seleccionada resuelta a partir de la proyección en vivo. Cuando la
@@ -2387,6 +2430,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           edgeTypes={edgeTypes}
           nodesConnectable={true}
           edgesReconnectable={true}
+          reconnectRadius={20}
           connectionMode="loose"
           // unidad 13c — radio de ajuste indulgente alrededor de los conectores; combinado con las
           // superposiciones de conexión en todo el nodo permite arrastrar para conectar desde el cuerpo.
